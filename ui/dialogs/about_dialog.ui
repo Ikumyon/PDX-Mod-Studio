@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>AboutDialog</class>
+ <widget class="QDialog" name="aboutDialog"><property name="geometry"><rect><x>0</x><y>0</y><width>480</width><height>300</height></rect></property><property name="windowTitle"><string>このアプリについて</string></property><layout class="QVBoxLayout" name="verticalLayout_about"><item><widget class="QLabel" name="aboutTitleLabel"><property name="alignment"><set>Qt::AlignCenter</set></property><property name="text"><string>Mod Studio Core</string></property></widget></item><item><widget class="QTextBrowser" name="aboutTextBrowser"><property name="html"><string>&lt;html&gt;&lt;body&gt;&lt;p&gt;外部プロファイルとスキーマ定義から画面を生成する汎用MOD制作IDE基盤です。&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string></property></widget></item><item><widget class="QDialogButtonBox" name="aboutButtonBox"><property name="standardButtons"><set>QDialogButtonBox::Ok</set></property></widget></item></layout></widget>
+ <resources/>
+ <connections/>
+</ui>

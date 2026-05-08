@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>ProposalQueueDock</class>
+ <widget class="QDockWidget" name="dockProposalQueue">
+  <property name="windowTitle"><string>提案キュー</string></property>
+  <widget class="QWidget" name="dockProposalQueueContents"><layout class="QVBoxLayout" name="verticalLayout_proposal"><item><layout class="QHBoxLayout" name="horizontalLayout_proposalFilter"><item><widget class="QLineEdit" name="proposalSearchEdit"><property name="placeholderText"><string>提案を検索...</string></property></widget></item><item><widget class="QComboBox" name="proposalStatusFilterCombo"><item><property name="text"><string>すべて</string></property></item><item><property name="text"><string>レビュー待ち</string></property></item><item><property name="text"><string>採用済み</string></property></item><item><property name="text"><string>却下</string></property></item></widget></item></layout></item><item><widget class="QListView" name="proposalListView"/></item><item><layout class="QHBoxLayout" name="horizontalLayout_proposalButtons"><item><widget class="QPushButton" name="proposalAcceptButton"><property name="text"><string>採用</string></property></widget></item><item><widget class="QPushButton" name="proposalPartialAcceptButton"><property name="text"><string>一部採用</string></property></widget></item><item><widget class="QPushButton" name="proposalRejectButton"><property name="text"><string>破棄</string></property></widget></item><item><widget class="QPushButton" name="proposalRegenerateButton"><property name="text"><string>再生成</string></property></widget></item></layout></item></layout></widget>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

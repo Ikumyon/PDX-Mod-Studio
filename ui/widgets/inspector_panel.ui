@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>InspectorPanel</class>
+ <widget class="QWidget" name="inspectorPanel"><layout class="QVBoxLayout" name="verticalLayout_inspector"><item><widget class="QLabel" name="inspectorTitleLabel"><property name="text"><string>インスペクタ</string></property></widget></item><item><widget class="QStackedWidget" name="inspectorStack"/></item></layout></widget>
+ <resources/>
+ <connections/>
+</ui>

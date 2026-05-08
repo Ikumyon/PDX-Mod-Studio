@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>ProfileSelectDialog</class>
+ <widget class="QDialog" name="profileSelectDialog"><property name="geometry"><rect><x>0</x><y>0</y><width>560</width><height>380</height></rect></property><property name="windowTitle"><string>プロファイル選択</string></property><layout class="QVBoxLayout" name="verticalLayout_profileSelect"><item><widget class="QListView" name="profileListView"/></item><item><widget class="QTextBrowser" name="profileDescriptionView"/></item><item><widget class="QDialogButtonBox" name="profileSelectButtonBox"><property name="standardButtons"><set>QDialogButtonBox::Cancel|QDialogButtonBox::Ok</set></property></widget></item></layout></widget>
+ <resources/>
+ <connections/>
+</ui>

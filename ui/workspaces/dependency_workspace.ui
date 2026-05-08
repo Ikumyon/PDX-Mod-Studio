@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>DependencyWorkspace</class>
+ <widget class="QWidget" name="dependencyWorkspace"><layout class="QVBoxLayout" name="verticalLayout_dependency"><item><layout class="QHBoxLayout" name="horizontalLayout_dependencyToolbar"><item><widget class="QLineEdit" name="dependencySearchEdit"><property name="placeholderText"><string>依存関係検索...</string></property></widget></item><item><widget class="QPushButton" name="dependencyRefreshButton"><property name="text"><string>再解析</string></property></widget></item></layout></item><item><widget class="QSplitter" name="dependencySplitter"><property name="orientation"><enum>Qt::Horizontal</enum></property><widget class="QGraphicsView" name="dependencyGraphView"/><widget class="QWidget" name="dependencyDetailPanel"><layout class="QVBoxLayout" name="verticalLayout_dependencyDetails"><item><widget class="QListView" name="dependencyReverseReferenceList"/></item><item><widget class="QStackedWidget" name="dependencyDetailStack"/></item></layout></widget></widget></item></layout></widget>
+ <resources/>
+ <connections/>
+</ui>

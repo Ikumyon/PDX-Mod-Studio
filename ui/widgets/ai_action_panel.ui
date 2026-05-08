@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>AiActionPanel</class>
+ <widget class="QWidget" name="aiActionPanel"><layout class="QVBoxLayout" name="verticalLayout_aiActionPanel"><item><widget class="QLabel" name="aiActionTitleLabel"><property name="text"><string>AIアクション</string></property></widget></item><item><widget class="QWidget" name="aiActionButtonContainer"><layout class="QVBoxLayout" name="verticalLayout_aiActionButtons"/></widget></item><item><widget class="QLabel" name="aiActionStatusLabel"><property name="text"><string>待機中</string></property></widget></item></layout></widget>
+ <resources/>
+ <connections/>
+</ui>

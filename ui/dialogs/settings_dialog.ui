@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>SettingsDialog</class>
+ <widget class="QDialog" name="settingsDialog"><property name="geometry"><rect><x>0</x><y>0</y><width>720</width><height>520</height></rect></property><property name="windowTitle"><string>設定</string></property><layout class="QVBoxLayout" name="verticalLayout_settings"><item><widget class="QTabWidget" name="settingsTabWidget"><widget class="QWidget" name="settingsGeneralTab"><attribute name="title"><string>一般</string></attribute><layout class="QFormLayout" name="formLayout_settingsGeneral"><item row="0" column="0"><widget class="QLabel" name="themeLabel"><property name="text"><string>テーマ</string></property></widget></item><item row="0" column="1"><widget class="QComboBox" name="themeCombo"/></item></layout></widget><widget class="QWidget" name="settingsPathsTab"><attribute name="title"><string>パス</string></attribute><layout class="QFormLayout" name="formLayout_settingsPaths"><item row="0" column="0"><widget class="QLabel" name="workspacePathLabel"><property name="text"><string>作業フォルダ</string></property></widget></item><item row="0" column="1"><widget class="QLineEdit" name="workspacePathEdit"/></item></layout></widget></widget></item><item><widget class="QDialogButtonBox" name="settingsButtonBox"><property name="standardButtons"><set>QDialogButtonBox::Cancel|QDialogButtonBox::Ok</set></property></widget></item></layout></widget>
+ <resources/>
+ <connections/>
+</ui>

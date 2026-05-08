@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>ValidationResultList</class>
+ <widget class="QWidget" name="validationResultList"><layout class="QVBoxLayout" name="verticalLayout_validationResultList"><item><widget class="QTableView" name="validationResultListTable"><property name="alternatingRowColors"><bool>true</bool></property></widget></item></layout></widget>
+ <resources/>
+ <connections/>
+</ui>

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>StatusSummaryCard</class>
+ <widget class="QFrame" name="statusSummaryCard"><property name="frameShape"><enum>QFrame::StyledPanel</enum></property><layout class="QVBoxLayout" name="verticalLayout_statusCard"><item><widget class="QLabel" name="statusCardTitleLabel"><property name="text"><string>項目</string></property></widget></item><item><widget class="QLabel" name="statusCardValueLabel"><property name="text"><string>0</string></property></widget></item><item><widget class="QLabel" name="statusCardDetailLabel"><property name="text"><string>詳細</string></property></widget></item></layout></widget>
+ <resources/>
+ <connections/>
+</ui>

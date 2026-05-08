@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>PropertyDock</class>
+ <widget class="QDockWidget" name="dockProperties">
+  <property name="windowTitle"><string>プロパティ</string></property>
+  <widget class="QWidget" name="dockPropertiesContents"><layout class="QVBoxLayout" name="verticalLayout_properties"><item><widget class="QLabel" name="selectedItemTitleLabel"><property name="text"><string>選択中: なし</string></property></widget></item><item><widget class="QLabel" name="selectedItemTypeLabel"><property name="text"><string>タイプ: -</string></property></widget></item><item><widget class="QStackedWidget" name="propertyStack"><widget class="QWidget" name="emptyPropertyPage"><layout class="QVBoxLayout" name="verticalLayout_emptyProperty"><item><widget class="QLabel" name="emptyPropertyLabel"><property name="alignment"><set>Qt::AlignCenter</set></property><property name="text"><string>項目を選択してください</string></property></widget></item></layout></widget></widget></item><item><layout class="QHBoxLayout" name="horizontalLayout_propertyButtons"><item><widget class="QPushButton" name="propertyApplyButton"><property name="text"><string>適用</string></property></widget></item><item><widget class="QPushButton" name="propertyResetButton"><property name="text"><string>リセット</string></property></widget></item></layout></item></layout></widget>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

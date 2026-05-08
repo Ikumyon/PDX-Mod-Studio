@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>ProjectTreeDock</class>
+ <widget class="QDockWidget" name="dockProjectTree">
+  <property name="windowTitle"><string>プロジェクトツリー</string></property>
+  <widget class="QWidget" name="dockProjectTreeContents"><layout class="QVBoxLayout" name="verticalLayout_projectTree"><item><widget class="QLineEdit" name="projectTreeSearchEdit"><property name="placeholderText"><string>検索...</string></property></widget></item><item><widget class="QComboBox" name="projectTreeFilterCombo"><item><property name="text"><string>すべて</string></property></item><item><property name="text"><string>データ</string></property></item><item><property name="text"><string>資料</string></property></item><item><property name="text"><string>アセット</string></property></item></widget></item><item><widget class="QTreeView" name="projectTreeView"><property name="alternatingRowColors"><bool>true</bool></property></widget></item><item><widget class="QPushButton" name="projectTreeContextButton"><property name="text"><string>操作</string></property></widget></item></layout></widget>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

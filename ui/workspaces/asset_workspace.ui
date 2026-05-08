@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>AssetWorkspace</class>
+ <widget class="QWidget" name="assetWorkspace"><layout class="QVBoxLayout" name="verticalLayout_asset"><item><layout class="QHBoxLayout" name="horizontalLayout_assetToolbar"><item><widget class="QLineEdit" name="assetSearchEdit"><property name="placeholderText"><string>アセット検索...</string></property></widget></item><item><widget class="QPushButton" name="assetImportButton"><property name="text"><string>読み込み</string></property></widget></item><item><widget class="QPushButton" name="assetConvertButton"><property name="text"><string>変換</string></property></widget></item><item><widget class="QPushButton" name="assetBatchButton"><property name="text"><string>一括処理</string></property></widget></item></layout></item><item><widget class="QTabBar" name="assetSubTabBar"/></item><item><widget class="QStackedWidget" name="assetStack"><widget class="QWidget" name="emptyAssetPage"><layout class="QVBoxLayout" name="verticalLayout_emptyAsset"><item><widget class="QLabel" name="emptyAssetLabel"><property name="alignment"><set>Qt::AlignCenter</set></property><property name="text"><string>アセットビューを選択してください</string></property></widget></item></layout></widget></widget></item></layout></widget>
+ <resources/>
+ <connections/>
+</ui>

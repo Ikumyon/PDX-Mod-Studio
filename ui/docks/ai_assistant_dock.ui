@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>AiAssistantDock</class>
+ <widget class="QDockWidget" name="dockAiAssistant">
+  <property name="windowTitle"><string>AIアシスタント</string></property>
+  <widget class="QWidget" name="dockAiAssistantContents"><layout class="QVBoxLayout" name="verticalLayout_ai"><item><widget class="QLabel" name="aiContextLabel"><property name="text"><string>現在の対象: なし</string></property></widget></item><item><widget class="QListWidget" name="aiSuggestionList"/></item><item><widget class="QScrollArea" name="aiActionScrollArea"><property name="widgetResizable"><bool>true</bool></property><widget class="QWidget" name="aiActionContainer"><layout class="QVBoxLayout" name="verticalLayout_aiActions"/></widget></widget></item><item><widget class="QTextBrowser" name="aiChatHistoryView"/></item><item><layout class="QHBoxLayout" name="horizontalLayout_aiInput"><item><widget class="QPlainTextEdit" name="aiInputEdit"><property name="placeholderText"><string>AIへの指示を入力...</string></property><property name="maximumSize"><size><width>16777215</width><height>80</height></size></property></widget></item><item><widget class="QPushButton" name="aiSendButton"><property name="text"><string>送信</string></property></widget></item></layout></item></layout></widget>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

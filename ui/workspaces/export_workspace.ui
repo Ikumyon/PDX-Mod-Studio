@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>ExportWorkspace</class>
+ <widget class="QWidget" name="exportWorkspace"><layout class="QVBoxLayout" name="verticalLayout_export"><item><layout class="QHBoxLayout" name="horizontalLayout_exportTarget"><item><widget class="QListView" name="exportTargetList"/></item><item><widget class="QLineEdit" name="exportPathEdit"><property name="placeholderText"><string>出力先...</string></property></widget></item></layout></item><item><widget class="QScrollArea" name="exportOptionScrollArea"><property name="widgetResizable"><bool>true</bool></property><widget class="QWidget" name="exportOptionContainer"><layout class="QFormLayout" name="formLayout_exportOptions"><item row="0" column="0"><widget class="QCheckBox" name="exportBackupCheckBox"><property name="text"><string>出力前バックアップ</string></property></widget></item></layout></widget></widget></item><item><widget class="QTextEdit" name="exportDiffView"><property name="readOnly"><bool>true</bool></property></widget></item><item><layout class="QHBoxLayout" name="horizontalLayout_exportButtons"><item><widget class="QPushButton" name="exportDryRunButton"><property name="text"><string>ドライラン</string></property></widget></item><item><widget class="QPushButton" name="exportRunButton"><property name="text"><string>エクスポート</string></property></widget></item></layout></item></layout></widget>
+ <resources/>
+ <connections/>
+</ui>

@@ -1,0 +1,11 @@
+resource_type: asset
+label: "HOI4アセット"
+collection: "assets"
+editor: table
+status: planned
+
+fields:
+  - name: id
+    label: "ID"
+    type: string
+    required: true

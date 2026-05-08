@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>ValidationWorkspace</class>
+ <widget class="QWidget" name="validationWorkspace"><layout class="QVBoxLayout" name="verticalLayout_validation"><item><widget class="QFrame" name="validationSummaryContainer"><property name="frameShape"><enum>QFrame::StyledPanel</enum></property><layout class="QHBoxLayout" name="horizontalLayout_validationSummary"/></widget></item><item><layout class="QHBoxLayout" name="horizontalLayout_validationFilter"><item><widget class="QComboBox" name="validationCategoryFilter"><item><property name="text"><string>すべて</string></property></item></widget></item><item><widget class="QComboBox" name="validationSeverityFilter"><item><property name="text"><string>すべて</string></property></item><item><property name="text"><string>エラー</string></property></item><item><property name="text"><string>警告</string></property></item><item><property name="text"><string>情報</string></property></item></widget></item><item><widget class="QPushButton" name="validationRunButton"><property name="text"><string>検査実行</string></property></widget></item><item><widget class="QPushButton" name="validationFixButton"><property name="text"><string>修正案</string></property></widget></item></layout></item><item><widget class="QTableView" name="validationResultTable"><property name="alternatingRowColors"><bool>true</bool></property></widget></item></layout></widget>
+ <resources/>
+ <connections/>
+</ui>

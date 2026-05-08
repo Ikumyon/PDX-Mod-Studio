@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>ListEditor</class>
+ <widget class="QWidget" name="listEditor"><layout class="QVBoxLayout" name="verticalLayout_listEditor"><item><widget class="QListView" name="listView"/></item><item><layout class="QHBoxLayout" name="horizontalLayout_listButtons"><item><widget class="QPushButton" name="listAddButton"><property name="text"><string>追加</string></property></widget></item><item><widget class="QPushButton" name="listDuplicateButton"><property name="text"><string>複製</string></property></widget></item><item><widget class="QPushButton" name="listDeleteButton"><property name="text"><string>削除</string></property></widget></item><item><widget class="QPushButton" name="listMoveUpButton"><property name="text"><string>上へ</string></property></widget></item><item><widget class="QPushButton" name="listMoveDownButton"><property name="text"><string>下へ</string></property></widget></item></layout></item></layout></widget>
+ <resources/>
+ <connections/>
+</ui>

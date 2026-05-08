@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>OverviewWorkspace</class>
+ <widget class="QWidget" name="overviewWorkspace">
+  <property name="geometry"><rect><x>0</x><y>0</y><width>1000</width><height>700</height></rect></property>
+  <layout class="QVBoxLayout" name="verticalLayout_overview"><item><widget class="QScrollArea" name="overviewScrollArea"><property name="widgetResizable"><bool>true</bool></property><widget class="QWidget" name="overviewScrollContents"><layout class="QVBoxLayout" name="verticalLayout_overviewContents"><item><widget class="QFrame" name="summaryCardContainer"><property name="frameShape"><enum>QFrame::StyledPanel</enum></property><layout class="QGridLayout" name="gridLayout_summaryCards"/></widget></item><item><widget class="QTableView" name="recentActivityTable"/></item><item><widget class="QFrame" name="projectHealthPanel"><property name="frameShape"><enum>QFrame::StyledPanel</enum></property><layout class="QVBoxLayout" name="verticalLayout_health"><item><widget class="QLabel" name="projectHealthTitleLabel"><property name="text"><string>プロジェクト状態</string></property></widget></item></layout></widget></item><item><widget class="QFrame" name="overviewQuickActionContainer"><property name="frameShape"><enum>QFrame::StyledPanel</enum></property><layout class="QHBoxLayout" name="horizontalLayout_quickActions"/></widget></item></layout></widget></widget></item></layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

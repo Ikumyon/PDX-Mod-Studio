@@ -1,0 +1,5 @@
+id: hoi4
+name: Hearts of Iron IV
+version: 0.1
+game: hoi4
+description: Hearts of Iron IV mod profile. Initial support covers events, national focuses, and localisation.

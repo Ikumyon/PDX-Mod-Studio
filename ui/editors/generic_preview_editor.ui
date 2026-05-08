@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>GenericPreviewEditor</class>
+ <widget class="QWidget" name="genericPreviewEditor"><layout class="QVBoxLayout" name="verticalLayout_previewEditor"><item><layout class="QHBoxLayout" name="horizontalLayout_previewToolbar"><item><widget class="QPushButton" name="previewRefreshButton"><property name="text"><string>更新</string></property></widget></item><item><spacer name="previewToolbarSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint"><size><width>40</width><height>20</height></size></property></spacer></item></layout></item><item><widget class="QStackedWidget" name="previewStack"><widget class="QTextBrowser" name="previewWebView"><property name="html"><string>&lt;html&gt;&lt;body&gt;Preview Host&lt;/body&gt;&lt;/html&gt;</string></property></widget></widget></item></layout></widget>
+ <resources/>
+ <connections/>
+</ui>

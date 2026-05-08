@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>GenericDiffEditor</class>
+ <widget class="QWidget" name="genericDiffEditor"><layout class="QVBoxLayout" name="verticalLayout_diffEditor"><item><layout class="QHBoxLayout" name="horizontalLayout_diffToolbar"><item><widget class="QPushButton" name="diffAcceptButton"><property name="text"><string>採用</string></property></widget></item><item><widget class="QPushButton" name="diffPartialAcceptButton"><property name="text"><string>一部採用</string></property></widget></item><item><widget class="QPushButton" name="diffRejectButton"><property name="text"><string>破棄</string></property></widget></item><item><spacer name="diffToolbarSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint"><size><width>40</width><height>20</height></size></property></spacer></item></layout></item><item><widget class="QTextEdit" name="diffView"><property name="readOnly"><bool>true</bool></property></widget></item></layout></widget>
+ <resources/>
+ <connections/>
+</ui>

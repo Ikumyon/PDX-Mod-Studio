@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>GenericTableEditor</class>
+ <widget class="QWidget" name="genericTableEditor"><layout class="QVBoxLayout" name="verticalLayout_tableEditor"><item><layout class="QHBoxLayout" name="horizontalLayout_tableToolbar"><item><widget class="QLineEdit" name="tableSearchEdit"><property name="placeholderText"><string>検索...</string></property></widget></item><item><widget class="QComboBox" name="tableFilterCombo"/></item><item><widget class="QPushButton" name="tableAddRowButton"><property name="text"><string>追加</string></property></widget></item><item><widget class="QPushButton" name="tableDeleteRowButton"><property name="text"><string>削除</string></property></widget></item></layout></item><item><widget class="QTableView" name="tableView"><property name="alternatingRowColors"><bool>true</bool></property></widget></item></layout></widget>
+ <resources/>
+ <connections/>
+</ui>

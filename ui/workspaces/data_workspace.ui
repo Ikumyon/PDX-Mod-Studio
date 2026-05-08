@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>DataWorkspace</class>
+ <widget class="QWidget" name="dataWorkspace"><layout class="QVBoxLayout" name="verticalLayout_data"><item><layout class="QHBoxLayout" name="horizontalLayout_dataToolbar"><item><widget class="QComboBox" name="resourceTypeCombo"/></item><item><widget class="QLineEdit" name="resourceSearchEdit"><property name="placeholderText"><string>データを検索...</string></property></widget></item><item><widget class="QPushButton" name="resourceAddButton"><property name="text"><string>追加</string></property></widget></item><item><widget class="QPushButton" name="resourceDuplicateButton"><property name="text"><string>複製</string></property></widget></item><item><widget class="QPushButton" name="resourceDeleteButton"><property name="text"><string>削除</string></property></widget></item></layout></item><item><widget class="QSplitter" name="dataSplitter"><property name="orientation"><enum>Qt::Horizontal</enum></property><widget class="QListView" name="resourceListView"/><widget class="QStackedWidget" name="resourceEditorStack"><widget class="QWidget" name="emptyResourceEditorPage"><layout class="QVBoxLayout" name="verticalLayout_emptyResource"><item><widget class="QLabel" name="emptyResourceLabel"><property name="alignment"><set>Qt::AlignCenter</set></property><property name="text"><string>リソースを選択してください</string></property></widget></item></layout></widget></widget></widget></item></layout></widget>
+ <resources/>
+ <connections/>
+</ui>

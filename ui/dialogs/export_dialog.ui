@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>ExportDialog</class>
+ <widget class="QDialog" name="exportDialog"><property name="geometry"><rect><x>0</x><y>0</y><width>720</width><height>520</height></rect></property><property name="windowTitle"><string>エクスポート</string></property><layout class="QVBoxLayout" name="verticalLayout_exportDialog"><item><layout class="QFormLayout" name="formLayout_exportDialog"><item row="0" column="0"><widget class="QLabel" name="exportDestinationLabel"><property name="text"><string>出力先</string></property></widget></item><item row="0" column="1"><layout class="QHBoxLayout" name="horizontalLayout_exportDestination"><item><widget class="QLineEdit" name="exportDestinationEdit"/></item><item><widget class="QPushButton" name="exportDestinationBrowseButton"><property name="text"><string>参照</string></property></widget></item></layout></item><item row="1" column="0"><widget class="QLabel" name="exportPresetLabel"><property name="text"><string>プリセット</string></property></widget></item><item row="1" column="1"><widget class="QComboBox" name="exportPresetCombo"/></item></layout></item><item><widget class="QTextEdit" name="exportSummaryTextEdit"><property name="readOnly"><bool>true</bool></property></widget></item><item><widget class="QDialogButtonBox" name="exportDialogButtonBox"><property name="standardButtons"><set>QDialogButtonBox::Cancel|QDialogButtonBox::Ok</set></property></widget></item></layout></widget>
+ <resources/>
+ <connections/>
+</ui>

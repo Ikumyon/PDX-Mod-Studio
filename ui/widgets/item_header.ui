@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>ItemHeader</class>
+ <widget class="QWidget" name="itemHeader"><layout class="QVBoxLayout" name="verticalLayout_itemHeader"><item><widget class="QLabel" name="itemTitleLabel"><property name="text"><string>タイトル</string></property></widget></item><item><widget class="QLabel" name="itemMetaLabel"><property name="text"><string>メタ情報</string></property></widget></item></layout></widget>
+ <resources/>
+ <connections/>
+</ui>

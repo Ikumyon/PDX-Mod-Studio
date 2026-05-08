@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>PluginManagerDialog</class>
+ <widget class="QDialog" name="pluginManagerDialog"><property name="geometry"><rect><x>0</x><y>0</y><width>720</width><height>480</height></rect></property><property name="windowTitle"><string>プラグイン管理</string></property><layout class="QVBoxLayout" name="verticalLayout_pluginManager"><item><widget class="QTableView" name="pluginTableView"/></item><item><layout class="QHBoxLayout" name="horizontalLayout_pluginButtons"><item><widget class="QPushButton" name="pluginEnableButton"><property name="text"><string>有効化</string></property></widget></item><item><widget class="QPushButton" name="pluginDisableButton"><property name="text"><string>無効化</string></property></widget></item><item><widget class="QPushButton" name="pluginReloadButton"><property name="text"><string>再読み込み</string></property></widget></item></layout></item><item><widget class="QDialogButtonBox" name="pluginManagerButtonBox"><property name="standardButtons"><set>QDialogButtonBox::Close</set></property></widget></item></layout></widget>
+ <resources/>
+ <connections/>
+</ui>
