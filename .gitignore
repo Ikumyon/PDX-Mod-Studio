@@ -11,6 +11,8 @@ ENV/
 .idea/
 
 UIモックアップ/
+test_project/
+tests/
 
 # OS
 .DS_Store
