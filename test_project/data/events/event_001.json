@@ -1,8 +1,0 @@
-{
-  "resource_type": "simple_event",
-  "data": {
-    "id": "test.1",
-    "name": "Test Event",
-    "desc": "Hello"
-  }
-}
