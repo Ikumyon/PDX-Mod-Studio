@@ -1,9 +1,50 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
- <class>GenericWorkspace</class>
+ <class>genericWorkspace</class>
  <widget class="QWidget" name="genericWorkspace">
-  <layout class="QVBoxLayout" name="verticalLayout_genericWorkspace"><item><widget class="QFrame" name="workspaceHeader"><property name="frameShape"><enum>QFrame::StyledPanel</enum></property><layout class="QVBoxLayout" name="verticalLayout_workspaceHeader"><item><widget class="QLabel" name="workspaceTitleLabel"><property name="text"><string>ワークスペース</string></property></widget></item><item><widget class="QLabel" name="workspaceDescriptionLabel"><property name="text"><string>外部定義から生成される汎用ワークスペース</string></property></widget></item></layout></widget></item><item><widget class="QTabBar" name="subTabBar"><property name="expanding"><bool>false</bool></property></widget></item><item><widget class="QStackedWidget" name="editorStack"><widget class="QWidget" name="emptyEditorPage"><layout class="QVBoxLayout" name="verticalLayout_emptyEditor"><item><widget class="QLabel" name="emptyEditorLabel"><property name="alignment"><set>Qt::AlignCenter</set></property><property name="text"><string>サブタブ定義を読み込むと、ここにエディタが表示されます。</string></property></widget></item></layout></widget></widget></item></layout>
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>605</width>
+    <height>337</height>
+   </rect>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout_genericWorkspace">
+   <item>
+    <widget class="QTabBar" name="subTabBar" native="true">
+     <property name="expanding" stdset="0">
+      <bool>false</bool>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QStackedWidget" name="editorStack">
+     <widget class="QWidget" name="emptyEditorPage">
+      <layout class="QVBoxLayout" name="verticalLayout_emptyEditor">
+       <item>
+        <widget class="QLabel" name="emptyEditorLabel">
+         <property name="text">
+          <string>サブタブ定義を読み込むと、ここにエディタが表示されます。</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignmentFlag::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+    </widget>
+   </item>
+  </layout>
  </widget>
+ <customwidgets>
+  <customwidget>
+   <class>QTabBar</class>
+   <extends>QWidget</extends>
+   <header>qtabbar.h</header>
+  </customwidget>
+ </customwidgets>
  <resources/>
  <connections/>
 </ui>

@@ -1,10 +1,112 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
- <class>ProjectTreeDock</class>
- <widget class="QDockWidget" name="dockProjectTree">
-  <property name="windowTitle"><string>プロジェクトツリー</string></property>
-  <widget class="QWidget" name="dockProjectTreeContents"><layout class="QVBoxLayout" name="verticalLayout_projectTree"><item><widget class="QLineEdit" name="projectTreeSearchEdit"><property name="placeholderText"><string>検索...</string></property></widget></item><item><widget class="QComboBox" name="projectTreeFilterCombo"><item><property name="text"><string>すべて</string></property></item><item><property name="text"><string>データ</string></property></item><item><property name="text"><string>資料</string></property></item><item><property name="text"><string>アセット</string></property></item></widget></item><item><widget class="QTreeView" name="projectTreeView"><property name="alternatingRowColors"><bool>true</bool></property></widget></item><item><widget class="QPushButton" name="projectTreeContextButton"><property name="text"><string>操作</string></property></widget></item></layout></widget>
+ <class>project_tree_dock</class>
+ <widget class="QDockWidget" name="project_tree_dock">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>400</width>
+    <height>494</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>プロジェクトツリー</string>
+  </property>
+  <widget class="QWidget" name="dockWidgetContents">
+   <layout class="QVBoxLayout" name="verticalLayout">
+    <item>
+     <layout class="QHBoxLayout" name="displayModeLayout">
+      <item>
+       <widget class="QLabel" name="displayLabel">
+        <property name="text">
+         <string>表示:</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="fileModeButton">
+        <property name="text">
+         <string>ファイル</string>
+        </property>
+        <property name="checkable">
+         <bool>true</bool>
+        </property>
+        <attribute name="buttonGroup">
+         <string notr="true">buttonGroup</string>
+        </attribute>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="modElementsButton">
+        <property name="text">
+         <string>Mod要素</string>
+        </property>
+        <property name="checkable">
+         <bool>true</bool>
+        </property>
+        <property name="checked">
+         <bool>true</bool>
+        </property>
+        <attribute name="buttonGroup">
+         <string notr="true">buttonGroup</string>
+        </attribute>
+       </widget>
+      </item>
+     </layout>
+    </item>
+    <item>
+     <widget class="QLineEdit" name="searchLineEdit">
+      <property name="placeholderText">
+       <string>Mod要素を検索...</string>
+      </property>
+      <property name="clearButtonEnabled">
+       <bool>true</bool>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QTreeWidget" name="modElementsTree">
+      <property name="alternatingRowColors">
+       <bool>false</bool>
+      </property>
+      <property name="indentation">
+       <number>18</number>
+      </property>
+      <property name="rootIsDecorated">
+       <bool>true</bool>
+      </property>
+      <property name="headerHidden">
+       <bool>false</bool>
+      </property>
+      <column>
+       <property name="text">
+        <string>要素</string>
+       </property>
+      </column>
+      <column>
+       <property name="text">
+        <string>追加</string>
+       </property>
+      </column>
+     </widget>
+    </item>
+    <item>
+     <widget class="QLabel" name="sectionLabel">
+      <property name="text">
+       <string>クイック作成</string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QWidget" name="quickCreateGrid" native="true"/>
+    </item>
+   </layout>
+  </widget>
  </widget>
  <resources/>
  <connections/>
+ <buttongroups>
+  <buttongroup name="buttonGroup"/>
+ </buttongroups>
 </ui>

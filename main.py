@@ -8,12 +8,12 @@ from PySide6.QtWidgets import (
     QStackedWidget, QWidget, QTabBar, QVBoxLayout, QHBoxLayout,
     QFileDialog, QMessageBox, QFileSystemModel, QTreeView,
     QMenu, QTableView, QLineEdit, QPushButton, QGraphicsView,
-    QListView, QLabel, QComboBox
+    QListView, QLabel, QComboBox, QSizePolicy, QToolBar
 )
 from PySide6.QtGui import QAction, QPainter
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtCore import QFile, Qt, QTranslator, QCoreApplication, QModelIndex, QSize
-from PySide6.QtGui import QAction, QPainter, QPixmap, QStandardItemModel, QStandardItem
+from PySide6.QtGui import QAction, QPainter, QPixmap, QStandardItemModel, QStandardItem, QIcon
 import shutil
 
 # コアロジックのインポート
@@ -61,12 +61,16 @@ class ModStudioApp:
         self.workspace_path = self.ui_path / "workspaces"
         self.profiles_path = self.base_path / "profiles"
         self.editor_path = self.ui_path / "editors"
+        self.icons_path = self.base_path / "assets" / "icons"
+        self.styles_path = self.base_path / "assets" / "styles"
         
         # スキーマとビルダーの保持
         self.schemas = {}
         self.builders = {} # workspace_widget -> FormBuilder
         self.table_models = {} # workspace_widget -> ResourceTableModel
         self.active_files = {} # workspace_widget -> Path
+        self.docks = [] # 追加: ドックのリスト
+        self._connected_slots = set()
         
         # プロジェクト管理
         self.project_manager = ProjectManager()
@@ -95,9 +99,6 @@ class ModStudioApp:
         self.setup_docks()
         self.setup_logs()
         
-        # 3. プロファイルの読み込み（スキーマ含む）
-        self.load_profile(self._select_initial_profile())
-        
         # 4. プロジェクトツリーのセットアップ
         self.setup_project_tree()
         
@@ -105,6 +106,7 @@ class ModStudioApp:
         self.setup_actions()
         
         self.main_window.showMaximized()
+
 
     def _load_ui(self, path):
         """UIファイルをロードしてウィジェットを返す"""
@@ -118,18 +120,40 @@ class ModStudioApp:
 
     def setup_docks(self):
         """ドックパネルをロードしてメインウィンドウに追加する"""
-        dock_files = [
-            ("project_tree_dock.ui", Qt.LeftDockWidgetArea),
-            ("ai_assistant_dock.ui", Qt.RightDockWidgetArea),
-            ("property_dock.ui", Qt.RightDockWidgetArea),
-            ("proposal_queue_dock.ui", Qt.BottomDockWidgetArea),
-            ("log_dock.ui", Qt.BottomDockWidgetArea),
+        self.docks = []
+        # (UIファイル名, 配置エリア, アイコンファイル名)
+        dock_configs = [
+            ("project_tree_dock.ui", Qt.LeftDockWidgetArea, "folder-open.svg"),
+            ("ai_assistant_dock.ui", Qt.RightDockWidgetArea, "lightbulb-filament-48.svg"),
+            ("property_dock.ui", Qt.RightDockWidgetArea, "military-medal.svg"),
+            ("proposal_queue_dock.ui", Qt.BottomDockWidgetArea, "flag.svg"),
+            ("log_dock.ui", Qt.BottomDockWidgetArea, "data-area-20.svg"),
         ]
         
-        for ui_file, area in dock_files:
+        # サイドバー（ツールバー）の保持用
+        self.sidebars = {}
+
+        for ui_file, area, icon_file in dock_configs:
             dock = self._load_ui(self.dock_path / ui_file)
             if dock:
                 self.main_window.addDockWidget(area, dock)
+                self.docks.append(dock)
+                
+                # サイドバーを取得または作成
+                sidebar_area = self._get_toolbar_area(area)
+                if sidebar_area not in self.sidebars:
+                    self.sidebars[sidebar_area] = self._create_sidebar(sidebar_area)
+                
+                sidebar = self.sidebars[sidebar_area]
+                
+                # ドックのトグルアクションを設定
+                action = dock.toggleViewAction()
+                icon_path = self.icons_path / icon_file
+                if icon_path.exists():
+                    action.setIcon(QIcon(str(icon_path)))
+                
+                sidebar.addAction(action)
+
                 # 特定のドックの初期化
                 if ui_file == "proposal_queue_dock.ui":
                     self.setup_proposal_queue(dock)
@@ -138,56 +162,56 @@ class ModStudioApp:
                 elif ui_file == "localisation_workspace.ui":
                     self.setup_localisation_workspace(dock)
 
-    def _select_initial_profile(self):
-        """起動時に読み込むプロファイルIDを決める。"""
-        if len(sys.argv) > 1:
-            return sys.argv[1]
-        return os.environ.get("PDX_PROFILE", "hoi4")
+    def _get_toolbar_area(self, dock_area):
+        """ドックエリアに対応するツールバーエリアを返す"""
+        mapping = {
+            Qt.LeftDockWidgetArea: Qt.LeftToolBarArea,
+            Qt.RightDockWidgetArea: Qt.RightToolBarArea,
+            Qt.BottomDockWidgetArea: Qt.BottomToolBarArea,
+            Qt.TopDockWidgetArea: Qt.TopToolBarArea,
+        }
+        return mapping.get(dock_area, Qt.LeftToolBarArea)
 
-    def load_profile(self, profile_id):
-        """プロファイルを読み込み、定義に基づいて構成を構築する"""
-        profile_dir = self.profiles_path / profile_id
-        profile_file = profile_dir / "profile.yaml"
-        tabs_file = profile_dir / "tabs.yaml"
-        schemas_dir = profile_dir / "schemas"
+    def _create_sidebar(self, area):
+        """スリムなサイドバー（QToolBar）を作成してメインウィンドウに追加する"""
+        sidebar = QToolBar("Sidebar")
+        sidebar.setMovable(False)
+        sidebar.setFloatable(False)
+        sidebar.setIconSize(QSize(24, 24))
+        sidebar.setToolButtonStyle(Qt.ToolButtonIconOnly)
         
-        if not profile_file.exists() or not tabs_file.exists():
-            print(f"エラー: プロファイル {profile_id} が見つかりません。")
-            return
-
-        # スキーマの読み込み
-        self.load_schemas(schemas_dir)
-
-        # profile.yaml の読み込み
-        try:
-            with open(profile_file, 'r', encoding='utf-8') as f:
-                profile_data = yaml.safe_load(f)
-                title = QCoreApplication.translate("Profile", profile_data.get('name', profile_id))
-                self.main_window.setWindowTitle(f"PDX Mod Studio - {title}")
-        except Exception as e:
-            print(f"profile.yaml の読み込みに失敗しました: {e}")
-
-        # tabs.yaml の読み込み
-        try:
-            with open(tabs_file, 'r', encoding='utf-8') as f:
-                tabs_data = yaml.safe_load(f)
-        except Exception as e:
-            print(f"tabs.yaml の読み込みに失敗しました: {e}")
-            return
-
-        # ワークスペースのセットアップ
-        if self.main_tab_bar and self.central_stack:
-            self.main_tab_bar.currentChanged.connect(self._on_workspace_tab_changed)
+        # 向きの設定
+        if area in [Qt.LeftToolBarArea, Qt.RightToolBarArea]:
+            sidebar.setOrientation(Qt.Vertical)
+        else:
+            sidebar.setOrientation(Qt.Horizontal)
             
-            for tab_info in tabs_data.get('tabs', []):
-                label = QCoreApplication.translate("Tabs", tab_info.get('label', '無題'))
-                view_name = tab_info.get('view', 'generic_workspace')
-                sub_tabs = tab_info.get('sub_tabs', [])
-                self.add_workspace(label, f"{view_name}.ui", sub_tabs)
-            
-            if self.main_tab_bar.count() > 0:
-                self.main_tab_bar.setCurrentIndex(0)
-                self._on_workspace_tab_changed(0)
+        # スタイリング (スリムでダークな外観)
+        sidebar.setStyleSheet("""
+            QToolBar {
+                background-color: #2b2b2b;
+                border: none;
+                spacing: 10px;
+                padding: 5px;
+            }
+            QToolButton {
+                background-color: transparent;
+                border-radius: 4px;
+                padding: 4px;
+            }
+            QToolButton:checked {
+                background-color: #404040;
+                border-left: 2px solid #007acc;
+            }
+            QToolButton:hover {
+                background-color: #3a3a3a;
+            }
+        """)
+        
+        self.main_window.addToolBar(area, sidebar)
+        return sidebar
+
+
 
     def load_schemas(self, schemas_dir):
         """スキーマ定義をディレクトリから読み込む"""
@@ -206,12 +230,20 @@ class ModStudioApp:
             except Exception as e:
                 print(f"スキーマファイル {schema_file.name} の読み込みに失敗しました: {e}")
 
-    def add_workspace(self, title, ui_filename, sub_tabs_info=None):
+    def add_workspace(self, title, ui_filename, sub_tabs_info=None, icon_name=None):
         """タイトルとUIファイルを指定してワークスペースを追加。サブタブがあれば構築。"""
         widget = self._load_ui(self.workspace_path / ui_filename)
         if widget:
             self.central_stack.addWidget(widget)
-            self.main_tab_bar.addTab(title)
+            
+            if icon_name:
+                icon_path = self.icons_path / icon_name
+                if icon_path.exists():
+                    self.main_tab_bar.addTab(QIcon(str(icon_path)), title)
+                else:
+                    self.main_tab_bar.addTab(title)
+            else:
+                self.main_tab_bar.addTab(title)
             
             if sub_tabs_info:
                 self.setup_multi_resource_workspace(widget, sub_tabs_info)
@@ -257,7 +289,7 @@ class ModStudioApp:
             editor_stack.addWidget(page)
             
             # 初期化（最初のタブだけ、または遅延初期化）
-            schema_id = sub_info.get('schema')
+            schema_id = sub_info.get('resource_type') or sub_info.get('schema')
             if schema_id:
                 schema = self.schemas.get(schema_id)
                 if schema:
@@ -489,6 +521,66 @@ class ModStudioApp:
             builder.save_to_json(data_file)
             print(f"データを保存しました: {data_file}")
 
+    def _connect_once(self, owner, signal_name, callback):
+        callback_self = getattr(callback, "__self__", None)
+        callback_func = getattr(callback, "__func__", callback)
+        key = (id(owner), signal_name, id(callback_self), callback_func)
+        if key in self._connected_slots:
+            return
+
+        getattr(owner, signal_name).connect(callback)
+        self._connected_slots.add(key)
+
+    def setup_actions(self):
+        """メニューとボタンのアクションを接続"""
+        from PySide6.QtGui import QAction
+        from PySide6.QtWidgets import QToolBar
+
+        # ツールバー設定
+        toolbar = self.main_window.findChild(QToolBar, "mainToolBar")
+        if toolbar:
+            toolbar.setToolButtonStyle(Qt.ToolButtonIconOnly)
+            toolbar.setIconSize(QSize(28, 28))
+        
+        # アクションへのアイコン適用と接続
+        action_map = {
+            "actionNewProject": ("new-file-flat.svg", self.new_project),
+            "actionOpenProject": ("folder-open.svg", self.open_project),
+            "actionSaveProject": ("save.svg", self.save_current_file),
+            "actionExport": ("export.svg", self.run_export),
+            "actionValidate": ("lightbulb-filament-48.svg", self.run_validation),
+        }
+        
+        for act_name, (icon_file, callback) in action_map.items():
+            act = self.main_window.findChild(QAction, act_name)
+            if act:
+                icon_path = self.icons_path / icon_file
+                if icon_path.exists():
+                    act.setIcon(QIcon(str(icon_path)))
+                self._connect_once(act, "triggered", callback)
+
+        # クイックボタンへのアイコン適用と接続
+        button_map = {
+            "quickSaveButton": ("save.svg", self.save_current_file),
+            "quickExportButton": ("export.svg", self.run_export),
+            "quickValidateButton": ("lightbulb-filament-48.svg", self.run_validation),
+        }
+        
+        for btn_name, (icon_file, callback) in button_map.items():
+            btn = self.main_window.findChild(QPushButton, btn_name)
+            if btn:
+                icon_path = self.icons_path / icon_file
+                if icon_path.exists():
+                    btn.setIcon(QIcon(str(icon_path)))
+                
+                self._connect_once(btn, "clicked", callback)
+
+        # 「表示」メニューにドックの切り替えアクションを追加
+        menu_view = self.main_window.findChild(QMenu, "menuView")
+        if menu_view:
+            for dock in self.docks:
+                menu_view.addAction(dock.toggleViewAction())
+
     def setup_project_tree(self):
         """プロジェクトツリーのセットアップ"""
         self.project_tree_view = self.main_window.findChild(QTreeView, "projectTreeView")
@@ -507,32 +599,6 @@ class ModStudioApp:
         self.project_tree_view.setContextMenuPolicy(Qt.CustomContextMenu)
         self.project_tree_view.customContextMenuRequested.connect(self._show_tree_context_menu)
 
-    def setup_actions(self):
-        """メニューとボタンのアクションを接続"""
-        from PySide6.QtGui import QAction
-        
-        # プロジェクトメニュー
-        new_proj_act = self.main_window.findChild(QAction, "actionNewProject")
-        if new_proj_act: new_proj_act.triggered.connect(self.new_project)
-        
-        open_proj_act = self.main_window.findChild(QAction, "actionOpenProject")
-        if open_proj_act: open_proj_act.triggered.connect(self.open_project)
-        
-        save_proj_act = self.main_window.findChild(QAction, "actionSaveProject")
-        if save_proj_act: save_proj_act.triggered.connect(self.save_current_file)
-
-        export_act = self.main_window.findChild(QAction, "actionExport")
-        if export_act:
-            export_act.triggered.connect(self.run_export)
-            
-        q_export_btn = self.main_window.findChild(QPushButton, "quickExportButton")
-        if q_export_btn:
-            q_export_btn.clicked.connect(self.run_export)
-        
-        # クイック保存ボタン
-        save_btn = self.main_window.findChild(QWidget, "quickSaveButton")
-        if save_btn:
-            save_btn.clicked.connect(self.save_current_file)
 
     def new_project(self):
         """新規プロジェクトの作成"""
@@ -640,7 +706,8 @@ class ModStudioApp:
         list_layout.addWidget(self.asset_list_view, 1)
         
         self.asset_preview_label = QLabel("プレビュー")
-        self.asset_preview_label.setFixedSize(300, 300)
+        self.asset_preview_label.setMinimumSize(120, 120)
+        self.asset_preview_label.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
         self.asset_preview_label.setAlignment(Qt.AlignCenter)
         self.asset_preview_label.setStyleSheet("border: 1px solid gray;")
         self.asset_preview_label.setScaledContents(True)

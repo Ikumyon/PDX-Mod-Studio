@@ -2,55 +2,162 @@
 <ui version="4.0">
  <class>MainWindow</class>
  <widget class="QMainWindow" name="MainWindow">
-  <property name="geometry"><rect><x>0</x><y>0</y><width>1440</width><height>900</height></rect></property>
-  <property name="windowTitle"><string>Mod Studio Core</string></property>
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1440</width>
+    <height>900</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Mod Studio Core</string>
+  </property>
   <widget class="QWidget" name="centralwidget">
    <layout class="QVBoxLayout" name="verticalLayout_main">
-    <property name="spacing"><number>6</number></property>
-    <property name="leftMargin"><number>6</number></property>
-    <property name="topMargin"><number>6</number></property>
-    <property name="rightMargin"><number>6</number></property>
-    <property name="bottomMargin"><number>6</number></property>
+    <property name="spacing">
+     <number>6</number>
+    </property>
+    <property name="leftMargin">
+     <number>6</number>
+    </property>
+    <property name="topMargin">
+     <number>6</number>
+    </property>
+    <property name="rightMargin">
+     <number>6</number>
+    </property>
+    <property name="bottomMargin">
+     <number>6</number>
+    </property>
     <item>
-     <widget class="QFrame" name="headerWidget">
-      <property name="frameShape"><enum>QFrame::StyledPanel</enum></property>
-      <layout class="QHBoxLayout" name="horizontalLayout_header">
-       <item><widget class="QLabel" name="appTitleLabel"><property name="text"><string>Mod Studio Core</string></property></widget></item>
-       <item><widget class="QLabel" name="projectNameLabel"><property name="text"><string>プロジェクト: 未選択</string></property></widget></item>
-       <item><widget class="QLabel" name="profileNameLabel"><property name="text"><string>プロファイル: 未選択</string></property></widget></item>
-       <item><spacer name="headerSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint"><size><width>40</width><height>20</height></size></property></spacer></item>
-       <item><widget class="QPushButton" name="quickSaveButton"><property name="text"><string>保存</string></property></widget></item>
-       <item><widget class="QPushButton" name="quickValidateButton"><property name="text"><string>検査</string></property></widget></item>
-       <item><widget class="QPushButton" name="quickExportButton"><property name="text"><string>出力</string></property></widget></item>
-      </layout>
+     <widget class="QStackedWidget" name="centralStack">
+      <widget class="QWidget" name="emptyCentralPage">
+       <layout class="QVBoxLayout" name="emptyCentralLayout">
+        <item>
+         <widget class="QLabel" name="emptyCentralLabel">
+          <property name="text">
+           <string>プロファイルを読み込むと、ここにワークスペースが表示されます。</string>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignmentFlag::AlignCenter</set>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </widget>
      </widget>
     </item>
-    <item><widget class="QTabBar" name="mainTabBar"><property name="drawBase"><bool>true</bool></property><property name="expanding"><bool>false</bool></property></widget></item>
-    <item><widget class="QStackedWidget" name="centralStack"><widget class="QWidget" name="emptyCentralPage"><layout class="QVBoxLayout" name="emptyCentralLayout"><item><widget class="QLabel" name="emptyCentralLabel"><property name="alignment"><set>Qt::AlignCenter</set></property><property name="text"><string>プロファイルを読み込むと、ここにワークスペースが表示されます。</string></property></widget></item></layout></widget></widget></item>
    </layout>
   </widget>
   <widget class="QMenuBar" name="menubar">
-   <property name="geometry"><rect><x>0</x><y>0</y><width>1440</width><height>22</height></rect></property>
-   <widget class="QMenu" name="menuFile"><property name="title"><string>ファイル</string></property><addaction name="actionNewProject"/><addaction name="actionOpenProject"/><addaction name="actionSaveProject"/><addaction name="separator"/><addaction name="actionExit"/></widget>
-   <widget class="QMenu" name="menuEdit"><property name="title"><string>編集</string></property><addaction name="actionUndo"/><addaction name="actionRedo"/></widget>
-   <widget class="QMenu" name="menuProject"><property name="title"><string>プロジェクト</string></property><addaction name="actionValidate"/><addaction name="actionExport"/></widget>
-   <widget class="QMenu" name="menuView"><property name="title"><string>表示</string></property></widget>
-   <widget class="QMenu" name="menuAI"><property name="title"><string>AI</string></property><addaction name="actionAISettings"/></widget>
-   <widget class="QMenu" name="menuHelp"><property name="title"><string>ヘルプ</string></property><addaction name="actionAbout"/></widget>
-   <addaction name="menuFile"/><addaction name="menuEdit"/><addaction name="menuProject"/><addaction name="menuView"/><addaction name="menuAI"/><addaction name="menuHelp"/>
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>1440</width>
+     <height>33</height>
+    </rect>
+   </property>
+   <widget class="QMenu" name="menuFile">
+    <property name="title">
+     <string>ファイル</string>
+    </property>
+    <addaction name="actionNewProject"/>
+    <addaction name="actionOpenProject"/>
+    <addaction name="actionSaveProject"/>
+    <addaction name="separator"/>
+    <addaction name="actionExit"/>
+   </widget>
+   <widget class="QMenu" name="menuEdit">
+    <property name="title">
+     <string>編集</string>
+    </property>
+    <addaction name="actionUndo"/>
+    <addaction name="actionRedo"/>
+   </widget>
+   <widget class="QMenu" name="menuProject">
+    <property name="title">
+     <string>プロジェクト</string>
+    </property>
+    <addaction name="actionValidate"/>
+    <addaction name="actionExport"/>
+   </widget>
+   <widget class="QMenu" name="menuView">
+    <property name="title">
+     <string>表示</string>
+    </property>
+   </widget>
+   <widget class="QMenu" name="menuAI">
+    <property name="title">
+     <string>AI</string>
+    </property>
+    <addaction name="actionAISettings"/>
+   </widget>
+   <widget class="QMenu" name="menuHelp">
+    <property name="title">
+     <string>ヘルプ</string>
+    </property>
+    <addaction name="actionAbout"/>
+   </widget>
+   <addaction name="menuFile"/>
+   <addaction name="menuEdit"/>
+   <addaction name="menuProject"/>
+   <addaction name="menuView"/>
+   <addaction name="menuAI"/>
+   <addaction name="menuHelp"/>
   </widget>
-  <widget class="QToolBar" name="mainToolBar"><property name="windowTitle"><string>mainToolBar</string></property><addaction name="actionNewProject"/><addaction name="actionOpenProject"/><addaction name="actionSaveProject"/><addaction name="actionValidate"/><addaction name="actionExport"/></widget>
   <widget class="QStatusBar" name="mainStatusBar"/>
-  <action name="actionNewProject"><property name="text"><string>新規</string></property></action>
-  <action name="actionOpenProject"><property name="text"><string>開く</string></property></action>
-  <action name="actionSaveProject"><property name="text"><string>保存</string></property></action>
-  <action name="actionValidate"><property name="text"><string>検査</string></property></action>
-  <action name="actionExport"><property name="text"><string>出力</string></property></action>
-  <action name="actionExit"><property name="text"><string>終了</string></property></action>
-  <action name="actionUndo"><property name="text"><string>元に戻す</string></property></action>
-  <action name="actionRedo"><property name="text"><string>やり直し</string></property></action>
-  <action name="actionAISettings"><property name="text"><string>AI設定</string></property></action>
-  <action name="actionAbout"><property name="text"><string>このアプリについて</string></property></action>
+  <action name="actionNewProject">
+   <property name="text">
+    <string>新規</string>
+   </property>
+  </action>
+  <action name="actionOpenProject">
+   <property name="text">
+    <string>開く</string>
+   </property>
+  </action>
+  <action name="actionSaveProject">
+   <property name="text">
+    <string>保存</string>
+   </property>
+  </action>
+  <action name="actionValidate">
+   <property name="text">
+    <string>検査</string>
+   </property>
+  </action>
+  <action name="actionExport">
+   <property name="text">
+    <string>出力</string>
+   </property>
+  </action>
+  <action name="actionExit">
+   <property name="text">
+    <string>終了</string>
+   </property>
+  </action>
+  <action name="actionUndo">
+   <property name="text">
+    <string>元に戻す</string>
+   </property>
+  </action>
+  <action name="actionRedo">
+   <property name="text">
+    <string>やり直し</string>
+   </property>
+  </action>
+  <action name="actionAISettings">
+   <property name="text">
+    <string>AI設定</string>
+   </property>
+  </action>
+  <action name="actionAbout">
+   <property name="text">
+    <string>このアプリについて</string>
+   </property>
+  </action>
  </widget>
  <resources/>
  <connections/>
