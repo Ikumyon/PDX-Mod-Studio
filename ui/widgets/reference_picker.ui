@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<ui version="4.0">
- <class>ReferencePicker</class>
- <widget class="QWidget" name="referencePicker"><layout class="QHBoxLayout" name="horizontalLayout_reference"><item><widget class="QLineEdit" name="referenceIdEdit"/></item><item><widget class="QPushButton" name="referencePickButton"><property name="text"><string>選択</string></property></widget></item><item><widget class="QPushButton" name="referenceClearButton"><property name="text"><string>解除</string></property></widget></item><item><widget class="QPushButton" name="referenceJumpButton"><property name="text"><string>移動</string></property></widget></item></layout></widget>
- <resources/>
- <connections/>
-</ui>

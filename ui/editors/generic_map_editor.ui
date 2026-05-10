@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<ui version="4.0">
- <class>GenericMapEditor</class>
- <widget class="QWidget" name="genericMapEditor"><layout class="QVBoxLayout" name="verticalLayout_mapEditor"><item><layout class="QHBoxLayout" name="horizontalLayout_mapToolbar"><item><widget class="QLineEdit" name="mapSearchEdit"><property name="placeholderText"><string>検索...</string></property></widget></item><item><widget class="QComboBox" name="mapZoomCombo"><item><property name="text"><string>50%</string></property></item><item><property name="text"><string>100%</string></property></item><item><property name="text"><string>200%</string></property></item></widget></item><item><widget class="QLabel" name="mapSelectionInfoLabel"><property name="text"><string>選択: なし</string></property></widget></item></layout></item><item><widget class="QScrollArea" name="mapLayerScrollArea"><property name="widgetResizable"><bool>true</bool></property><property name="maximumSize"><size><width>16777215</width><height>58</height></size></property><widget class="QWidget" name="mapLayerContainer"><layout class="QHBoxLayout" name="horizontalLayout_mapLayers"/></widget></widget></item><item><widget class="QGraphicsView" name="mapGraphicsView"><property name="dragMode"><enum>QGraphicsView::ScrollHandDrag</enum></property></widget></item></layout></widget>
- <resources/>
- <connections/>
-</ui>

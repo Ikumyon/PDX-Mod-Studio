@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<ui version="4.0">
- <class>AssetPicker</class>
- <widget class="QWidget" name="assetPicker"><layout class="QHBoxLayout" name="horizontalLayout_assetPicker"><item><widget class="QLabel" name="assetPreviewLabel"><property name="minimumSize"><size><width>48</width><height>48</height></size></property><property name="frameShape"><enum>QFrame::StyledPanel</enum></property><property name="text"><string>Preview</string></property></widget></item><item><widget class="QLineEdit" name="assetPathEdit"/></item><item><widget class="QPushButton" name="assetPickButton"><property name="text"><string>選択</string></property></widget></item><item><widget class="QPushButton" name="assetOpenButton"><property name="text"><string>開く</string></property></widget></item><item><widget class="QLabel" name="assetStatusLabel"><property name="text"><string>未確認</string></property></widget></item></layout></widget>
- <resources/>
- <connections/>
-</ui>

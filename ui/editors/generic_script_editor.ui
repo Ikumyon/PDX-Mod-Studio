@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<ui version="4.0">
- <class>GenericScriptEditor</class>
- <widget class="QWidget" name="genericScriptEditor"><layout class="QVBoxLayout" name="verticalLayout_scriptEditor"><item><layout class="QHBoxLayout" name="horizontalLayout_scriptToolbar"><item><widget class="QPushButton" name="scriptFormatButton"><property name="text"><string>整形</string></property></widget></item><item><widget class="QPushButton" name="scriptCheckButton"><property name="text"><string>検査</string></property></widget></item><item><widget class="QPushButton" name="scriptDictionaryButton"><property name="text"><string>辞書</string></property></widget></item><item><spacer name="scriptToolbarSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint"><size><width>40</width><height>20</height></size></property></spacer></item></layout></item><item><widget class="QPlainTextEdit" name="scriptTextEdit"><property name="placeholderText"><string>script_block...</string></property></widget></item></layout></widget>
- <resources/>
- <connections/>
-</ui>

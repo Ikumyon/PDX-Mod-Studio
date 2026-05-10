@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<ui version="4.0">
- <class>LocalisationWorkspace</class>
- <widget class="QWidget" name="localisationWorkspace"><layout class="QVBoxLayout" name="verticalLayout_localisation"><item><layout class="QHBoxLayout" name="horizontalLayout_localisationToolbar"><item><widget class="QLineEdit" name="localisationSearchEdit"><property name="placeholderText"><string>キー・文章を検索...</string></property></widget></item><item><widget class="QComboBox" name="languageCombo"/></item><item><widget class="QComboBox" name="localisationStatusFilter"><item><property name="text"><string>すべて</string></property></item><item><property name="text"><string>未翻訳</string></property></item><item><property name="text"><string>表記ゆれ</string></property></item></widget></item><item><widget class="QPushButton" name="localisationAutoTranslateButton"><property name="text"><string>AI翻訳</string></property></widget></item><item><widget class="QPushButton" name="localisationCheckButton"><property name="text"><string>チェック</string></property></widget></item></layout></item><item><widget class="QTableView" name="localisationTableView"><property name="alternatingRowColors"><bool>true</bool></property></widget></item></layout></widget>
- <resources/>
- <connections/>
-</ui>
