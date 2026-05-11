@@ -77,6 +77,11 @@ class ProjectTreeDock:
             if header:
                 header.setIcon(self.icon_chevron_down)
             
+        # toggleViewActionの設定（アクティビティバー用）
+        view_action = self.dock_widget.toggleViewAction()
+        view_action.setIcon(self.icon_file)
+        view_action.setText("プロジェクト")
+        
         # シグナルの接続
         if self.openFolderButton:
             self.openFolderButton.clicked.connect(self.on_open_folder_clicked)

@@ -1,9 +1,9 @@
 import sys
 import os
-from PySide6.QtWidgets import QApplication, QMenu
+from PySide6.QtWidgets import QApplication, QMenu, QVBoxLayout, QToolButton, QWidget
 from core.editor import EditorWidget
 from PySide6.QtUiTools import QUiLoader
-from PySide6.QtCore import QFile, Qt
+from PySide6.QtCore import QFile, Qt, QSize
 
 def main():
     app = QApplication(sys.argv)
@@ -77,6 +77,42 @@ def main():
     if view_menu:
         for dock in docks:
             view_menu.addAction(dock.toggleViewAction())
+            
+    # --- アクティビティバーの動的更新設定 ---
+    activity_bar = window.findChild(QWidget, "TLeftActivityBar")
+    dock_action_map = {} # {QDockWidget: QAction}
+    
+    def update_activity_bar(dock_widget, area):
+        if not activity_bar:
+            return
+            
+        is_left = (area == Qt.DockWidgetArea.LeftDockWidgetArea)
+        
+        if is_left and dock_widget not in dock_action_map:
+            # 左側にドッキングされ、まだ登録されていない場合
+            action = dock_widget.toggleViewAction()
+            activity_bar.addAction(action)
+            dock_action_map[dock_widget] = action
+        elif not is_left and dock_widget in dock_action_map:
+            # 左側から離れ、登録されている場合
+            action = dock_action_map.pop(dock_widget)
+            activity_bar.removeAction(action)
+
+    # アイコンサイズの設定
+    if activity_bar:
+        activity_bar.setIconSize(QSize(28, 28))
+        activity_bar.setMovable(False)
+
+    # 初期状態の反映と監視設定
+    for dock in docks:
+        # ドックの場所が変わった時（別のエリアに移動した時など）
+        dock.dockLocationChanged.connect(lambda area, d=dock: update_activity_bar(d, area))
+        # フローティング状態が変わった時（切り離された時など）
+        dock.topLevelChanged.connect(lambda floating, d=dock: update_activity_bar(d, window.dockWidgetArea(d)))
+        
+        # 初期エリアを取得して反映
+        current_area = window.dockWidgetArea(dock)
+        update_activity_bar(dock, current_area)
     # ---------------------------------------
     
     # ウィンドウを表示

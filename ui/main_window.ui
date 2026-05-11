@@ -6,36 +6,36 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1440</width>
-    <height>900</height>
+    <width>628</width>
+    <height>553</height>
    </rect>
   </property>
   <property name="windowTitle">
    <string>PDX MOD Studio</string>
   </property>
   <widget class="QWidget" name="centralwidget">
-   <layout class="QVBoxLayout" name="verticalLayout_main">
+   <layout class="QHBoxLayout" name="horizontalLayout">
     <property name="spacing">
      <number>6</number>
     </property>
     <property name="leftMargin">
-     <number>6</number>
+     <number>0</number>
     </property>
     <property name="topMargin">
-     <number>6</number>
+     <number>0</number>
     </property>
     <property name="rightMargin">
-     <number>6</number>
+     <number>0</number>
     </property>
     <property name="bottomMargin">
-     <number>6</number>
+     <number>0</number>
     </property>
     <item>
      <widget class="QTabWidget" name="editorTabs">
-      <property name="tabsClosable">
+      <property name="documentMode">
        <bool>true</bool>
       </property>
-      <property name="documentMode">
+      <property name="tabsClosable">
        <bool>true</bool>
       </property>
      </widget>
@@ -47,7 +47,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1440</width>
+     <width>628</width>
      <height>33</height>
     </rect>
    </property>
@@ -100,6 +100,17 @@
    <addaction name="menuHelp"/>
   </widget>
   <widget class="QStatusBar" name="mainStatusBar"/>
+  <widget class="QToolBar" name="TLeftActivityBar">
+   <property name="windowTitle">
+    <string>toolBar</string>
+   </property>
+   <attribute name="toolBarArea">
+    <enum>LeftToolBarArea</enum>
+   </attribute>
+   <attribute name="toolBarBreak">
+    <bool>false</bool>
+   </attribute>
+  </widget>
   <action name="actionNewProject">
    <property name="text">
     <string>新規</string>
