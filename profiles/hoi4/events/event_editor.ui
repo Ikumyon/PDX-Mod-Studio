@@ -1,0 +1,531 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>event_editor</class>
+ <widget class="QWidget" name="event_editor">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1158</width>
+    <height>466</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>HOI4 Event Editor</string>
+  </property>
+  <layout class="QHBoxLayout" name="topLevelLayout">
+   <item>
+    <widget class="QSplitter" name="mainSplitter">
+     <property name="orientation">
+      <enum>Qt::Orientation::Horizontal</enum>
+     </property>
+     <property name="handleWidth">
+      <number>6</number>
+     </property>
+     <property name="childrenCollapsible">
+      <bool>false</bool>
+     </property>
+     <widget class="QWidget" name="listAreaContainer">
+      <property name="minimumSize">
+       <size>
+        <width>220</width>
+        <height>0</height>
+       </size>
+      </property>
+      <layout class="QVBoxLayout" name="listAreaLayout">
+       <item>
+        <widget class="QLabel" name="eventListTitle">
+         <property name="text">
+          <string>イベント一覧</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="newEventButton">
+         <property name="text">
+          <string>＋ 新規イベント</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="eventActionLayout">
+         <item>
+          <widget class="QPushButton" name="duplicateEventButton">
+           <property name="text">
+            <string>複製</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="deleteEventButton">
+           <property name="text">
+            <string>削除</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <widget class="QLineEdit" name="eventSearchEdit">
+         <property name="placeholderText">
+          <string>イベントID / タイトルで検索</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QFrame" name="eventListFrame">
+         <property name="minimumSize">
+          <size>
+           <width>260</width>
+           <height>0</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>16777215</width>
+           <height>16777215</height>
+          </size>
+         </property>
+         <property name="frameShape">
+          <enum>QFrame::Shape::StyledPanel</enum>
+         </property>
+         <layout class="QVBoxLayout" name="eventListLayout">
+          <property name="spacing">
+           <number>0</number>
+          </property>
+          <property name="leftMargin">
+           <number>0</number>
+          </property>
+          <property name="topMargin">
+           <number>0</number>
+          </property>
+          <property name="rightMargin">
+           <number>0</number>
+          </property>
+          <property name="bottomMargin">
+           <number>0</number>
+          </property>
+          <item>
+           <layout class="QHBoxLayout" name="namespaceLayout">
+            <property name="leftMargin">
+             <number>9</number>
+            </property>
+            <property name="topMargin">
+             <number>9</number>
+            </property>
+            <property name="rightMargin">
+             <number>9</number>
+            </property>
+            <item>
+             <widget class="QLabel" name="namespaceLabel">
+              <property name="text">
+               <string>ネームスペース</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLineEdit" name="namespaceEdit"/>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <widget class="QListWidget" name="eventListWidget">
+            <property name="frameShape">
+             <enum>QFrame::Shape::NoFrame</enum>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QScrollArea" name="editorScrollArea">
+      <property name="frameShape">
+       <enum>QFrame::Shape::NoFrame</enum>
+      </property>
+      <property name="horizontalScrollBarPolicy">
+       <enum>Qt::ScrollBarPolicy::ScrollBarAlwaysOff</enum>
+      </property>
+      <property name="widgetResizable">
+       <bool>true</bool>
+      </property>
+      <widget class="QWidget" name="editorScrollContents">
+       <property name="geometry">
+        <rect>
+         <x>0</x>
+         <y>-337</y>
+         <width>535</width>
+         <height>785</height>
+        </rect>
+       </property>
+       <layout class="QVBoxLayout" name="editorLayout">
+        <item>
+         <layout class="QHBoxLayout" name="editorHeaderLayout">
+          <item>
+           <widget class="QLabel" name="editorTitle">
+            <property name="text">
+             <string>イベント編集</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QToolButton" name="resetButton">
+            <property name="text">
+             <string>初期化</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <widget class="QGroupBox" name="basicGroup">
+          <property name="title">
+           <string>基本情報</string>
+          </property>
+          <layout class="QFormLayout" name="basicFormLayout">
+           <item row="0" column="0">
+            <widget class="QLabel" name="eventIdLabel">
+             <property name="text">
+              <string>イベントID</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="1">
+            <widget class="QLineEdit" name="eventIdEdit">
+             <property name="text">
+              <string/>
+             </property>
+             <property name="placeholderText">
+              <string>例: test_event.1</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="0">
+            <widget class="QLabel" name="eventTypeLabel">
+             <property name="text">
+              <string>種類</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="1">
+            <widget class="QComboBox" name="eventTypeCombo">
+             <item>
+              <property name="text">
+               <string>country_event</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>news_event</string>
+              </property>
+             </item>
+            </widget>
+           </item>
+           <item row="2" column="0">
+            <widget class="QLabel" name="titleKeyLabel">
+             <property name="text">
+              <string>タイトルキー</string>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="1">
+            <widget class="QLineEdit" name="titleKeyEdit">
+             <property name="text">
+              <string/>
+             </property>
+             <property name="placeholderText">
+              <string>例: test_event.1.t</string>
+             </property>
+            </widget>
+           </item>
+           <item row="3" column="0">
+            <widget class="QLabel" name="titleTextLabel">
+             <property name="text">
+              <string>タイトル</string>
+             </property>
+            </widget>
+           </item>
+           <item row="3" column="1">
+            <widget class="QLineEdit" name="titleTextEdit">
+             <property name="text">
+              <string/>
+             </property>
+             <property name="placeholderText">
+              <string>表示されるタイトルを入力</string>
+             </property>
+            </widget>
+           </item>
+           <item row="4" column="0">
+            <widget class="QLabel" name="descKeyLabel">
+             <property name="text">
+              <string>説明キー</string>
+             </property>
+            </widget>
+           </item>
+           <item row="4" column="1">
+            <widget class="QLineEdit" name="descKeyEdit">
+             <property name="text">
+              <string/>
+             </property>
+             <property name="placeholderText">
+              <string>例: test_event.1.d</string>
+             </property>
+            </widget>
+           </item>
+           <item row="5" column="0">
+            <widget class="QLabel" name="descLabel">
+             <property name="text">
+              <string>説明</string>
+             </property>
+            </widget>
+           </item>
+           <item row="5" column="1">
+            <widget class="QPlainTextEdit" name="descEdit">
+             <property name="plainText">
+              <string/>
+             </property>
+             <property name="placeholderText">
+              <string>イベントの説明文を入力</string>
+             </property>
+            </widget>
+           </item>
+           <item row="6" column="0">
+            <widget class="QLabel" name="pictureLabel">
+             <property name="text">
+              <string>画像</string>
+             </property>
+            </widget>
+           </item>
+           <item row="6" column="1">
+            <layout class="QHBoxLayout" name="pictureLayout">
+             <item>
+              <widget class="QLineEdit" name="pictureEdit">
+               <property name="text">
+                <string/>
+               </property>
+               <property name="placeholderText">
+                <string>例: GFX_report_event_...</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QPushButton" name="selectPictureButton">
+               <property name="text">
+                <string>選択</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <widget class="QGroupBox" name="flagsGroup">
+          <property name="title">
+           <string>フラグ・詳細設定</string>
+          </property>
+          <layout class="QGridLayout" name="flagsLayout">
+           <item row="0" column="0">
+            <widget class="QCheckBox" name="fireOnlyOnceCheck">
+             <property name="text">
+              <string>一度だけ発生 (fire_only_once)</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="1">
+            <widget class="QCheckBox" name="hiddenCheck">
+             <property name="text">
+              <string>隠しイベント (hidden)</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="0">
+            <widget class="QCheckBox" name="majorCheck">
+             <property name="text">
+              <string>主要イベント (major)</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="1">
+            <widget class="QCheckBox" name="fireForSenderCheck">
+             <property name="text">
+              <string>送信側に表示 (fire_for_sender)</string>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="0">
+            <widget class="QLabel" name="timeoutLabel">
+             <property name="text">
+              <string>タイムアウト日数 (timeout_days)</string>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="1">
+            <widget class="QSpinBox" name="timeoutSpin">
+             <property name="suffix">
+              <string> 日</string>
+             </property>
+             <property name="maximum">
+              <number>9999</number>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <widget class="QGroupBox" name="triggerMtthGroup">
+          <property name="title">
+           <string>トリガー・発生設定</string>
+          </property>
+          <layout class="QFormLayout" name="triggerMtthFormLayout">
+           <item row="0" column="0">
+            <widget class="QLabel" name="triggerLabel">
+             <property name="text">
+              <string>条件
+Trigger</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="1">
+            <layout class="QVBoxLayout" name="triggerContentLayout">
+             <item>
+              <layout class="QHBoxLayout" name="triggerTypeLayout">
+               <item>
+                <widget class="QRadioButton" name="isTriggeredOnlyRadio">
+                 <property name="text">
+                  <string>自然発生しない</string>
+                 </property>
+                 <property name="checked">
+                  <bool>true</bool>
+                 </property>
+                 <attribute name="buttonGroup">
+                  <string notr="true">buttonGroup</string>
+                 </attribute>
+                </widget>
+               </item>
+               <item>
+                <widget class="QRadioButton" name="isStandardTriggerRadio">
+                 <property name="text">
+                  <string>通常発生（条件判定）</string>
+                 </property>
+                 <attribute name="buttonGroup">
+                  <string notr="true">buttonGroup</string>
+                 </attribute>
+                </widget>
+               </item>
+              </layout>
+             </item>
+             <item>
+              <widget class="QPlainTextEdit" name="triggerEdit">
+               <property name="plainText">
+                <string/>
+               </property>
+               <property name="placeholderText">
+                <string>ここに条件を入力</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item row="1" column="0">
+            <widget class="QLabel" name="mtthLabel">
+             <property name="text">
+              <string>平均発生間隔
+MTTH</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="1">
+            <widget class="QPlainTextEdit" name="mtthEdit">
+             <property name="plainText">
+              <string/>
+             </property>
+             <property name="placeholderText">
+              <string>ここに平均発生間隔を記入</string>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="0">
+            <widget class="QLabel" name="immediateLabel">
+             <property name="text">
+              <string>即時効果
+Immediate</string>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="1">
+            <widget class="QPlainTextEdit" name="immediateEdit">
+             <property name="plainText">
+              <string/>
+             </property>
+             <property name="placeholderText">
+              <string>即時実行されるスクリプトを入力</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <widget class="QGroupBox" name="optionsGroup">
+          <property name="title">
+           <string>選択肢 Options</string>
+          </property>
+          <layout class="QVBoxLayout" name="optionsLayout">
+           <item>
+            <widget class="QPushButton" name="addOptionButton">
+             <property name="text">
+              <string>＋ 選択肢追加</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <spacer name="editorBottomSpacer">
+          <property name="orientation">
+           <enum>Qt::Orientation::Vertical</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>20</width>
+            <height>40</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
+      </widget>
+     </widget>
+     <widget class="QFrame" name="previewPanel">
+      <property name="minimumSize">
+       <size>
+        <width>240</width>
+        <height>0</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>16777215</width>
+        <height>16777215</height>
+       </size>
+      </property>
+      <property name="frameShape">
+       <enum>QFrame::Shape::StyledPanel</enum>
+      </property>
+      <layout class="QVBoxLayout" name="previewLayout"/>
+     </widget>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+ <buttongroups>
+  <buttongroup name="buttonGroup"/>
+ </buttongroups>
+</ui>

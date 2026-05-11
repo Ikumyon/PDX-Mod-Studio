@@ -55,9 +55,6 @@
     <property name="title">
      <string>ファイル</string>
     </property>
-    <addaction name="actionNewProject"/>
-    <addaction name="actionOpenProject"/>
-    <addaction name="actionSaveProject"/>
     <addaction name="separator"/>
     <addaction name="actionExit"/>
    </widget>
@@ -67,13 +64,6 @@
     </property>
     <addaction name="actionUndo"/>
     <addaction name="actionRedo"/>
-   </widget>
-   <widget class="QMenu" name="menuProject">
-    <property name="title">
-     <string>プロジェクト</string>
-    </property>
-    <addaction name="actionValidate"/>
-    <addaction name="actionExport"/>
    </widget>
    <widget class="QMenu" name="menuView">
     <property name="title">
@@ -94,7 +84,6 @@
    </widget>
    <addaction name="menuFile"/>
    <addaction name="menuEdit"/>
-   <addaction name="menuProject"/>
    <addaction name="menuView"/>
    <addaction name="menuAI"/>
    <addaction name="menuHelp"/>
@@ -131,7 +120,7 @@
     <string>検査</string>
    </property>
   </action>
-  <action name="actionExport">
+  <action name="action">
    <property name="text">
     <string>出力</string>
    </property>

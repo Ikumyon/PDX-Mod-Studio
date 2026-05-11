@@ -1,16 +1,72 @@
 import os
 from PySide6.QtWidgets import (QDockWidget, QFileDialog, QTreeWidgetItem, 
                              QVBoxLayout, QHBoxLayout, QMenu, QWidget, QLabel, 
-                             QToolButton, QStyle)
+                             QToolButton, QStyle, QInputDialog, QMessageBox)
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtCore import QFile, Qt, QSize
-from PySide6.QtGui import QIcon, QPalette, QAction
+from PySide6.QtGui import QIcon, QPalette, QAction, QPixmap
 from core.utils import load_svg_icon
+
+class OpenEditorItemWidget(QWidget):
+    def __init__(self, name, path, index, icon, icon_close, parent_dock):
+        super().__init__()
+        self.path = path
+        self.index = index
+        self.parent_dock = parent_dock
+        
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(4, 2, 4, 2)
+        layout.setSpacing(6)
+        
+        # アイコン
+        self.icon_label = QLabel()
+        self.icon_label.setPixmap(icon.pixmap(16, 16))
+        layout.addWidget(self.icon_label)
+        
+        # ファイル名
+        self.name_label = QLabel(name)
+        self.name_label.setStyleSheet("background: transparent;")
+        layout.addWidget(self.name_label)
+        
+        layout.addStretch()
+        
+        # 閉じるボタン (デフォルト非表示)
+        self.close_button = QToolButton()
+        self.close_button.setIcon(icon_close)
+        self.close_button.setFixedSize(18, 18)
+        self.close_button.setAutoRaise(True)
+        self.close_button.setToolTip("閉じる")
+        self.close_button.setVisible(False)
+        self.close_button.clicked.connect(self.on_close_clicked)
+        layout.addWidget(self.close_button)
+        
+        # ツールチップ設定
+        self.setToolTip(path)
+        # 背景を透明に（親の選択ハイライトが見えるように）
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+
+    def enterEvent(self, event):
+        self.close_button.setVisible(True)
+        super().enterEvent(event)
+        
+    def leaveEvent(self, event):
+        # アクティブ（選択中）でなければ非表示にする
+        is_active = (self.parent_dock.openEditorsList.currentRow() == self.index)
+        if not is_active:
+            self.close_button.setVisible(False)
+        super().leaveEvent(event)
+
+    def on_close_clicked(self):
+        # メインウィンドウのタブを閉じる処理をトリガー
+        if hasattr(self.parent_dock.parent_window, "editorTabs") and self.parent_dock.parent_window.editorTabs:
+            # tabCloseRequested はシグナルなので emit する
+            self.parent_dock.parent_window.editorTabs.tabCloseRequested.emit(self.index)
 
 class ProjectTreeDock:
     def __init__(self, parent_window):
         self.parent_window = parent_window
         self.base_dir = os.path.dirname(os.path.dirname(__file__))
+        self.show_editors_requested = True
         
         # UIのロード
         loader = QUiLoader()
@@ -57,6 +113,7 @@ class ProjectTreeDock:
         self.icon_chevron_right = load_svg_icon(os.path.join(icons_dir, "chevron-right.svg"), text_color)
         self.icon_refresh = load_svg_icon(os.path.join(icons_dir, "rotate-cw.svg"), text_color)
         self.icon_collapse = load_svg_icon(os.path.join(icons_dir, "copy-minus.svg"), text_color)
+        self.icon_close = load_svg_icon(os.path.join(icons_dir, "close.svg"), text_color)
         
         # ボタンへのアイコン設定
         operation_buttons = [
@@ -97,6 +154,14 @@ class ProjectTreeDock:
             self.refreshTreeButton.clicked.connect(lambda: self.load_project(self.current_project_path) if hasattr(self, "current_project_path") and self.current_project_path else None)
         if self.modElementsTree:
             self.modElementsTree.itemDoubleClicked.connect(self.on_item_double_clicked)
+        if self.openEditorsList:
+            self.openEditorsList.itemClicked.connect(self.on_editor_item_clicked)
+        if self.newFileButton:
+            self.newFileButton.clicked.connect(self.on_new_file_clicked)
+        if self.newFolderButton:
+            self.newFolderButton.clicked.connect(self.on_new_folder_clicked)
+            
+        self.active_profile = None
             
     def on_item_double_clicked(self, item, column):
         file_path = item.data(0, Qt.ItemDataRole.UserRole)
@@ -172,9 +237,18 @@ class ProjectTreeDock:
         self.dock_widget.setTitleBarWidget(self.explorerTitleBar)
         
     def on_show_editors_toggled(self, checked):
-        if self.openEditorsHeader and self.openEditorsList:
-            self.openEditorsHeader.setVisible(checked)
-            self.openEditorsList.setVisible(checked)
+        self.show_editors_requested = checked
+        count = 0
+        if hasattr(self.parent_window, "editorTabs") and self.parent_window.editorTabs:
+            count = self.parent_window.editorTabs.count()
+        self._update_editors_visibility(count)
+        
+    def _update_editors_visibility(self, count):
+        visible = self.show_editors_requested and count > 0
+        if self.openEditorsHeader:
+            self.openEditorsHeader.setVisible(visible)
+        if self.openEditorsList:
+            self.openEditorsList.setVisible(visible)
             
     def toggle_open_editors(self):
         if self.openEditorsList:
@@ -216,9 +290,14 @@ class ProjectTreeDock:
         self.folderStack.setCurrentIndex(1)
         
     def _populate_tree(self, path, parent_item):
+        if not hasattr(self, "current_project_path"):
+            return
+            
         try:
             items = os.listdir(path)
             items.sort()
+            
+            # ディレクトリの処理
             for item_name in items:
                 full_path = os.path.join(path, item_name)
                 if os.path.isdir(full_path):
@@ -227,15 +306,295 @@ class ProjectTreeDock:
                     tree_item.setIcon(0, self.icon_folder)
                     tree_item.setData(0, Qt.ItemDataRole.UserRole, full_path)
                     self._populate_tree(full_path, tree_item)
+            
+            # ファイルの処理
             for item_name in items:
                 full_path = os.path.join(path, item_name)
                 if os.path.isfile(full_path):
                     tree_item = QTreeWidgetItem(parent_item)
                     tree_item.setText(0, item_name)
-                    tree_item.setIcon(0, self.icon_file)
+                    
+                    # --- アイコンの決定ロジック ---
+                    icon = self.icon_file # デフォルト
+                    
+                    if hasattr(self, "path_to_icon") and self.path_to_icon:
+                        # プロジェクトルートからの相対パスを取得
+                        rel_path = os.path.relpath(full_path, self.current_project_path)
+                        norm_rel_dir = os.path.normpath(os.path.dirname(rel_path))
+                        
+                        # 親ディレクトリが定義された要素のパス配下かチェック
+                        for element_path, element_icon in self.path_to_icon.items():
+                            # 完全一致、またはそのサブフォルダ内
+                            if norm_rel_dir == element_path or norm_rel_dir.startswith(element_path + os.sep):
+                                icon = element_icon
+                                break
+                    
+                    tree_item.setIcon(0, icon)
+                    # ----------------------------
+                    
                     tree_item.setData(0, Qt.ItemDataRole.UserRole, full_path)
         except Exception as e:
             print(f"ツリーの構築中にエラーが発生しました: {e}")
+
+    def get_icon_for_path(self, file_path):
+        """指定されたパスに最適なアイコン（専用アイコンまたは汎用ファイルアイコン）を返す"""
+        if not hasattr(self, "path_to_icon") or not self.path_to_icon or not hasattr(self, "current_project_path"):
+            return self.icon_file
+            
+        try:
+            rel_path = os.path.relpath(file_path, self.current_project_path)
+            norm_rel_dir = os.path.normpath(os.path.dirname(rel_path))
+            
+            for element_path, element_icon in self.path_to_icon.items():
+                if norm_rel_dir == element_path or norm_rel_dir.startswith(element_path + os.sep):
+                    return element_icon
+        except Exception:
+            pass
+            
+        return self.icon_file
+
+    def update_open_editors(self, tab_widget):
+        if not self.openEditorsList:
+            return
+            
+        self.openEditorsList.clear()
+        count = tab_widget.count()
+        
+        # アイテム数とユーザー設定に基づいて表示を更新
+        self._update_editors_visibility(count)
+        visible = self.show_editors_requested and count > 0
+        if not visible:
+            return
+            
+        total_height = 0
+        for i in range(count):
+            file_name = tab_widget.tabText(i)
+            file_path = tab_widget.tabToolTip(i)
+            
+            # パスに応じたアイコンを取得
+            icon = self.get_icon_for_path(file_path)
+            
+            from PySide6.QtWidgets import QListWidgetItem
+            list_item = QListWidgetItem()
+            list_item.setData(Qt.ItemDataRole.UserRole, i) # インデックスを保存
+            self.openEditorsList.addItem(list_item)
+            
+            # カスタムウィジェットの作成
+            item_widget = OpenEditorItemWidget(file_name, file_path, i, icon, self.icon_close, self)
+            self.openEditorsList.setItemWidget(list_item, item_widget)
+            
+            # ウィジェットの推奨サイズから高さを取得してセット
+            h = item_widget.sizeHint().height()
+            list_item.setSizeHint(QSize(0, h))
+            total_height += h
+            
+        # 初期選択状態の同期
+        self.sync_selection(tab_widget.currentIndex())
+
+        # リスト全体の高さを設定 (枠線の厚みなども考慮)
+        frame_width = self.openEditorsList.frameWidth() * 2
+        self.openEditorsList.setFixedHeight(total_height + frame_width)
+
+    def sync_selection(self, index):
+        if not self.openEditorsList or index < 0:
+            return
+            
+        # リストの選択行を更新
+        self.openEditorsList.setCurrentRow(index)
+        
+        # 全項目のボタン表示状態を更新
+        for i in range(self.openEditorsList.count()):
+            item = self.openEditorsList.item(i)
+            widget = self.openEditorsList.itemWidget(item)
+            if widget:
+                widget.close_button.setVisible(i == index)
+
+    def on_editor_item_clicked(self, item):
+        index = item.data(Qt.ItemDataRole.UserRole)
+        if hasattr(self.parent_window, "editorTabs") and self.parent_window.editorTabs:
+            self.parent_window.editorTabs.setCurrentIndex(index)
+
+    def set_active_profile(self, profile):
+        """アクティブなプロファイルを設定する"""
+        self.active_profile = profile
+        self.path_to_icon = {}
+        
+        # テーマのテキスト色を取得
+        text_color = self.parent_window.palette().color(QPalette.ColorRole.WindowText).name()
+        
+        # 各要素のアイコンをキャッシュ
+        if profile and profile.elements:
+            for element in profile.elements:
+                if element.icon_path and os.path.exists(element.icon_path):
+                    if element.icon_path.lower().endswith(".svg"):
+                        icon = load_svg_icon(element.icon_path, text_color)
+                    else:
+                        # PNG等の場合は色味を維持する
+                        icon = QIcon()
+                        pixmap = QPixmap(element.icon_path)
+                        icon.addPixmap(pixmap, QIcon.Mode.Normal, QIcon.State.Off)
+                        icon.addPixmap(pixmap, QIcon.Mode.Normal, QIcon.State.On)
+                        icon.addPixmap(pixmap, QIcon.Mode.Active, QIcon.State.Off)
+                        icon.addPixmap(pixmap, QIcon.Mode.Active, QIcon.State.On)
+                        icon.addPixmap(pixmap, QIcon.Mode.Selected, QIcon.State.Off)
+                        icon.addPixmap(pixmap, QIcon.Mode.Selected, QIcon.State.On)
+                    
+                    # パス（OSに合わせた形式）とアイコンを紐付け
+                    norm_path = os.path.normpath(element.path)
+                    self.path_to_icon[norm_path] = icon
+
+        print(f"ProjectTreeDock: プロファイルを適用しました - {profile.name}")
+        # プロジェクトが開かれている場合は再読み込みしてアイコンを反映
+        if hasattr(self, "current_project_path") and self.current_project_path:
+            self.load_project(self.current_project_path)
+
+    def on_new_file_clicked(self):
+        if not hasattr(self, "current_project_path") or not self.current_project_path:
+            QMessageBox.warning(self.dock_widget, "警告", "プロジェクトフォルダが開かれていません。")
+            return
+
+        # ファイルタイプの要素のみを抽出
+        elements = [e for e in self.active_profile.elements if not e.is_folder] if self.active_profile else []
+
+        if not elements:
+            self._create_generic_file()
+            return
+
+        menu = QMenu(self.newFileButton)
+        text_color = self.parent_window.palette().color(QPalette.ColorRole.WindowText).name()
+
+        for element in elements:
+            icon = None
+            if element.icon_path and os.path.exists(element.icon_path):
+                if element.icon_path.lower().endswith(".svg"):
+                    # SVGの場合はcurrentColorを置換してロード
+                    icon = load_svg_icon(element.icon_path, text_color)
+                else:
+                    # それ以外（PNG等）は色を変えずに保持する設定でロード
+                    icon = QIcon()
+                    pixmap = QPixmap(element.icon_path)
+                    icon.addPixmap(pixmap, QIcon.Mode.Normal, QIcon.State.Off)
+                    icon.addPixmap(pixmap, QIcon.Mode.Normal, QIcon.State.On)
+                    icon.addPixmap(pixmap, QIcon.Mode.Active, QIcon.State.Off)
+                    icon.addPixmap(pixmap, QIcon.Mode.Active, QIcon.State.On)
+                    icon.addPixmap(pixmap, QIcon.Mode.Selected, QIcon.State.Off)
+                    icon.addPixmap(pixmap, QIcon.Mode.Selected, QIcon.State.On)
+            
+            if icon:
+                action = menu.addAction(icon, f"{element.name} を作成...")
+            else:
+                action = menu.addAction(f"{element.name} を作成...")
+            action.triggered.connect(lambda checked=False, e=element: self._create_element_file(e))
+        
+        menu.addSeparator()
+        generic_action = menu.addAction(self.icon_file, "汎用ファイル...")
+        generic_action.triggered.connect(self._create_generic_file)
+        
+        menu.exec(self.newFileButton.mapToGlobal(self.newFileButton.rect().bottomLeft()))
+
+    def on_new_folder_clicked(self):
+        if not hasattr(self, "current_project_path") or not self.current_project_path:
+            QMessageBox.warning(self.dock_widget, "警告", "プロジェクトフォルダが開かれていません。")
+            return
+
+        # フォルダタイプの要素のみを抽出
+        elements = [e for e in self.active_profile.elements if e.is_folder] if self.active_profile else []
+
+        if not elements:
+            self._create_generic_folder()
+            return
+
+        menu = QMenu(self.newFolderButton)
+        text_color = self.parent_window.palette().color(QPalette.ColorRole.WindowText).name()
+
+        for element in elements:
+            icon = None
+            if element.icon_path and os.path.exists(element.icon_path):
+                if element.icon_path.lower().endswith(".svg"):
+                    icon = load_svg_icon(element.icon_path, text_color)
+                else:
+                    icon = QIcon()
+                    pixmap = QPixmap(element.icon_path)
+                    icon.addPixmap(pixmap, QIcon.Mode.Normal, QIcon.State.Off)
+                    icon.addPixmap(pixmap, QIcon.Mode.Normal, QIcon.State.On)
+                    icon.addPixmap(pixmap, QIcon.Mode.Active, QIcon.State.Off)
+                    icon.addPixmap(pixmap, QIcon.Mode.Active, QIcon.State.On)
+                    icon.addPixmap(pixmap, QIcon.Mode.Selected, QIcon.State.Off)
+                    icon.addPixmap(pixmap, QIcon.Mode.Selected, QIcon.State.On)
+
+            if icon:
+                action = menu.addAction(icon, f"{element.name} フォルダを作成...")
+            else:
+                action = menu.addAction(f"{element.name} フォルダを作成...")
+            action.triggered.connect(lambda checked=False, e=element: self._create_element_file(e))
+        
+        menu.addSeparator()
+        generic_action = menu.addAction(self.icon_folder, "汎用フォルダ...")
+        generic_action.triggered.connect(self._create_generic_folder)
+        
+        menu.exec(self.newFolderButton.mapToGlobal(self.newFolderButton.rect().bottomLeft()))
+
+    def _create_generic_folder(self):
+        folder_name, ok = QInputDialog.getText(self.dock_widget, "新規フォルダ", "フォルダ名:")
+        if ok and folder_name:
+            path = os.path.join(self.current_project_path, folder_name)
+            try:
+                os.makedirs(path, exist_ok=True)
+                self.load_project(self.current_project_path)
+            except Exception as e:
+                QMessageBox.critical(self.dock_widget, "エラー", f"フォルダを作成できませんでした: {e}")
+
+    def _create_element_file(self, element):
+        """プロファイルで定義された要素（ファイルまたはフォルダ）を作成する"""
+        label = "フォルダ名" if element.is_folder else "ファイル名 (拡張子なし)"
+        file_name, ok = QInputDialog.getText(self.dock_widget, f"新規 {element.name}", f"{label}:")
+        if not ok or not file_name:
+            return
+
+        # 相対パスを考慮してターゲットディレクトリを決定
+        target_dir = os.path.join(self.current_project_path, element.path)
+        os.makedirs(target_dir, exist_ok=True)
+        
+        if element.is_folder:
+            path = os.path.join(target_dir, file_name)
+            if os.path.exists(path):
+                QMessageBox.warning(self.dock_widget, "警告", "同名のフォルダが既に存在します。")
+                return
+            try:
+                os.makedirs(path, exist_ok=True)
+                self.load_project(self.current_project_path)
+            except Exception as e:
+                QMessageBox.critical(self.dock_widget, "エラー", f"フォルダを作成できませんでした: {e}")
+        else:
+            full_file_name = file_name + element.extension
+            file_path = os.path.join(target_dir, full_file_name)
+            
+            if os.path.exists(file_path):
+                QMessageBox.warning(self.dock_widget, "警告", "同名のファイルが既に存在します。")
+                return
+
+            try:
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.write("")
+                
+                self.load_project(self.current_project_path)
+                if hasattr(self.parent_window, "open_file"):
+                    self.parent_window.open_file(file_path)
+            except Exception as e:
+                QMessageBox.critical(self.dock_widget, "エラー", f"ファイルを作成できませんでした: {e}")
+
+    def _create_generic_file(self):
+        file_name, ok = QInputDialog.getText(self.dock_widget, "新規ファイル", "ファイル名:")
+        if ok and file_name:
+            file_path = os.path.join(self.current_project_path, file_name)
+            try:
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.write("")
+                self.load_project(self.current_project_path)
+                if hasattr(self.parent_window, "open_file"):
+                    self.parent_window.open_file(file_path)
+            except Exception as e:
+                QMessageBox.critical(self.dock_widget, "エラー", f"ファイルを作成できませんでした: {e}")
 
     def get_widget(self):
         return self.dock_widget

@@ -13,7 +13,7 @@
   <property name="minimumSize">
    <size>
     <width>158</width>
-    <height>10</height>
+    <height>182</height>
    </size>
   </property>
   <property name="styleSheet">
@@ -96,11 +96,14 @@
       <property name="maximumSize">
        <size>
         <width>16777215</width>
-        <height>72</height>
+        <height>16777215</height>
        </size>
       </property>
       <property name="focusPolicy">
        <enum>Qt::FocusPolicy::NoFocus</enum>
+      </property>
+      <property name="horizontalScrollBarPolicy">
+       <enum>Qt::ScrollBarPolicy::ScrollBarAlwaysOff</enum>
       </property>
      </widget>
     </item>
@@ -341,19 +344,6 @@
            </property>
           </column>
          </widget>
-        </item>
-        <item>
-         <spacer name="FollderSpacer">
-          <property name="orientation">
-           <enum>Qt::Orientation::Vertical</enum>
-          </property>
-          <property name="sizeHint" stdset="0">
-           <size>
-            <width>20</width>
-            <height>40</height>
-           </size>
-          </property>
-         </spacer>
         </item>
        </layout>
       </widget>
