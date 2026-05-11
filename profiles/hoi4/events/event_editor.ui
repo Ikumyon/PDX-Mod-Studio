@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1158</width>
+    <width>1038</width>
     <height>466</height>
    </rect>
   </property>
@@ -154,29 +154,18 @@
        <property name="geometry">
         <rect>
          <x>0</x>
-         <y>-337</y>
-         <width>535</width>
-         <height>785</height>
+         <y>0</y>
+         <width>487</width>
+         <height>879</height>
         </rect>
        </property>
        <layout class="QVBoxLayout" name="editorLayout">
         <item>
-         <layout class="QHBoxLayout" name="editorHeaderLayout">
-          <item>
-           <widget class="QLabel" name="editorTitle">
-            <property name="text">
-             <string>イベント編集</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QToolButton" name="resetButton">
-            <property name="text">
-             <string>初期化</string>
-            </property>
-           </widget>
-          </item>
-         </layout>
+         <widget class="QLabel" name="editorTitle">
+          <property name="text">
+           <string>イベント編集</string>
+          </property>
+         </widget>
         </item>
         <item>
          <widget class="QGroupBox" name="basicGroup">
@@ -385,7 +374,7 @@
             <widget class="QLabel" name="triggerLabel">
              <property name="text">
               <string>条件
-Trigger</string>
+trigger</string>
              </property>
             </widget>
            </item>
@@ -396,7 +385,7 @@ Trigger</string>
                <item>
                 <widget class="QRadioButton" name="isTriggeredOnlyRadio">
                  <property name="text">
-                  <string>自然発生しない</string>
+                  <string>自然発生しない(is_triggered_only)</string>
                  </property>
                  <property name="checked">
                   <bool>true</bool>
@@ -432,6 +421,9 @@ Trigger</string>
            </item>
            <item row="1" column="0">
             <widget class="QLabel" name="mtthLabel">
+             <property name="toolTip">
+              <string>平均発生間隔 (Mean Time To Happen)。条件を満たしてからイベントが発生するまでの平均期間です。days, months, years などで指定し、modifier で確率を補正できます。</string>
+             </property>
              <property name="text">
               <string>平均発生間隔
 MTTH</string>
@@ -479,6 +471,29 @@ Immediate</string>
             <widget class="QPushButton" name="addOptionButton">
              <property name="text">
               <string>＋ 選択肢追加</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <widget class="QGroupBox" name="afterGroup">
+          <property name="title">
+           <string>事後処理 After</string>
+          </property>
+          <layout class="QFormLayout" name="afterFormLayout">
+           <item row="0" column="0">
+            <widget class="QLabel" name="afterLabel">
+             <property name="text">
+              <string>事後処理 (after)</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="1">
+            <widget class="QPlainTextEdit" name="afterEdit">
+             <property name="placeholderText">
+              <string>事後処理されるスクリプトを入力</string>
              </property>
             </widget>
            </item>

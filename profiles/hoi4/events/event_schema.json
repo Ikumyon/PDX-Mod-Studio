@@ -1,4 +1,11 @@
 {
+    "document_properties": {
+        "add_namespace": {
+            "display_name": "ネームスペース",
+            "type": "string",
+            "ui_widget": "namespaceEdit"
+        }
+    },
     "entity_rules": [
         {
             "document_type": "event_file",
@@ -130,6 +137,14 @@
                 "ai_chance": {
                     "type": "object",
                     "display_name": "AI chance"
+                },
+                "hidden_effect": {
+                    "type": "object",
+                    "display_name": "Hidden Effect"
+                },
+                "tooltip": {
+                    "type": "string",
+                    "display_name": "Tooltip"
                 }
             }
         }

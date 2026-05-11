@@ -1,4 +1,7 @@
+from dataclasses import dataclass, field
 from typing import Any, Optional
+import os
+import json
 
 from profiles.hoi4.script_parser import (AssignmentNode, ObjectNode, Parser, infer_value_type, 
                                         node_value, value_range, Diagnostic, SourcePosition, SourceRange)
@@ -35,15 +38,61 @@ EntityRule = Any
 SchemaDefinition = Any
 
 
+@dataclass
+class ParsedEvent:
+    key: str
+    node: AssignmentNode
+    properties: dict[str, list[AssignmentNode]] = field(default_factory=dict)
+
+    @property
+    def event_id(self) -> str:
+        # id プロパティの値を取得（スカラー値の場合）
+        id_nodes = self.properties.get("id", [])
+        if not id_nodes: return ""
+        val = id_nodes[0].value
+        return str(val.value) if hasattr(val, "value") else ""
+
+    @property
+    def options(self) -> list[AssignmentNode]:
+        return self.properties.get("option", [])
+
+    def first(self, name: str) -> Optional[AssignmentNode]:
+        nodes = self.properties.get(name, [])
+        return nodes[0] if nodes else None
+
+
 class EventParser:
     def __init__(self, profile: Any):
         self.profile = profile
+        self.schema = {}
+        schema_path = os.path.join(os.path.dirname(__file__), "event_schema.json")
+        if os.path.exists(schema_path):
+            try:
+                with open(schema_path, "r", encoding="utf-8") as f:
+                    self.schema = json.load(f)
+            except Exception:
+                pass
 
-    def parse_document(self, path: str, text: str, project_root: str = "") -> Any:
+    def parse_document(self, path: str, text: str, project_root: str = "") -> Document:
         import os
         relative_path = os.path.relpath(path, project_root) if project_root else path
         ast, tokens, diagnostics = Parser(text).parse()
         document_type = self.profile.classify_document(relative_path) if hasattr(self.profile, "classify_document") else "unknown"
+        
+        # イベント構造の抽出
+        events = self._extract_events(ast)
+        
+        # ドキュメントプロパティの抽出
+        doc_properties = {}
+        doc_props_def = self.schema.get("document_properties", {})
+        for item in ast.items:
+            if isinstance(item, AssignmentNode) and item.key in doc_props_def:
+                if hasattr(item.value, "value"):
+                    doc_properties[item.key] = str(item.value.value)
+        
+        # ネームスペースの抽出 (後方互換性のため個別に保持)
+        namespace = doc_properties.get("add_namespace", "")
+        
         document = Document(
             id=relative_path.replace("\\", "/"),
             path=path,
@@ -54,12 +103,36 @@ class EventParser:
             tokens=tokens,
             diagnostics=diagnostics,
             newline="\r\n" if "\r\n" in text else "\n",
+            namespace=namespace,
+            properties=doc_properties,
         )
+        document.events = events # 拡張プロパティとして保持
         document.entities = self.extract_entities(document)
         return document
 
+    def _extract_events(self, ast: Any) -> list[ParsedEvent]:
+        events: list[ParsedEvent] = []
+        if not hasattr(ast, "items"): return events
+        
+        for item in ast.items:
+            if not isinstance(item, AssignmentNode):
+                continue
+            if item.key not in {"country_event", "news_event"}:
+                continue
+            
+            parsed = ParsedEvent(item.key, item)
+            if isinstance(item.value, ObjectNode):
+                for child in item.value.items:
+                    if isinstance(child, AssignmentNode):
+                        parsed.properties.setdefault(child.key, []).append(child)
+            events.append(parsed)
+        return events
+
     def extract_entities(self, document: Document) -> list[Entity]:
         entities: list[Entity] = []
+        if not hasattr(self.profile, "matching_entity_rules"):
+            return entities
+            
         for rule in self.profile.matching_entity_rules(document.document_type):
             for assignment in document.ast.items:
                 if isinstance(assignment, AssignmentNode) and assignment.key == rule.key:

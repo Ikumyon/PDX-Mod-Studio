@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>358</width>
-    <height>458</height>
+    <height>268</height>
    </rect>
   </property>
   <property name="title">
@@ -77,70 +77,34 @@
      </item>
      <item row="2" column="0">
       <widget class="QLabel" name="aiLabel">
+       <property name="toolTip">
+        <string>AIがこの選択肢を選ぶ相対的な確率を指定します。-1は未設定を意味します。0を指定するとAIは決してその選択肢を選びません。</string>
+       </property>
        <property name="text">
         <string>AI選択確率
-AI Chance</string>
+ai_chance</string>
        </property>
       </widget>
      </item>
      <item row="2" column="1">
       <widget class="QSpinBox" name="aiSpin">
+       <property name="minimum">
+        <number>-1</number>
+       </property>
        <property name="maximum">
         <number>999</number>
        </property>
       </widget>
      </item>
      <item row="3" column="0">
-      <widget class="QLabel" name="effectLabel">
+      <widget class="QLabel" name="triggerLabel">
        <property name="text">
-        <string>効果
-Effect</string>
+        <string>出現条件
+trigger</string>
        </property>
       </widget>
      </item>
      <item row="3" column="1">
-      <widget class="QPlainTextEdit" name="effectEdit">
-       <property name="maximumSize">
-        <size>
-         <width>16777215</width>
-         <height>100</height>
-        </size>
-       </property>
-       <property name="placeholderText">
-        <string>選択時の効果スクリプト</string>
-       </property>
-      </widget>
-     </item>
-     <item row="4" column="0">
-      <widget class="QLabel" name="hiddenEffectLabel">
-       <property name="text">
-        <string>隠し効果
-Hidden Effect</string>
-       </property>
-      </widget>
-     </item>
-     <item row="4" column="1">
-      <widget class="QPlainTextEdit" name="hiddenEffectEdit">
-       <property name="maximumSize">
-        <size>
-         <width>16777215</width>
-         <height>100</height>
-        </size>
-       </property>
-       <property name="placeholderText">
-        <string>hidden_effect</string>
-       </property>
-      </widget>
-     </item>
-     <item row="5" column="0">
-      <widget class="QLabel" name="triggerLabel">
-       <property name="text">
-        <string>出現条件
-Trigger</string>
-       </property>
-      </widget>
-     </item>
-     <item row="5" column="1">
       <widget class="QPlainTextEdit" name="triggerEdit">
        <property name="maximumSize">
         <size>
@@ -150,6 +114,27 @@ Trigger</string>
        </property>
        <property name="placeholderText">
         <string>trigger</string>
+       </property>
+      </widget>
+     </item>
+     <item row="4" column="0">
+      <widget class="QLabel" name="effectLabel">
+       <property name="text">
+        <string>効果
+effect</string>
+       </property>
+      </widget>
+     </item>
+     <item row="4" column="1">
+      <widget class="QPlainTextEdit" name="effectEdit">
+       <property name="maximumSize">
+        <size>
+         <width>16777215</width>
+         <height>100</height>
+        </size>
+       </property>
+       <property name="placeholderText">
+        <string>選択時の効果スクリプト</string>
        </property>
       </widget>
      </item>
