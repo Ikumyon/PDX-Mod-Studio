@@ -1,23 +1,49 @@
-from __future__ import annotations
+from typing import Any, Optional
 
-import os
-from typing import Optional
+from profiles.hoi4.script_parser import (AssignmentNode, ObjectNode, Parser, infer_value_type, 
+                                        node_value, value_range, Diagnostic, SourcePosition, SourceRange)
 
-from core.engine.model import Diagnostic
-from core.engine.profile import EntityRule, ProfileDefinition, SchemaDefinition
-from core.engine.runtime import Document, Entity, Property, Reference, Relation
+# プロファイル内で使用するデータ保持用クラス
+class Document:
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items(): setattr(self, k, v)
+        self.entities = []
+        self.diagnostics = []
 
-from profiles.hoi4.script_parser import AssignmentNode, ObjectNode, Parser, infer_value_type, node_value, value_range
+class Entity:
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items(): setattr(self, k, v)
+        self.references = []
+        self.relations = []
+        self.diagnostics = []
+        self.children = []
+
+class Property:
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items(): setattr(self, k, v)
+
+class Reference:
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items(): setattr(self, k, v)
+
+class Relation:
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items(): setattr(self, k, v)
+
+# エンジン由来の定義（型ヒント用）
+EntityRule = Any
+SchemaDefinition = Any
 
 
 class EventParser:
-    def __init__(self, profile: ProfileDefinition):
+    def __init__(self, profile: Any):
         self.profile = profile
 
-    def parse_document(self, path: str, text: str, project_root: str = "") -> Document:
+    def parse_document(self, path: str, text: str, project_root: str = "") -> Any:
+        import os
         relative_path = os.path.relpath(path, project_root) if project_root else path
         ast, tokens, diagnostics = Parser(text).parse()
-        document_type = self.profile.classify_document(relative_path)
+        document_type = self.profile.classify_document(relative_path) if hasattr(self.profile, "classify_document") else "unknown"
         document = Document(
             id=relative_path.replace("\\", "/"),
             path=path,

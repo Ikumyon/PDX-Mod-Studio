@@ -1,11 +1,9 @@
 import sys
 import os
 from PySide6.QtWidgets import QApplication, QMenu, QVBoxLayout, QToolButton, QWidget
-from app.editor import EditorWidget
+
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtCore import QFile, Qt, QSize
-from app.mode_manager import ModeManager
-from app.profile_manager import ProfileManager
 
 def main():
     app = QApplication(sys.argv)
@@ -29,7 +27,10 @@ def main():
         sys.exit(-1)
 
     # --- ドックの初期化 ---
-    from app.project_tree_dock import ProjectTreeDock
+    from core.project_tree_dock import ProjectTreeDock
+    from core.profile_manager import ProfileManager
+    from core.mode_manager import ModeManager
+    from core.editor import EditorWidget
     project_tree = ProjectTreeDock(window)
     project_tree_dock = project_tree.get_widget()
     
