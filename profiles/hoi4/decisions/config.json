@@ -2,5 +2,6 @@
     "name": "ディシジョン",
     "path": "common/decisions",
     "extension": ".txt",
-    "icon": "mail-checkmark-24-regular.svg"
+    "icon": "mail-checkmark-24-regular.svg",
+    "document_type": "decision_file"
 }

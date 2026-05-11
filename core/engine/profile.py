@@ -57,13 +57,29 @@ class EntityRule:
 
 
 @dataclass
+class ReferenceSpec:
+    kind: str
+    state_if_missing: str = "unresolved"
+
+    @staticmethod
+    def from_dict(data: dict[str, Any] | None) -> Optional["ReferenceSpec"]:
+        if not data:
+            return None
+        return ReferenceSpec(
+            kind=data["kind"],
+            state_if_missing=data.get("state_if_missing", "unresolved"),
+        )
+
+
+@dataclass
 class SchemaProperty:
     name: str
     type: str = "raw"
     display_name: str = ""
     required: bool = False
     multiple: bool = False
-    reference_kind: str = ""
+    identity: bool = False
+    reference: Optional[ReferenceSpec] = None
     editable: bool = True
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -75,14 +91,16 @@ class SchemaProperty:
             display_name=data.get("display_name", name),
             required=data.get("required", False),
             multiple=data.get("multiple", False),
-            reference_kind=data.get("reference_kind", ""),
+            identity=data.get("identity", False),
+            reference=ReferenceSpec.from_dict(data.get("reference")),
             editable=data.get("editable", True),
             metadata={key: value for key, value in data.items() if key not in {
                 "type",
                 "display_name",
                 "required",
                 "multiple",
-                "reference_kind",
+                "identity",
+                "reference",
                 "editable",
             }},
         )

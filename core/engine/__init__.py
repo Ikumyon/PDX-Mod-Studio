@@ -1,11 +1,10 @@
-"""Profile-driven Paradox script analysis engine."""
+"""Profile-driven analysis contracts and project indexing."""
 
-from .lexer import Lexer, Token, TokenKind
-from .parser import Parser
 from .profile import (
     DocumentTypeRule,
     EntityRule,
     ProfileDefinition,
+    ReferenceSpec,
     ReferenceRule,
     SchemaDefinition,
 )
@@ -13,6 +12,7 @@ from .runtime import (
     Document,
     EditCommand,
     Entity,
+    ProfileAdapter,
     ProjectAnalyzer,
     ProjectIndex,
     Property,
@@ -26,16 +26,14 @@ __all__ = [
     "EditCommand",
     "Entity",
     "EntityRule",
-    "Lexer",
-    "Parser",
+    "ProfileAdapter",
     "ProfileDefinition",
     "ProjectAnalyzer",
     "ProjectIndex",
     "Property",
     "Reference",
+    "ReferenceSpec",
     "ReferenceRule",
     "SchemaDefinition",
     "TextDiff",
-    "Token",
-    "TokenKind",
 ]

@@ -1,11 +1,11 @@
 import sys
 import os
 from PySide6.QtWidgets import QApplication, QMenu, QVBoxLayout, QToolButton, QWidget
-from core.editor import EditorWidget
+from app.editor import EditorWidget
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtCore import QFile, Qt, QSize
-from core.profile_manager import ProfileManager
-from core.mode_manager import ModeManager
+from app.mode_manager import ModeManager
+from app.profile_manager import ProfileManager
 
 def main():
     app = QApplication(sys.argv)
@@ -29,7 +29,7 @@ def main():
         sys.exit(-1)
 
     # --- ドックの初期化 ---
-    from core.project_tree_dock import ProjectTreeDock
+    from app.project_tree_dock import ProjectTreeDock
     project_tree = ProjectTreeDock(window)
     project_tree_dock = project_tree.get_widget()
     
@@ -184,7 +184,7 @@ def main():
             available_modes = []
             if element:
                 profile = project_tree.active_profile
-                available_modes = mode_manager.get_modes_for_element(profile.path, element.path)
+                available_modes = mode_manager.get_modes_for_element(element)
             
             # 初期モードの決定
             initial_mode_id = available_modes[0].mode_id if available_modes else "script_mode"

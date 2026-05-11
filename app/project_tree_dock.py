@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (QDockWidget, QFileDialog, QTreeWidgetItem,
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtCore import QFile, Qt, QSize
 from PySide6.QtGui import QIcon, QPalette, QAction, QPixmap
-from core.utils import load_svg_icon
+from app.utils import load_svg_icon
 
 class OpenEditorItemWidget(QWidget):
     def __init__(self, name, path, index, icon, icon_close, parent_dock):

@@ -2,5 +2,11 @@
     "name": "イベント",
     "path": "events",
     "extension": ".txt",
-    "icon": "event.svg"
+    "icon": "event.svg",
+    "document_type": "event_file",
+    "form": "event_editor.ui",
+    "logic": "event_editor.py",
+    "parser": "event_parser.py",
+    "parser_entry": "EventParser",
+    "schema": "event_schema.json"
 }

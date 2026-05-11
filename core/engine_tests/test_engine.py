@@ -1,16 +1,22 @@
 import os
 import unittest
 
-from core.engine import Lexer, Parser, ProfileDefinition, ProjectAnalyzer, TextDiff, EditCommand
-from core.engine.ast import AssignmentNode, ComparisonNode, ObjectNode
-from core.engine.lexer import TokenKind
+from app.profile_manager import ProfileManager, create_profile_adapter, load_profile_definition
+from core.engine import EditCommand, ProjectAnalyzer, TextDiff
+from profiles.hoi4.script_parser import AssignmentNode, ComparisonNode, ObjectNode, Parser, TokenKind, Lexer
 
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 
 
-class LexerParserTests(unittest.TestCase):
-    def test_lexer_preserves_comments_and_trivia(self):
+def hoi4_profile():
+    manager = ProfileManager(os.path.join(ROOT, "profiles"))
+    profiles = manager.load_profiles()
+    return next(profile for profile in profiles if profile.id == "hoi4")
+
+
+class ProfileOwnedParserTests(unittest.TestCase):
+    def test_hoi4_lexer_preserves_comments_and_trivia(self):
         text = "key = value # comment\r\nnext = 1"
         tokens, diagnostics = Lexer(text).tokenize()
 
@@ -19,7 +25,7 @@ class LexerParserTests(unittest.TestCase):
         self.assertTrue(any(token.kind == TokenKind.NEWLINE and token.raw == "\r\n" for token in tokens))
         self.assertEqual(tokens[-1].kind, TokenKind.EOF)
 
-    def test_parser_keeps_duplicate_keys_and_comparisons(self):
+    def test_hoi4_parser_keeps_duplicate_keys_and_comparisons(self):
         text = """
 country_event = {
     option = { name = a }
@@ -42,9 +48,19 @@ country_event = {
 
 
 class ProfileRuntimeTests(unittest.TestCase):
-    def test_profile_extracts_events_children_and_unknown_properties(self):
-        profile = ProfileDefinition.load(os.path.join(ROOT, "profiles", "hoi4", "profile.json"))
-        analyzer = ProjectAnalyzer(profile)
+    def test_document_types_are_derived_from_element_configs(self):
+        definition = load_profile_definition(hoi4_profile())
+
+        event_rule = next(rule for rule in definition.document_types if rule.id == "event_file")
+        decision_rule = next(rule for rule in definition.document_types if rule.id == "decision_file")
+
+        self.assertIn("events/*.txt", event_rule.path_globs)
+        self.assertIn("common/decisions/*.txt", decision_rule.path_globs)
+        self.assertEqual(definition.classify_document("events/parser_test.txt"), "event_file")
+
+    def test_profile_adapter_extracts_events_children_and_unknown_properties(self):
+        adapter = create_profile_adapter(hoi4_profile())
+        analyzer = ProjectAnalyzer(adapter)
         event_path = os.path.join(ROOT, "test_mod", "events", "parser_test.txt")
         with open(event_path, "r", encoding="utf-8") as handle:
             document = analyzer.parse_document(event_path, handle.read(), os.path.join(ROOT, "test_mod"))
@@ -53,12 +69,12 @@ class ProfileRuntimeTests(unittest.TestCase):
         self.assertEqual([entity.external_id for entity in document.entities], ["test_parser.1", "test_parser.2"])
         self.assertEqual(len(document.entities[0].children), 2)
         self.assertEqual(len(document.entities[1].children), 1)
-        self.assertTrue(document.entities[0].first_property("id"))
-        self.assertTrue(document.entities[0].first_property("is_triggered_only"))
+        self.assertEqual(document.entities[0].first_property("fire_only_once").type, "bool")
+        self.assertTrue(document.entities[0].children[0].first_property("add_political_power").unknown)
 
     def test_project_index_marks_external_references_without_losing_entities(self):
-        profile = ProfileDefinition.load(os.path.join(ROOT, "profiles", "hoi4", "profile.json"))
-        analyzer = ProjectAnalyzer(profile)
+        adapter = create_profile_adapter(hoi4_profile())
+        analyzer = ProjectAnalyzer(adapter)
         event_path = os.path.join(ROOT, "test_mod", "events", "test_events.txt")
         with open(event_path, "r", encoding="utf-8") as handle:
             _, index = analyzer.analyze_project({event_path: handle.read()}, os.path.join(ROOT, "test_mod"))
@@ -68,8 +84,8 @@ class ProfileRuntimeTests(unittest.TestCase):
         self.assertTrue(all(reference.state == "external_possible" for reference in index.references))
 
     def test_text_diff_replaces_only_property_value_range(self):
-        profile = ProfileDefinition.load(os.path.join(ROOT, "profiles", "hoi4", "profile.json"))
-        analyzer = ProjectAnalyzer(profile)
+        adapter = create_profile_adapter(hoi4_profile())
+        analyzer = ProjectAnalyzer(adapter)
         text = "country_event = { id = old.1 title = old.1.t }"
         document = analyzer.parse_document("events/test.txt", text, "")
         entity = document.entities[0]
@@ -79,6 +95,18 @@ class ProfileRuntimeTests(unittest.TestCase):
         updated = TextDiff.apply_all(text, [TextDiff.for_scalar_property(command)])
 
         self.assertEqual(updated, "country_event = { id = new.1 title = old.1.t }")
+
+    def test_core_does_not_import_qt_or_profile_parsers(self):
+        core_dir = os.path.join(ROOT, "core", "engine")
+        forbidden = ("PySide6", "profiles.hoi4", "QUiLoader")
+        for dirpath, _, filenames in os.walk(core_dir):
+            for filename in filenames:
+                if not filename.endswith(".py"):
+                    continue
+                path = os.path.join(dirpath, filename)
+                with open(path, "r", encoding="utf-8") as handle:
+                    content = handle.read()
+                self.assertFalse(any(item in content for item in forbidden), path)
 
 
 if __name__ == "__main__":
