@@ -155,7 +155,7 @@
         <rect>
          <x>0</x>
          <y>0</y>
-         <width>487</width>
+         <width>486</width>
          <height>879</height>
         </rect>
        </property>
@@ -516,25 +516,10 @@ Immediate</string>
        </layout>
       </widget>
      </widget>
-     <widget class="QFrame" name="previewPanel">
-      <property name="minimumSize">
-       <size>
-        <width>240</width>
-        <height>0</height>
-       </size>
-      </property>
-      <property name="maximumSize">
-       <size>
-        <width>16777215</width>
-        <height>16777215</height>
-       </size>
-      </property>
-      <property name="frameShape">
-       <enum>QFrame::Shape::StyledPanel</enum>
-      </property>
-      <layout class="QVBoxLayout" name="previewLayout"/>
-     </widget>
     </widget>
+   </item>
+   <item>
+    <widget class="QGraphicsView" name="previewPanel"/>
    </item>
   </layout>
  </widget>

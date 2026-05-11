@@ -4,8 +4,12 @@ import os
 from dataclasses import dataclass, field
 from typing import Optional
 
-from PySide6.QtCore import Qt, QFile
-from PySide6.QtWidgets import QCheckBox, QComboBox, QLineEdit, QListWidget, QPlainTextEdit, QRadioButton, QPushButton, QSpinBox
+from PySide6.QtCore import Qt, QFile, QRectF
+from PySide6.QtGui import QPen, QBrush, QColor, QFont, QPainter, QPixmap
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QLineEdit, QListWidget, QPlainTextEdit, QRadioButton, QPushButton, QSpinBox, 
+                               QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsTextItem, QScrollArea, QGraphicsPixmapItem,
+                               QGraphicsEllipseItem)
+from PySide6.QtSvgWidgets import QGraphicsSvgItem
 from PySide6.QtUiTools import QUiLoader
 
 from profiles.hoi4.script_parser import AssignmentNode, ObjectNode, Parser, ScalarNode, DocumentAst
@@ -15,6 +19,138 @@ from profiles.hoi4.events.event_parser import EventParser, ParsedEvent
 
 
 MODE_NAME = "Event Editor"
+
+class DeleteOptionButtonItem(QGraphicsEllipseItem):
+    def __init__(self, option_index, controller, parent=None):
+        super().__init__(parent)
+        self.option_index = option_index
+        self.controller = controller
+        
+        size = 18
+        self.setRect(0, 0, size, size)
+        self.setBrush(QBrush(QColor("#cc3333")))
+        self.setPen(QPen(Qt.GlobalColor.transparent))
+        
+        # SVGアイコンの読み込み
+        icon_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../assets/icons/close.svg"))
+        self.svg_item = QGraphicsSvgItem(icon_path, self)
+        
+        # アイコンのサイズ調整（元のSVGサイズを size にフィットさせる）
+        s_rect = self.svg_item.boundingRect()
+        if s_rect.width() > 0:
+            scale = (size - 6) / s_rect.width()
+            self.svg_item.setScale(scale)
+            # 中央配置
+            self.svg_item.setPos(3, 3)
+            
+        self.setAcceptHoverEvents(True)
+        self.setVisible(False)
+        
+    def hoverEnterEvent(self, event):
+        self.setBrush(QBrush(QColor("#ff4444")))
+        super().hoverEnterEvent(event)
+        
+    def hoverLeaveEvent(self, event):
+        self.setBrush(QBrush(QColor("#cc3333")))
+        super().hoverLeaveEvent(event)
+        
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            event.accept()
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(0, lambda: self.controller.remove_option(self.option_index))
+        else:
+            super().mousePressEvent(event)
+
+class OptionButtonItem(QGraphicsRectItem):
+    def __init__(self, option_index, text, controller, parent=None):
+        super().__init__(parent)
+        self.option_index = option_index
+        self.controller = controller
+        
+        self.setRect(0, 0, 300, 38)
+        self.setBrush(QBrush(QColor("#1a1a1a")))
+        self.setPen(QPen(QColor("#333333"), 1))
+        
+        self.text_item = EditableTextItem(text, "option_name", controller, self, option_index)
+        self.text_item.setDefaultTextColor(QColor("#ffffff"))
+        self.text_item.setFont(QFont("sans-serif", 9))
+        
+        # テキストのセンタリング
+        rect = self.text_item.boundingRect()
+        self.text_item.setPos(150 - rect.width() / 2, 19 - rect.height() / 2)
+        self.setAcceptHoverEvents(True)
+        
+        # 削除ボタンを追加
+        self.delete_btn = DeleteOptionButtonItem(option_index, controller, self)
+        self.delete_btn.setPos(300 - 25, (38 - 20) / 2)
+        
+    def hoverEnterEvent(self, event):
+        self.setBrush(QBrush(QColor("#333333")))
+        self.delete_btn.setVisible(True)
+        super().hoverEnterEvent(event)
+        
+    def hoverLeaveEvent(self, event):
+        self.setBrush(QBrush(QColor("#1a1a1a")))
+        self.delete_btn.setVisible(False)
+        super().hoverLeaveEvent(event)
+        
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.controller.focus_option(self.option_index)
+        super().mousePressEvent(event)
+
+class AddOptionButtonItem(QGraphicsRectItem):
+    def __init__(self, controller, parent=None):
+        super().__init__(parent)
+        self.controller = controller
+        
+        self.setRect(0, 0, 300, 38)
+        self.setBrush(QBrush(QColor("#222222")))
+        self.setPen(QPen(QColor("#555555"), 1, Qt.PenStyle.DashLine))
+        
+        self.text_item = QGraphicsTextItem("+", self)
+        self.text_item.setDefaultTextColor(QColor("#aaaaaa"))
+        self.text_item.setFont(QFont("sans-serif", 14, QFont.Weight.Bold))
+        
+        rect = self.text_item.boundingRect()
+        self.text_item.setPos(150 - rect.width() / 2, 19 - rect.height() / 2)
+        self.setAcceptHoverEvents(True)
+        self.setOpacity(0.5)
+        
+    def hoverEnterEvent(self, event):
+        self.setBrush(QBrush(QColor("#333333")))
+        self.setOpacity(0.8)
+        super().hoverEnterEvent(event)
+        
+    def hoverLeaveEvent(self, event):
+        self.setBrush(QBrush(QColor("#222222")))
+        self.setOpacity(0.5)
+        super().hoverLeaveEvent(event)
+        
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            event.accept()
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(0, self.controller.add_new_option)
+        else:
+            super().mousePressEvent(event)
+
+class EditableTextItem(QGraphicsTextItem):
+    def __init__(self, text, prop_name, controller, parent=None, option_index=None):
+        super().__init__()
+        if parent:
+            self.setParentItem(parent)
+        self.setPlainText(text)
+        self.prop_name = prop_name
+        self.controller = controller
+        self.option_index = option_index
+        self.setTextInteractionFlags(Qt.TextInteractionFlag.TextEditorInteraction)
+        self.is_editing_key = False
+        
+    def focusOutEvent(self, event):
+        super().focusOutEvent(event)
+        self.controller.on_preview_text_changed(self.prop_name, self.toPlainText(), self.is_editing_key, self.option_index)
 
 
 def setup(widget, file_path, content):
@@ -33,6 +169,7 @@ class EventEditorController:
         self.events: list[ParsedEvent] = []
         self.selected_event_id = ""
         self.updating = False
+        self.localization_updates = {} # ローカライズの更新内容を保持
         # パーサーの初期化 (ダミーのプロファイルオブジェクトを渡す)
         self.parser = EventParser(profile=object())
 
@@ -61,6 +198,21 @@ class EventEditorController:
         self.add_option_btn = find(self.widget, QPushButton, "addOptionButton")
         if self.add_option_btn:
             self.add_option_btn.clicked.connect(self.add_new_option)
+            
+        # プレビュー関連
+        self.title_text = find(self.widget, QLineEdit, "titleTextEdit")
+        self.desc_text = find(self.widget, QPlainTextEdit, "descEdit")
+        self.preview_panel = find(self.widget, QGraphicsView, "previewPanel")
+        self.editor_scroll_area = find(self.widget, QScrollArea, "editorScrollArea")
+        
+        if self.preview_panel:
+            self.scene = QGraphicsScene()
+            self.preview_panel.setScene(self.scene)
+            self.preview_panel.setBackgroundBrush(QBrush(QColor("#1e1e1e")))
+            self.preview_panel.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        if self.title_text: self.title_text.editingFinished.connect(self.update_preview)
+        if self.desc_text: self.desc_text.textChanged.connect(self.update_preview)
 
         # ドキュメントプロパティのバインド
         for prop_key, prop_def in self.parser.schema.get("document_properties", {}).items():
@@ -173,6 +325,185 @@ class EventEditorController:
 
         self.update_trigger_ui()
         self.refresh_options(event)
+        self.update_preview()
+
+    def update_preview(self):
+        if not hasattr(self, 'scene'): return
+        self.scene.clear()
+        
+        event = self.current_event()
+        if not event: return
+        
+        title_key = prop_text(event, "title")
+        title_val = self.title_text.text() if self.title_text and self.title_text.text() else title_key
+        is_title_key = not (self.title_text and self.title_text.text())
+        
+        desc_key = prop_text(event, "desc")
+        desc_val = self.desc_text.toPlainText() if self.desc_text and self.desc_text.toPlainText() else desc_key
+        is_desc_key = not (self.desc_text and self.desc_text.toPlainText())
+        
+        # 背景枠（羊皮紙風）
+        canvas_width = 500
+        frame = QGraphicsRectItem(0, 0, canvas_width, 400)
+        frame.setBrush(QBrush(QColor("#e3d1b1"))) # 羊皮紙色
+        frame.setPen(QPen(QColor("#5a4a3a"), 2))
+        self.scene.addItem(frame)
+        
+        # 表示内容の決定：翻訳欄が空ならキーを出す
+        display_title = title_val if title_val else (title_key if title_key else "Untitled Event")
+        
+        # タイトル
+        title_item = EditableTextItem(display_title, "title", self, frame)
+        title_item.setDefaultTextColor(QColor("black"))
+        font_title = QFont()
+        font_title.setBold(True)
+        font_title.setPointSize(14)
+        title_item.setFont(font_title)
+        
+        # title_item.setTextWidth(canvas_width - 40) # 固定幅を外すことで文字幅ベースのセンタリングを可能にする
+        
+        title_rect = title_item.boundingRect()
+        title_item.setPos((canvas_width - title_rect.width()) / 2, 25)
+        title_item.is_editing_key = is_title_key
+        
+        # 説明文
+        display_desc = desc_val if desc_val else (desc_key if desc_key else "No description available.")
+        
+        desc_item = EditableTextItem(display_desc, "desc", self, frame)
+        desc_item.setDefaultTextColor(QColor("black"))
+        font_desc = QFont()
+        font_desc.setPointSize(11)
+        desc_item.setFont(font_desc)
+        
+        desc_item.setTextWidth(canvas_width - 40)
+        
+        desc_rect = desc_item.boundingRect()
+        desc_y = 25 + title_rect.height() + 15
+        desc_item.setPos(20, desc_y)
+        desc_item.is_editing_key = is_desc_key
+        
+        # 下部要素の配置
+        bottom_area_y = desc_y + desc_rect.height() + 20
+        
+        # 画像（左下）
+        pic_width = 160
+        pic_height = 160
+        
+        # プレースホルダ画像のロード (プロファイルフォルダ内の画像を参照)
+        pic_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../placeholder.png"))
+        pixmap = QPixmap(pic_path)
+        
+        if pixmap.isNull():
+            pic = QGraphicsRectItem(20, bottom_area_y, pic_width, pic_height, frame)
+            pic.setBrush(QBrush(QColor("#c5b595")))
+            pic.setPen(QPen(QColor("#8a7a5a"), 1))
+            
+            pic_label = QGraphicsTextItem(prop_text(event, "picture") or "(No Picture)", pic)
+            pic_label.setDefaultTextColor(QColor("#5a4a3a"))
+            pic_label.setFont(QFont("sans-serif", 8))
+            pl_rect = pic_label.boundingRect()
+            pic_label.setPos((pic_width - pl_rect.width()) / 2, (pic_height - pl_rect.height()) / 2)
+        else:
+            pixmap = pixmap.scaled(pic_width, pic_height, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
+            pic = QGraphicsPixmapItem(pixmap, frame)
+            pic.setPos(20, bottom_area_y)
+            # 画像の枠線
+            border = QGraphicsRectItem(0, 0, pic_width, pic_height, pic)
+            border.setPen(QPen(QColor("#5a4a3a"), 2))
+            
+            # 元々のテキスト情報のオーバーレイ表示 (任意)
+            pic_label = QGraphicsTextItem(prop_text(event, "picture") or "placeholder", pic)
+            pic_label.setDefaultTextColor(QColor("white"))
+            pic_label.setFont(QFont("sans-serif", 8))
+            pic_label.setPos(5, pic_height - 20)
+        
+        # 選択肢（画像の右側）
+        opt_x = 20 + pic_width + 10
+        opt_y = bottom_area_y
+        for i, opt in enumerate(event.options):
+            name_key = ""
+            if isinstance(opt.value, ObjectNode):
+                name_assign = first([item for item in opt.value.items if isinstance(item, AssignmentNode) and item.key == "name"])
+                name_key = scalar_text(name_assign)
+            
+            name_val = name_key
+            if self.options_layout and i < self.options_layout.count() - 1:
+                opt_widget = self.options_layout.itemAt(i).widget()
+                if opt_widget:
+                    name_text_edit = find(opt_widget, QLineEdit, "nameTextEdit")
+                    if name_text_edit and name_text_edit.text():
+                        name_val = name_text_edit.text()
+            
+            btn = OptionButtonItem(i, name_val, self, frame)
+            btn.setPos(opt_x, opt_y)
+            opt_y += 42 # 38px(高さ) + 4px(余白)
+            
+        # 選択肢追加ボタン (+)
+        add_btn = AddOptionButtonItem(self, frame)
+        add_btn.setPos(opt_x, opt_y)
+        opt_y += 42 # 38px(高さ) + 4px(余白)
+            
+        final_height = bottom_area_y + pic_height + 20
+        frame.setRect(0, 0, canvas_width, final_height)
+        
+        # 背景枠の高さに関わらず、全ての選択肢が含まれるようにシーンの領域を設定する
+        self.scene.setSceneRect(0, 0, canvas_width, max(final_height, opt_y + 10))
+
+    def on_preview_text_changed(self, prop_name, new_text, is_editing_key, option_index=None):
+        if is_editing_key:
+            # キーを編集した場合はスクリプトのプロパティを更新
+            if prop_name == "title" and self.title_key:
+                self.title_key.setText(new_text)
+                self.replace_property("title", new_text)
+            elif prop_name == "desc" and self.desc_key:
+                self.desc_key.setText(new_text)
+                self.replace_property("desc", new_text)
+            elif prop_name == "option_name" and option_index is not None:
+                event = self.current_event()
+                if event and option_index < len(event.options):
+                    self.update_option_property(option_index, "name", new_text)
+        else:
+            # 値を編集した場合はローカライズ更新辞書に保存し、UIの入力欄を更新
+            event = self.current_event()
+            if event:
+                if prop_name == "option_name" and option_index is not None:
+                    if option_index < len(event.options):
+                        opt = event.options[option_index]
+                        name_key = ""
+                        if isinstance(opt.value, ObjectNode):
+                            name_assign = first([item for item in opt.value.items if isinstance(item, AssignmentNode) and item.key == "name"])
+                            name_key = scalar_text(name_assign)
+                        if name_key:
+                            self.localization_updates[name_key] = new_text
+                else:
+                    key = prop_text(event, prop_name)
+                    if key:
+                        self.localization_updates[key] = new_text
+                    
+            if prop_name == "title" and self.title_text:
+                self.title_text.setText(new_text)
+            elif prop_name == "desc" and self.desc_text:
+                self.desc_text.setPlainText(new_text)
+            elif prop_name == "option_name" and option_index is not None:
+                # 該当するオプションウィジェットを更新
+                if self.options_layout and option_index < self.options_layout.count() - 1:
+                    opt_widget = self.options_layout.itemAt(option_index).widget()
+                    if opt_widget:
+                        name_text_edit = find(opt_widget, QLineEdit, "nameTextEdit")
+                        if name_text_edit:
+                            name_text_edit.setText(new_text)
+
+    def focus_option(self, index):
+        if not self.options_layout or not self.editor_scroll_area: return
+        if index >= self.options_layout.count() - 1: return
+        
+        opt_widget = self.options_layout.itemAt(index).widget()
+        if opt_widget:
+            self.editor_scroll_area.ensureWidgetVisible(opt_widget)
+            name_edit = find(opt_widget, QLineEdit, "nameKeyEdit")
+            if name_edit:
+                name_edit.setFocus()
+                name_edit.selectAll()
 
     def refresh_options(self, event: Optional[ParsedEvent]):
         if not self.options_layout:
@@ -239,6 +570,10 @@ class EventEditorController:
             set_line(name_edit, scalar_text(first(properties.get("name", []))))
             if name_edit:
                 name_edit.editingFinished.connect(lambda idx=i, edit=name_edit: self.update_option_property(idx, "name", edit.text()))
+                
+            name_text_edit = find(option_widget, QLineEdit, "nameTextEdit")
+            if name_text_edit:
+                name_text_edit.editingFinished.connect(self.update_preview)
 
             ai_spin = find(option_widget, QSpinBox, "aiSpin")
             ai_chance_node = first(properties.get("ai_chance", []))
