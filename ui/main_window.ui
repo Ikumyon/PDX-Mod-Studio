@@ -31,21 +31,13 @@
      <number>6</number>
     </property>
     <item>
-     <widget class="QStackedWidget" name="centralStack">
-      <widget class="QWidget" name="emptyCentralPage">
-       <layout class="QVBoxLayout" name="emptyCentralLayout">
-        <item>
-         <widget class="QLabel" name="emptyCentralLabel">
-          <property name="text">
-           <string>プロファイルを読み込むと、ここにワークスペースが表示されます。</string>
-          </property>
-          <property name="alignment">
-           <set>Qt::AlignmentFlag::AlignCenter</set>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </widget>
+     <widget class="QTabWidget" name="editorTabs">
+      <property name="tabsClosable">
+       <bool>true</bool>
+      </property>
+      <property name="documentMode">
+       <bool>true</bool>
+      </property>
      </widget>
     </item>
    </layout>

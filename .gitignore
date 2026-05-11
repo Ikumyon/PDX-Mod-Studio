@@ -13,6 +13,7 @@ ENV/
 UIモックアップ/
 test_project/
 tests/
+test_mod/
 
 # OS
 .DS_Store
