@@ -659,10 +659,8 @@ Immediate</string>
        </layout>
       </widget>
      </widget>
+     <widget class="QGraphicsView" name="previewPanel"/>
     </widget>
-   </item>
-   <item>
-    <widget class="QGraphicsView" name="previewPanel"/>
    </item>
   </layout>
  </widget>

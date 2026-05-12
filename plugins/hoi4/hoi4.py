@@ -19,7 +19,8 @@ DEFAULT_SETTINGS = {
     "event_title_key_format": "{id}.t",
     "event_desc_key_format": "{id}.d",
     "event_option_key_format": "{id}.{a-z}",
-    "display_language": "l_japanese"
+    "display_language": "l_japanese",
+    "save_empty_localisation": False
 }
 
 def save_plugin_settings(path, settings):
@@ -143,6 +144,16 @@ def setup_settings_controls(widget, plugin, project_path):
             settings.update({"display_language": display_lang_combo.itemData(index)}),
             save_plugin_settings(settings_file, settings),
             getattr(plugin, "refresh_localisation", lambda: None)()
+        ))
+
+    # 空の翻訳を保存するかどうかのチェックボックス
+    from PySide6.QtWidgets import QCheckBox
+    save_empty_check = widget.findChild(QCheckBox, "saveEmptyLocCheck")
+    if save_empty_check:
+        save_empty_check.setChecked(settings.get("save_empty_localisation", False))
+        save_empty_check.toggled.connect(lambda checked: (
+            settings.update({"save_empty_localisation": checked}),
+            save_plugin_settings(settings_file, settings)
         ))
 
 def initialize(plugin):

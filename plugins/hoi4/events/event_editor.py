@@ -9,7 +9,7 @@ from PySide6.QtCore import Qt, QFile, QRectF, QTimer
 from PySide6.QtGui import QPen, QBrush, QColor, QFont, QPainter, QPixmap
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QLineEdit, QListWidget, QPlainTextEdit, QRadioButton, QPushButton, QSpinBox, 
                                QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsTextItem, QScrollArea, QGraphicsPixmapItem,
-                               QGraphicsEllipseItem)
+                               QGraphicsEllipseItem, QSplitter)
 from PySide6.QtSvgWidgets import QGraphicsSvgItem
 from PySide6.QtUiTools import QUiLoader
 
@@ -287,8 +287,24 @@ class EventEditorController:
         self.title_text = find(self.widget, QLineEdit, "titleTextEdit")
         self.desc_text = find(self.widget, QPlainTextEdit, "descEdit")
         self.preview_panel = find(self.widget, QGraphicsView, "previewPanel")
+        self.main_splitter = find(self.widget, QSplitter, "mainSplitter")
         self.editor_scroll_area = find(self.widget, QScrollArea, "editorScrollArea")
         
+        # プレースホルダの作成
+        if self.main_splitter:
+            from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel
+            self.placeholder_widget = QWidget()
+            self.placeholder_widget.setObjectName("nsPlaceholder")
+            placeholder_layout = QVBoxLayout(self.placeholder_widget)
+            
+            self.placeholder_label = QLabel("ネームスペースを入力して編集を開始してください")
+            self.placeholder_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.placeholder_label.setStyleSheet("font-size: 16px; color: #888; font-weight: bold;")
+            placeholder_layout.addWidget(self.placeholder_label)
+            
+            # スプリッターに追加
+            self.main_splitter.addWidget(self.placeholder_widget)
+            
         if self.preview_panel:
             self.scene = QGraphicsScene()
             self.preview_panel.setScene(self.scene)
@@ -305,7 +321,10 @@ class EventEditorController:
                 widget = find(self.widget, QLineEdit, widget_name)
                 if widget:
                     self.doc_prop_widgets[prop_key] = widget
-                    widget.editingFinished.connect(lambda k=prop_key: self.on_doc_prop_edited(k))
+                    if prop_key == "add_namespace":
+                        widget.textChanged.connect(lambda _, k=prop_key: self.on_doc_prop_edited(k))
+                    else:
+                        widget.editingFinished.connect(lambda k=prop_key: self.on_doc_prop_edited(k))
 
         if self.event_list:
             self.event_list.currentRowChanged.connect(self.on_event_selected)
@@ -382,7 +401,54 @@ class EventEditorController:
             
             for prop_key, widget in self.doc_prop_widgets.items():
                 val = getattr(doc, "properties", {}).get(prop_key, "")
-                widget.setText(val)
+                if widget.text() != val:
+                    widget.setText(val)
+            
+            # ネームスペースがない場合は新規イベント作成を抑制
+            namespace = getattr(doc, "properties", {}).get("add_namespace", "")
+            if self.new_event_btn:
+                self.new_event_btn.setEnabled(bool(namespace))
+                self.new_event_btn.setToolTip("" if namespace else "イベントを追加するにはネームスペースを定義してください")
+            
+            has_event = bool(self.current_event())
+            if self.duplicate_event_btn:
+                self.duplicate_event_btn.setEnabled(bool(namespace) and has_event)
+                if not namespace:
+                    self.duplicate_event_btn.setToolTip("複製するにはネームスペースを定義してください")
+                elif not has_event:
+                    self.duplicate_event_btn.setToolTip("複製するイベントを選択してください")
+                else:
+                    self.duplicate_event_btn.setToolTip("")
+                    
+            if self.delete_event_btn:
+                self.delete_event_btn.setEnabled(has_event)
+                self.delete_event_btn.setToolTip("" if has_event else "削除するイベントを選択してください")
+            # ネームスペース未入力時のハイライト
+            ns_widget = self.doc_prop_widgets.get("add_namespace")
+            if ns_widget:
+                if not namespace:
+                    ns_widget.setStyleSheet("border: 1px solid #f44336; background-color: rgba(244, 67, 54, 0.1); border-radius: 4px;")
+                else:
+                    ns_widget.setStyleSheet("")
+            
+            # フォームとプレビューの表示制御
+            has_namespace = bool(namespace)
+            has_event = bool(self.current_event())
+            
+            should_show_editor = has_namespace and has_event
+            
+            if self.editor_scroll_area:
+                self.editor_scroll_area.setVisible(should_show_editor)
+            if self.preview_panel:
+                self.preview_panel.setVisible(should_show_editor)
+            
+            if hasattr(self, 'placeholder_widget'):
+                self.placeholder_widget.setVisible(not should_show_editor)
+                if not has_namespace:
+                    self.placeholder_label.setText("ネームスペースを入力して編集を開始してください")
+                elif not has_event:
+                    self.placeholder_label.setText("イベントを追加するか、リストから選択してください")
+                
         finally:
             self.updating = False
 
@@ -409,7 +475,10 @@ class EventEditorController:
         set_combo(self.event_type, event.key if event else "")
         set_line(self.title_key, prop_text(event, "title"))
         set_line(self.desc_key, prop_text(event, "desc"))
-        set_line(self.picture, prop_text(event, "picture"))
+        
+        pic_val = prop_text(event, "picture")
+        set_line(self.picture, "" if pic_val == "none" else pic_val)
+        
         set_checked(self.fire_only_once, prop_bool(event, "fire_only_once"))
         set_checked(self.hidden, prop_bool(event, "hidden"))
         set_checked(self.major, prop_bool(event, "major"))
@@ -499,7 +568,13 @@ class EventEditorController:
             pic.setBrush(QBrush(QColor("#c5b595")))
             pic.setPen(QPen(QColor("#8a7a5a"), 1))
             
-            pic_label = QGraphicsTextItem(prop_text(event, "picture") or "(No Picture)", pic)
+            pic_name = prop_text(event, "picture")
+            if not pic_name or pic_name == "none":
+                pic_display_text = "(No Picture)"
+            else:
+                pic_display_text = pic_name
+                
+            pic_label = QGraphicsTextItem(pic_display_text, pic)
             pic_label.setDefaultTextColor(QColor("#5a4a3a"))
             pic_label.setFont(QFont("sans-serif", 8))
             pl_rect = pic_label.boundingRect()
@@ -513,7 +588,10 @@ class EventEditorController:
             border.setPen(QPen(QColor("#5a4a3a"), 2))
             
             # 元々のテキスト情報のオーバーレイ表示 (任意)
-            pic_label = QGraphicsTextItem(prop_text(event, "picture") or "placeholder", pic)
+            pic_name = prop_text(event, "picture")
+            pic_display_text = pic_name if pic_name and pic_name != "none" else "none"
+            
+            pic_label = QGraphicsTextItem(pic_display_text, pic)
             pic_label.setDefaultTextColor(QColor("white"))
             pic_label.setFont(QFont("sans-serif", 8))
             pic_label.setPos(5, pic_height - 20)
@@ -810,7 +888,7 @@ class EventEditorController:
         opt_key = self.apply_format(opt_fmt, **values)
         
         # テンプレート
-        template = f"\n\ncountry_event = {{\n\tid = {new_id}\n\ttitle = {title_key}\n\tdesc = {desc_key}\n\n\tis_triggered_only = yes\n\n\toption = {{\n\t\tname = {opt_key}\n\t}}\n}}"
+        template = f"\n\ncountry_event = {{\n\tid = {new_id}\n\ttitle = {title_key}\n\tdesc = {desc_key}\n\tpicture = none\n\n\tis_triggered_only = yes\n\n\toption = {{\n\t\tname = {opt_key}\n\t}}\n}}"
         self.widget.content = text.rstrip() + template
         self.selected_event_id = new_id
         
@@ -1012,14 +1090,17 @@ class EventEditorController:
         text = self.widget.content
 
         if not replacement:
-            # 削除
-            if assignment:
-                start = assignment.range.start_offset
-                end = assignment.range.end_offset
-                if start > 0 and text[start-1] == "\n": start -= 1
-                self.widget.content = text[:start] + text[end:]
-                self.refresh()
-            return
+            if property_name == "picture":
+                replacement = "none"
+            else:
+                # 削除
+                if assignment:
+                    start = assignment.range.start_offset
+                    end = assignment.range.end_offset
+                    if start > 0 and text[start-1] == "\n": start -= 1
+                    self.widget.content = text[:start] + text[end:]
+                    self.refresh()
+                return
 
         # 更新または追加
         is_object = property_name in {"trigger", "mean_time_to_happen", "immediate", "after"}
@@ -1233,7 +1314,8 @@ class EventEditorController:
         # 最終確認メッセージ（必要に応じて）
         # core.api.set_progress(f"Saving localisation: {key}...", 50)
 
-        self._write_to_loc_file(save_path, key, text, lang)
+        save_empty_loc = settings.get("save_empty_localisation", False)
+        self._write_to_loc_file(save_path, key, text, lang, save_empty_loc)
         
         # 監視イベントによる二重更新を防ぎつつ、レジストリを即時更新
         try:
@@ -1246,12 +1328,12 @@ class EventEditorController:
         # UIを再更新
         self.update_localisation_ui()
 
-    def _write_to_loc_file(self, path, key, text, lang):
+    def _write_to_loc_file(self, path, key, text, lang, save_empty_loc=False):
         """ファイルへの書き込み実処理"""
         os.makedirs(os.path.dirname(path), exist_ok=True)
         header = f"{lang}:"
         escaped_text = text.replace("\\", "\\\\").replace('"', '\\"')
-        new_line = f' {key}:0 "{escaped_text}"'
+        new_line = f' {key}: "{escaped_text}"'
         
         lines = []
         if os.path.exists(path):
@@ -1269,9 +1351,17 @@ class EventEditorController:
                 found_key_idx = i
                 
         if found_key_idx >= 0:
-            # 既存キーの置換
-            lines[found_key_idx] = new_line + "\n"
+            if not text.strip() and not save_empty_loc:
+                # 設定により削除
+                del lines[found_key_idx]
+            else:
+                # 既存キーの置換
+                lines[found_key_idx] = new_line + "\n"
         else:
+            if not text.strip() and not save_empty_loc:
+                # そもそも書かない
+                return
+                
             # 追記
             if not lines or not has_header:
                 if not lines: lines.append(header + "\n")

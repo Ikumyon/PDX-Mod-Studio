@@ -174,6 +174,16 @@
           </property>
          </widget>
         </item>
+        <item>
+         <widget class="QCheckBox" name="saveEmptyLocCheck">
+          <property name="text">
+           <string>空の文章も翻訳ファイルに書き出す</string>
+          </property>
+          <property name="toolTip">
+           <string>チェックを入れると空の文章を保存し、外すと翻訳ファイルから削除（ゲーム内でキーが表示される状態）します。</string>
+          </property>
+         </widget>
+        </item>
        </layout>
       </item>
      </layout>
