@@ -15,6 +15,11 @@ test_project/
 tests/
 test_mod/
 
+#設定保存ファイル
+plugins/**/settings.json
+plugins_registry.json
+
+
 # OS
 .DS_Store
 Thumbs.db
