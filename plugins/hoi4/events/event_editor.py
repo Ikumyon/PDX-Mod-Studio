@@ -172,20 +172,10 @@ class EventEditorController:
         self.selected_event_id = ""
         self.updating = False
         self.localization_updates = {} # ローカライズの更新内容を保持
-        # パーサーの初期化 (ダミーのプロファイルオブジェクトを渡す)
-        self.setup_ui()
-        self.refresh()
-        
-        # ローカライズの状態更新用
+        self.parser = EventParser(self.get_hoi4_plugin() or object())
         self.loc_timer = QTimer()
         self.loc_timer.setSingleShot(True)
         self.loc_timer.timeout.connect(self.update_localisation_ui)
-        
-        # キー入力欄の変更を監視
-        self.widget.findChild(QLineEdit, "titleKeyEdit").textChanged.connect(lambda: self.loc_timer.start(300))
-        self.widget.findChild(QLineEdit, "descKeyEdit").textChanged.connect(lambda: self.loc_timer.start(300))
-        
-        # 外部または他画面でのローカライズ更新を反映
         core.api.register_loc_changed_handler(self.update_localisation_ui)
 
     def get_plugin_settings(self):
@@ -227,12 +217,46 @@ class EventEditorController:
                 res = res.replace(f"{{{k}}}", str(v))
             return res
 
+    def format_values(self, namespace=None, event_id="", number=1, option_index=0, lang=None):
+        namespace = namespace if namespace is not None else (self.get_current_namespace() or "custom_events")
+        if lang is None:
+            lang = self.get_plugin_settings().get("display_language", "l_japanese")
+        fallback_id = f"{namespace}.{number}"
+        values = {
+            "namespace": namespace,
+            "number": number,
+            "lang": lang,
+            "id": event_id or fallback_id,
+        }
+        values.update(self.option_format_values(option_index))
+        return values
+
+    def current_event_number(self):
+        event = self.current_event()
+        if not event:
+            return 1
+        try:
+            return self.events.index(event) + 1
+        except ValueError:
+            return 1
+
+    def option_format_values(self, option_index):
+        number = option_index + 1
+        letter = chr(ord('a') + option_index) if option_index < 26 else str(number)
+        return {
+            "a-z": letter,
+        }
+
     def bind(self):
         self.event_list = find(self.widget, QListWidget, "eventListWidget")
         self.event_id = find(self.widget, QLineEdit, "eventIdEdit")
         self.event_type = find(self.widget, QComboBox, "eventTypeCombo")
         self.title_key = find(self.widget, QLineEdit, "titleKeyEdit")
         self.desc_key = find(self.widget, QLineEdit, "descKeyEdit")
+        if self.title_key:
+            self.title_key.textChanged.connect(lambda: self.loc_timer.start(300))
+        if self.desc_key:
+            self.desc_key.textChanged.connect(lambda: self.loc_timer.start(300))
         self.picture = find(self.widget, QLineEdit, "pictureEdit")
         self.fire_only_once = find(self.widget, QCheckBox, "fireOnlyOnceCheck")
         self.hidden = find(self.widget, QCheckBox, "hiddenCheck")
@@ -241,6 +265,10 @@ class EventEditorController:
         self.timeout_days = find(self.widget, QSpinBox, "timeoutSpin")
         self.title_loc_file = find(self.widget, QLineEdit, "titleLocFileEdit")
         self.desc_loc_file = find(self.widget, QLineEdit, "descLocFileEdit")
+        if self.title_loc_file:
+            self.title_loc_file.setReadOnly(True)
+        if self.desc_loc_file:
+            self.desc_loc_file.setReadOnly(True)
         self.triggered_only = find(self.widget, QRadioButton, "isTriggeredOnlyRadio")
         self.standard_trigger = find(self.widget, QRadioButton, "isStandardTriggerRadio")
         self.trigger = find(self.widget, QPlainTextEdit, "triggerEdit")
@@ -724,11 +752,16 @@ class EventEditorController:
         settings = self.get_plugin_settings()
         opt_fmt = settings.get("event_option_key_format", "{id}.{a-z}")
         
-        # 次のアルファベットを決定 (a, b, c...)
         existing_options = len(event.options)
-        letter = chr(ord('a') + existing_options) if existing_options < 26 else str(existing_options)
-        
-        opt_key = self.apply_format(opt_fmt, id=event.event_id, **{"a-z": letter})
+        opt_key = self.apply_format(
+            opt_fmt,
+            **self.format_values(
+                namespace=self.get_current_namespace(),
+                event_id=event.event_id,
+                number=existing_options + 1,
+                option_index=existing_options,
+            ),
+        )
         
         text = self.widget.content
         close_brace_offset = event.node.range.end_offset - 1
@@ -757,22 +790,24 @@ class EventEditorController:
         title_fmt = settings.get("event_title_key_format", "{id}.t")
         desc_fmt = settings.get("event_desc_key_format", "{id}.d")
         opt_fmt = settings.get("event_option_key_format", "{id}.{a-z}")
-        loc_file_fmt = settings.get("event_loc_file_format", "{namespace}_{lang}.yml")
-        
         # ID生成
         counter = 1
         new_id = ""
         while True:
-            new_id = self.apply_format(id_fmt, namespace=namespace, number=counter)
+            new_id = self.apply_format(
+                id_fmt,
+                **self.format_values(namespace=namespace, number=counter, option_index=0),
+            )
             if not any(e.event_id == new_id for e in self.events):
                 break
             counter += 1
             if counter > 9999: break
             
         # キー生成
-        title_key = self.apply_format(title_fmt, id=new_id)
-        desc_key = self.apply_format(desc_fmt, id=new_id)
-        opt_key = self.apply_format(opt_fmt, id=new_id, **{"a-z": "a"})
+        values = self.format_values(namespace=namespace, event_id=new_id, number=counter, option_index=0)
+        title_key = self.apply_format(title_fmt, **values)
+        desc_key = self.apply_format(desc_fmt, **values)
+        opt_key = self.apply_format(opt_fmt, **values)
         
         # テンプレート
         template = f"\n\ncountry_event = {{\n\tid = {new_id}\n\ttitle = {title_key}\n\tdesc = {desc_key}\n\n\tis_triggered_only = yes\n\n\toption = {{\n\t\tname = {opt_key}\n\t}}\n}}"
@@ -1072,8 +1107,8 @@ class EventEditorController:
 
     def _apply_loc_status(self, prefix, status, entry):
         """ステータスに応じたUI表示の切り替え"""
-        text_edit = self.widget.findChild(object, f"{prefix}TextEdit")
-        path_label = self.widget.findChild(object, f"{prefix}PathLabel")
+        text_edit = self.title_text if prefix == "title" else self.desc_text
+        path_label = self.title_loc_file if prefix == "title" else self.desc_loc_file
         
         if not text_edit or not path_label: return
         
@@ -1091,24 +1126,72 @@ class EventEditorController:
 
         if status == "exists_in_mod" or status == "duplicate":
             text_edit.setReadOnly(False)
-            if entry: text_edit.setPlainText(entry["value"])
-            path_label.setText(f"保存先: {os.path.basename(entry['file'])}{error_msg}")
+            if entry: self._set_loc_text(text_edit, entry["value"])
+            path_label.setReadOnly(True)
+            path_label.setText(f"{os.path.basename(entry['file'])}{error_msg}")
+            if entry and entry.get("candidates"):
+                path_label.setToolTip("\n".join(candidate["file"] for candidate in entry["candidates"]))
             path_label.setStyleSheet("color: #4caf50;" if not errors else "color: #f44336;") # エラー時は赤
         elif status == "exists_in_hoi4":
             text_edit.setReadOnly(True)
-            if entry: text_edit.setPlainText(entry["value"])
-            path_label.setText(f"参照専用 (HOI4本体): {os.path.basename(entry['file'])}{error_msg}")
+            if entry: self._set_loc_text(text_edit, entry["value"])
+            path_label.setReadOnly(True)
+            path_label.setText(f"{os.path.basename(entry['file'])}{error_msg}")
+            if entry and entry.get("candidates"):
+                path_label.setToolTip("\n".join(candidate["file"] for candidate in entry["candidates"]))
             path_label.setStyleSheet("color: #ff9800;") # オレンジ系
         else: # not_found
             text_edit.setReadOnly(False)
-            path_label.setText("新規作成予定 (MOD既定保存先)")
+            was_readonly = path_label.isReadOnly()
+            path_label.setReadOnly(False)
+            if was_readonly or not path_label.text().strip() or not path_label.text().strip().lower().endswith(".yml"):
+                path_label.setText(self.default_loc_filename())
+            path_label.setToolTip("未登録キーの保存先ファイル名")
             path_label.setStyleSheet("color: #2196f3;") # 青系
 
-    def save_localisation(self, key, text):
+    def _set_loc_text(self, widget, text):
+        if hasattr(widget, "setPlainText"):
+            widget.setPlainText(text)
+        elif hasattr(widget, "setText"):
+            widget.setText(text)
+
+    def _get_loc_text(self, widget):
+        if not widget:
+            return ""
+        if hasattr(widget, "toPlainText"):
+            return widget.toPlainText()
+        if hasattr(widget, "text"):
+            return widget.text()
+        return ""
+
+    def default_loc_filename(self):
+        settings = self.get_plugin_settings()
+        fmt = settings.get("event_loc_file_format", "{namespace}_{lang}.yml")
+        event = self.current_event()
+        event_id = event.event_id if event else ""
+        return self.apply_format(
+            fmt,
+            **self.format_values(
+                namespace=self.get_current_namespace(),
+                event_id=event_id,
+                number=self.current_event_number(),
+                option_index=0,
+            ),
+        )
+
+    def selected_loc_filename(self, widget):
+        filename = widget.text().strip() if widget and hasattr(widget, "text") else ""
+        if not filename or not filename.lower().endswith(".yml"):
+            filename = self.default_loc_filename()
+        return os.path.basename(filename)
+
+    def save_localisation(self, key, text, loc_file_widget=None):
         """ローカライズ情報を適切なファイルに保存する"""
         if not key: return
         
         plugin = self.get_hoi4_plugin()
+        if not plugin or not hasattr(plugin, "localisation_registry"):
+            return
         registry = plugin.localisation_registry
         status, entry = registry.search_key_status(key)
         
@@ -1125,18 +1208,26 @@ class EventEditorController:
             
             # 衝突チェック: 保存前にファイルの最終更新日時を確認
             if os.path.exists(save_path):
-                from PySide6.QtWidgets import QMessageBox
-                mtime = os.path.getmtime(save_path)
-                # もしレジストリ上の情報より新しいなら（監視がまだ追いついていない場合も考慮）
-                # 簡易的に、保存直前にディスクから再確認する
-                # 本来は snapshot の mtime と比較すべきだが、ここでは注意喚起を優先
-                pass 
+                registry.update_file(save_path, "mod")
+                status, entry = registry.search_key_status(key)
+                if status == "exists_in_hoi4":
+                    print(f"Skipping save for HOI4 internal key after refresh: {key}")
+                    return
+                if status == "exists_in_mod" or status == "duplicate":
+                    save_path = entry["file"]
+            else:
+                registry.remove_file_entries(save_path)
+                status, entry = registry.search_key_status(key)
+                if status == "exists_in_hoi4":
+                    print(f"Skipping save for HOI4 internal key after file deletion: {key}")
+                    return
+                mod_root = self.get_mod_root()
+                filename = self.selected_loc_filename(loc_file_widget)
+                save_path = os.path.join(mod_root, "localisation", filename)
         else:
             # 新規作成: 既定のファイル名を使用
             mod_root = self.get_mod_root()
-            fmt = settings.get("event_loc_file_format", "{namespace}_{lang}.yml")
-            ns = self.get_current_namespace() or "custom_events"
-            filename = fmt.replace("{namespace}", ns).replace("{lang}", lang)
+            filename = self.selected_loc_filename(loc_file_widget)
             save_path = os.path.join(mod_root, "localisation", filename)
 
         # 最終確認メッセージ（必要に応じて）
@@ -1145,9 +1236,9 @@ class EventEditorController:
         self._write_to_loc_file(save_path, key, text, lang)
         
         # 監視イベントによる二重更新を防ぎつつ、レジストリを即時更新
-        registry.set_ignore_path(save_path, True)
         try:
             registry.update_file(save_path, "mod")
+            registry.set_ignore_path(save_path, True)
         finally:
             # 少し遅らせて解除（OSのファイル書き込み完了待ち）
             QTimer.singleShot(500, lambda: registry.set_ignore_path(save_path, False))
@@ -1159,7 +1250,8 @@ class EventEditorController:
         """ファイルへの書き込み実処理"""
         os.makedirs(os.path.dirname(path), exist_ok=True)
         header = f"{lang}:"
-        new_line = f' {key}:0 "{text}"'
+        escaped_text = text.replace("\\", "\\\\").replace('"', '\\"')
+        new_line = f' {key}:0 "{escaped_text}"'
         
         lines = []
         if os.path.exists(path):
@@ -1172,7 +1264,8 @@ class EventEditorController:
         for i, line in enumerate(lines):
             if line.strip().startswith(header):
                 has_header = True
-            if line.strip().startswith(f"{key}:"):
+            stripped = line.strip()
+            if ":" in stripped and stripped.split(":", 1)[0] == key:
                 found_key_idx = i
                 
         if found_key_idx >= 0:
@@ -1190,6 +1283,12 @@ class EventEditorController:
 
     def get_hoi4_plugin(self):
         """本体からHOI4プラグインのインスタンスを探す"""
+        plugin = getattr(self.widget, "active_plugin", None)
+        if plugin:
+            return plugin
+        plugin = core.api.get_active_plugin()
+        if plugin:
+            return plugin
         try:
             return self.widget.parent().parent().active_plugin
         except:
@@ -1197,13 +1296,13 @@ class EventEditorController:
 
     def on_save_triggered(self):
         """本体からの保存要求時に呼ばれることを想定"""
-        title_key = self.widget.findChild(QLineEdit, "titleKeyEdit").text()
-        title_text = self.widget.findChild(object, "titleTextEdit").toPlainText()
-        self.save_localisation(title_key, title_text)
+        title_key = self.title_key.text() if self.title_key else ""
+        title_text = self._get_loc_text(self.title_text)
+        self.save_localisation(title_key, title_text, self.title_loc_file)
         
-        desc_key = self.widget.findChild(QLineEdit, "descKeyEdit").text()
-        desc_text = self.widget.findChild(object, "descTextEdit").toPlainText()
-        self.save_localisation(desc_key, desc_text)
+        desc_key = self.desc_key.text() if self.desc_key else ""
+        desc_text = self._get_loc_text(self.desc_text)
+        self.save_localisation(desc_key, desc_text, self.desc_loc_file)
 
 
 def first(values):

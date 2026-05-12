@@ -175,6 +175,7 @@ def main():
             # 未保存状態を引き継ぐ
             if was_dirty:
                 set_tab_dirty(current_tab_idx, True)
+            core.api.notify_mode_changed(file_path, mode_id)
 
     mode_selector.currentIndexChanged.connect(on_mode_selector_changed)
 
@@ -191,6 +192,9 @@ def main():
         widget.current_mode_id = mode_id
         widget.available_modes = available_modes
         widget.is_dirty = False
+        element = get_element_for_path(file_path)
+        if element:
+            widget.active_plugin = element.plugin
         widget._last_notified_content = content # 最後に通知したときの内容
 
         # --- 自動変更検知の仕組み（安全なタイマー監視） ---
@@ -218,6 +222,112 @@ def main():
             widget.textChanged.connect(lambda: set_tab_dirty(window.editorTabs.indexOf(widget), True))
 
         return widget
+
+    def mode_to_info(mode):
+        return {
+            "id": mode.mode_id,
+            "name": mode.name,
+        }
+
+    def get_modes_for_path(file_path, include_script=True):
+        modes = []
+        element = get_element_for_path(file_path)
+        if element:
+            modes = mode_manager.get_modes_for_element(element)
+        result = [mode_to_info(mode) for mode in modes]
+        if include_script:
+            result.append({"id": "script_mode", "name": "スクリプトモード"})
+        return result
+
+    def find_tab_index_for_path(file_path):
+        if not window.editorTabs:
+            return -1
+        if file_path is None:
+            return window.editorTabs.currentIndex()
+        target = os.path.normpath(file_path)
+        for i in range(window.editorTabs.count()):
+            tab_path = window.editorTabs.tabToolTip(i)
+            if tab_path and os.path.normpath(tab_path) == target:
+                return i
+        return -1
+
+    def get_current_mode_for_path(file_path=None):
+        idx = find_tab_index_for_path(file_path)
+        if idx < 0:
+            return None
+        widget = window.editorTabs.widget(idx)
+        return getattr(widget, "current_mode_id", None) if widget else None
+
+    def switch_mode_for_path(mode_id, file_path=None):
+        idx = find_tab_index_for_path(file_path)
+        if idx < 0:
+            return False
+
+        old_widget = window.editorTabs.widget(idx)
+        if not old_widget:
+            return False
+
+        file_path = window.editorTabs.tabToolTip(idx)
+        if getattr(old_widget, "current_mode_id", "") == mode_id:
+            return True
+
+        available_modes = []
+        element = get_element_for_path(file_path)
+        if element:
+            available_modes = mode_manager.get_modes_for_element(element)
+        mode_ids = {mode.mode_id for mode in available_modes}
+        if mode_id != "script_mode" and mode_id not in mode_ids:
+            return False
+
+        content = ""
+        if hasattr(old_widget, "toPlainText"):
+            content = old_widget.toPlainText()
+        elif hasattr(old_widget, "content"):
+            content = old_widget.content
+
+        was_dirty = getattr(old_widget, "is_dirty", False)
+        new_widget = create_widget_for_mode(mode_id, file_path, content, available_modes)
+        if not new_widget:
+            return False
+
+        icon = project_tree.get_icon_for_path(file_path)
+        file_name = os.path.basename(file_path)
+        window.editorTabs.removeTab(idx)
+        window.editorTabs.insertTab(idx, new_widget, icon, file_name)
+        window.editorTabs.setTabToolTip(idx, file_path)
+        window.editorTabs.setCurrentIndex(idx)
+        if was_dirty:
+            set_tab_dirty(idx, True)
+        update_mode_selector(idx)
+        project_tree.update_open_editors(window.editorTabs)
+        core.api.notify_mode_changed(file_path, mode_id)
+        return True
+
+    def refresh_modes_for_path(file_path=None):
+        if not window.editorTabs:
+            return 0
+
+        refreshed = 0
+        for i in range(window.editorTabs.count()):
+            tab_path = window.editorTabs.tabToolTip(i)
+            if file_path and os.path.normpath(tab_path) != os.path.normpath(file_path):
+                continue
+
+            widget = window.editorTabs.widget(i)
+            if not widget:
+                continue
+
+            element = get_element_for_path(tab_path)
+            available_modes = mode_manager.get_modes_for_element(element) if element else []
+            widget.available_modes = available_modes
+            current_mode_id = getattr(widget, "current_mode_id", "script_mode")
+            mode_ids = {mode.mode_id for mode in available_modes}
+            if current_mode_id != "script_mode" and current_mode_id not in mode_ids:
+                switch_mode_for_path("script_mode", tab_path)
+            refreshed += 1
+
+        update_mode_selector(window.editorTabs.currentIndex())
+        return refreshed
 
     def open_file(file_path):
         if not window.editorTabs:
@@ -308,11 +418,23 @@ def main():
         try:
             with open(file_path, 'w', encoding=encoding) as f:
                 f.write(content)
+            controller = getattr(widget, "plugin_controller", None)
+            if controller and hasattr(controller, "on_save_triggered"):
+                controller.on_save_triggered()
             window.statusBar().showMessage(f"保存しました: {file_path}", 3000)
             widget._last_notified_content = content
             set_tab_dirty(current_idx, False)
         except Exception as e:
             QMessageBox.critical(window, "保存エラー", f"ファイルを保存できませんでした: {e}")
+
+    core.api.register_mode_handler({
+        "get_element_for_file": get_element_for_path,
+        "get_modes_for_file": get_modes_for_path,
+        "get_current_mode": get_current_mode_for_path,
+        "switch_mode": switch_mode_for_path,
+        "refresh_modes": refresh_modes_for_path,
+    })
+    core.api.register_active_plugin_handler(lambda: project_tree.active_plugin)
 
     save_action = window.findChild(QAction, "actionSaveProject")
     if save_action:
@@ -374,6 +496,7 @@ def main():
         window.statusBar().showMessage(f"プラグイン '{plugin.name}' が選択されました。")
         # ProjectTreeDock にプラグインを通知
         project_tree.set_active_plugin(plugin)
+        core.api.refresh_modes()
 
     # メニューバーにコンボボックスを配置
     menubar = window.menuBar()

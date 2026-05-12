@@ -30,7 +30,35 @@ def save_plugin_settings(path, settings):
     except Exception as e:
         print(f"Failed to save settings to {path}: {e}")
 
-def setup_settings_ui(widget, plugin, project_path):
+def load_plugin_elements(plugin):
+    """Load HoI4 element definitions from each element config.json."""
+    plugin.elements.clear()
+    for item in os.listdir(plugin.path):
+        element_dir = os.path.join(plugin.path, item)
+        if not os.path.isdir(element_dir):
+            continue
+
+        config_path = os.path.join(element_dir, "config.json")
+        if not os.path.exists(config_path):
+            continue
+
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                config = json.load(f)
+
+            element = ModElement(
+                id=item,
+                name=config.get("name", item),
+                path=config.get("path", ""),
+                plugin=plugin,
+                element_dir=element_dir,
+                raw=config,
+            )
+            plugin.elements.append(element)
+        except Exception as e:
+            print(f"Failed to load HoI4 element {item}: {e}")
+
+def setup_settings_controls(widget, plugin, project_path):
     """設定画面の初期化ロジック"""
     settings_file = os.path.join(plugin.path, "settings.json")
     
@@ -61,7 +89,8 @@ def setup_settings_ui(widget, plugin, project_path):
         game_path_edit.setText(settings.get("game_path", ""))
         game_path_edit.textChanged.connect(lambda text: (
             settings.update({"game_path": text}),
-            save_plugin_settings(settings_file, settings)
+            save_plugin_settings(settings_file, settings),
+            getattr(plugin, "refresh_localisation", lambda: None)()
         ))
     
     if browse_button:
@@ -112,7 +141,8 @@ def setup_settings_ui(widget, plugin, project_path):
         
         display_lang_combo.currentIndexChanged.connect(lambda index: (
             settings.update({"display_language": display_lang_combo.itemData(index)}),
-            save_plugin_settings(settings_file, settings)
+            save_plugin_settings(settings_file, settings),
+            getattr(plugin, "refresh_localisation", lambda: None)()
         ))
 
 def initialize(plugin):
@@ -120,6 +150,7 @@ def initialize(plugin):
     HoI4プラグインの初期化。
     """
     print(f"Initializing HoI4 Plugin: {plugin.name}")
+    load_plugin_elements(plugin)
     
     global _registry, _watcher
     _registry = LocalisationRegistry()
@@ -158,11 +189,16 @@ def initialize(plugin):
     def _setup_watcher(dir_path):
         paths = _watcher.directories()
         if paths: _watcher.removePaths(paths)
-        _watcher.addPath(dir_path)
+        watch_dirs = []
+        for root, _, _ in os.walk(dir_path):
+            watch_dirs.append(root)
+        if watch_dirs:
+            _watcher.addPaths(watch_dirs)
         
         # ファイル個別の監視も追加（変更検知を確実にするため）
         old_files = _watcher.files()
         if old_files: _watcher.removePaths(old_files)
+        _mod_file_snapshots.clear()
         
         current_files = []
         for root, _, files in os.walk(dir_path):
@@ -174,7 +210,7 @@ def initialize(plugin):
         
         if current_files:
             _watcher.addPaths(current_files)
-        print(f"Started monitoring {len(current_files)} files in {dir_path}")
+        print(f"Started monitoring {len(current_files)} files in {len(watch_dirs)} directories under {dir_path}")
 
     def on_monitor_event(path):
         """監視イベントを検知したらタイマーをスタート"""
@@ -185,6 +221,7 @@ def initialize(plugin):
         project_path = core.api.get_project_path()
         if not project_path: return
         mod_loc_dir = os.path.join(project_path, "localisation")
+        changed = False
         
         current_files = {}
         for root, _, files in os.walk(mod_loc_dir):
@@ -200,9 +237,9 @@ def initialize(plugin):
                 _registry.remove_file_entries(p)
                 _watcher.removePath(p)
                 del _mod_file_snapshots[p]
+                changed = True
         
         # 2. 追加・変更されたファイルを特定
-        changed = False
         for p, mtime in current_files.items():
             if p not in _mod_file_snapshots:
                 print(f"File added: {p}")
@@ -217,6 +254,8 @@ def initialize(plugin):
                 changed = True
         
         if changed:
+            if os.path.exists(mod_loc_dir):
+                _setup_watcher(mod_loc_dir)
             core.api.notify_loc_changed()
 
     _watcher.directoryChanged.connect(on_monitor_event)
@@ -235,7 +274,7 @@ def initialize(plugin):
 
     plugin.localisation_registry = _registry
     
-def setup_settings_ui(widget, project_path, plugin):
+def setup_settings_ui_legacy(widget, project_path, plugin):
     settings_file = os.path.join(plugin.path, "settings.json")
     
     def on_save_clicked():
@@ -327,6 +366,6 @@ def show_settings(plugin, parent, project_path):
     layout.addWidget(container)
 
     # 統合したセットアップ関数を呼び出し
-    setup_settings_ui(container, plugin, project_path)
+    setup_settings_controls(container, plugin, project_path)
 
     dialog.exec()

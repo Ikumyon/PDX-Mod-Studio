@@ -3,9 +3,12 @@ import os
 _current_project_path = None
 _project_path_handlers = []
 _loc_changed_handlers = []
+_mode_changed_handlers = []
 _message_handler = None
 _progress_handler = None
 _tabs_handler = None
+_mode_handler = None
+_active_plugin_handler = None
 
 def set_project_path(path: str):
     global _current_project_path
@@ -34,6 +37,17 @@ def notify_loc_changed():
             handler()
         except Exception as e:
             print(f"Error in loc changed handler: {e}")
+
+def register_mode_changed_handler(handler):
+    global _mode_changed_handlers
+    _mode_changed_handlers.append(handler)
+
+def notify_mode_changed(file_path: str, mode_id: str):
+    for handler in _mode_changed_handlers:
+        try:
+            handler(file_path, mode_id)
+        except Exception as e:
+            print(f"Error in mode changed handler: {e}")
 
 # --- メッセージ API ---
 def register_message_handler(handler):
@@ -71,3 +85,41 @@ def open_tab(file_path: str):
     """指定したファイルをタブで開く（既に開いていれば切り替える）"""
     if _tabs_handler and "open_tab" in _tabs_handler:
         _tabs_handler["open_tab"](file_path)
+
+def register_mode_handler(handler_dict):
+    global _mode_handler
+    _mode_handler = handler_dict
+
+def get_element_for_file(file_path: str):
+    if _mode_handler and "get_element_for_file" in _mode_handler:
+        return _mode_handler["get_element_for_file"](file_path)
+    return None
+
+def get_modes_for_file(file_path: str, include_script: bool = True):
+    if _mode_handler and "get_modes_for_file" in _mode_handler:
+        return _mode_handler["get_modes_for_file"](file_path, include_script)
+    return [{"id": "script_mode", "name": "スクリプトモード"}] if include_script else []
+
+def get_current_mode(file_path: str = None):
+    if _mode_handler and "get_current_mode" in _mode_handler:
+        return _mode_handler["get_current_mode"](file_path)
+    return None
+
+def switch_mode(mode_id: str, file_path: str = None) -> bool:
+    if _mode_handler and "switch_mode" in _mode_handler:
+        return bool(_mode_handler["switch_mode"](mode_id, file_path))
+    return False
+
+def refresh_modes(file_path: str = None) -> int:
+    if _mode_handler and "refresh_modes" in _mode_handler:
+        return int(_mode_handler["refresh_modes"](file_path) or 0)
+    return 0
+
+def register_active_plugin_handler(handler):
+    global _active_plugin_handler
+    _active_plugin_handler = handler
+
+def get_active_plugin():
+    if _active_plugin_handler:
+        return _active_plugin_handler()
+    return None
