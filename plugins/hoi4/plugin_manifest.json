@@ -1,0 +1,8 @@
+{
+    "id": "hoi4",
+    "name": "Hearts of Iron IV",
+    "version": "1.14.*",
+    "type": "profile",
+    "entry_point": "hoi4.py",
+    "icon": "DLC_HoI4.png"
+}

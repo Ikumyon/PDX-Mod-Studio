@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>400</width>
-    <height>500</height>
+    <height>600</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -16,11 +16,11 @@
   <layout class="QVBoxLayout" name="mainLayout">
    <item>
     <widget class="QLabel" name="settingsTitle">
-     <property name="text">
-      <string>Hearts of Iron IV プロファイル設定</string>
-     </property>
      <property name="styleSheet">
       <string>font-size: 14pt; font-weight: bold; color: #ffffff;</string>
+     </property>
+     <property name="text">
+      <string>Hearts of Iron IV プロファイル設定</string>
      </property>
     </widget>
    </item>
@@ -59,30 +59,122 @@
     </widget>
    </item>
    <item>
+    <widget class="QGroupBox" name="eventSettingsGroup">
+     <property name="title">
+      <string>イベント設定</string>
+     </property>
+     <layout class="QFormLayout" name="editorAssistFormLayout">
+      <item row="0" column="0">
+       <widget class="QLabel" name="idFormatLabel">
+        <property name="text">
+         <string>ID形式:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QLineEdit" name="idFormatEdit">
+        <property name="text">
+         <string>{namespace}.{number}</string>
+        </property>
+        <property name="placeholderText">
+         <string>例: {namespace}.{number}</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="locFileFormatLabel">
+        <property name="text">
+         <string>翻訳ファイル形式:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QLineEdit" name="locFileFormatEdit">
+        <property name="text">
+         <string>{namespace}_{lang}.yml</string>
+        </property>
+        <property name="placeholderText">
+         <string>例: {namespace}_{lang}.yml</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="titleKeyFormatLabel">
+        <property name="text">
+         <string>タイトルキー形式:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QLineEdit" name="titleKeyFormatEdit">
+        <property name="text">
+         <string>{id}.t</string>
+        </property>
+        <property name="placeholderText">
+         <string>例: {id}.t</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="0">
+       <widget class="QLabel" name="descKeyFormatLabel">
+        <property name="text">
+         <string>説明キー形式:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="QLineEdit" name="descKeyFormatEdit">
+        <property name="text">
+         <string>{id}.d</string>
+        </property>
+        <property name="placeholderText">
+         <string>例: {id}.d</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="0">
+       <widget class="QLabel" name="optionKeyFormatLabel">
+        <property name="text">
+         <string>選択肢キー形式:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="1">
+       <widget class="QLineEdit" name="optionKeyFormatEdit">
+        <property name="text">
+         <string>{id}.{a-z}</string>
+        </property>
+        <property name="placeholderText">
+         <string>例: {id}.{a-z}</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
     <widget class="QGroupBox" name="localisationGroup">
      <property name="title">
       <string>ローカリゼーション</string>
      </property>
      <layout class="QVBoxLayout" name="localisationLayout">
       <item>
-       <widget class="QLabel" name="outputLabel">
-        <property name="text">
-         <string>自動出力・更新する言語:</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QListWidget" name="outputLanguagesList">
-        <property name="minimumSize">
-         <size>
-          <width>0</width>
-          <height>250</height>
-         </size>
-        </property>
-        <property name="toolTip">
-         <string>チェックを入れた言語のローカリゼーションファイルが自動的に生成・更新されます。</string>
-        </property>
-       </widget>
+       <layout class="QHBoxLayout" name="displayLanguageLayout">
+        <item>
+         <widget class="QLabel" name="displayLanguageLabel">
+          <property name="text">
+           <string>設定済み言語:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QComboBox" name="displayLanguageCombo">
+          <property name="toolTip">
+           <string>エディタ内のプレビュー等で、翻訳キーに対応するテキストを表示する際に使用される言語です。</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
       </item>
      </layout>
     </widget>

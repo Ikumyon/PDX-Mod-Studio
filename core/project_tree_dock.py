@@ -6,6 +6,7 @@ from PySide6.QtUiTools import QUiLoader
 from PySide6.QtCore import QFile, Qt, QSize
 from PySide6.QtGui import QIcon, QPalette, QAction, QPixmap
 from core.utils import load_svg_icon
+import core.api
 
 class OpenEditorItemWidget(QWidget):
     def __init__(self, name, path, index, icon, icon_close, parent_dock):
@@ -285,6 +286,7 @@ class ProjectTreeDock:
         if not self.modElementsTree or not self.folderStack:
             return
         self.current_project_path = folder_path
+        core.api.set_project_path(folder_path)
         self.modElementsTree.clear()
         self._populate_tree(folder_path, self.modElementsTree.invisibleRootItem())
         self.folderStack.setCurrentIndex(1)
@@ -425,13 +427,18 @@ class ProjectTreeDock:
         # 各要素のアイコンをキャッシュ
         if plugin and plugin.elements:
             for element in plugin.elements:
-                if element.icon_path and os.path.exists(element.icon_path):
-                    if element.icon_path.lower().endswith(".svg"):
-                        icon = load_svg_icon(element.icon_path, text_color)
+                icon_path = plugin.get_element_attribute(element, "icon")
+                if icon_path:
+                    if not os.path.isabs(icon_path):
+                        icon_path = os.path.join(element.element_dir, icon_path)
+                
+                if icon_path and os.path.exists(icon_path):
+                    if icon_path.lower().endswith(".svg"):
+                        icon = load_svg_icon(icon_path, text_color)
                     else:
                         # PNG等の場合は色味を維持する
                         icon = QIcon()
-                        pixmap = QPixmap(element.icon_path)
+                        pixmap = QPixmap(icon_path)
                         icon.addPixmap(pixmap, QIcon.Mode.Normal, QIcon.State.Off)
                         icon.addPixmap(pixmap, QIcon.Mode.Normal, QIcon.State.On)
                         icon.addPixmap(pixmap, QIcon.Mode.Active, QIcon.State.Off)
@@ -454,7 +461,7 @@ class ProjectTreeDock:
             return
 
         # ファイルタイプの要素のみを抽出
-        elements = [e for e in self.active_plugin.elements if not e.is_folder] if self.active_plugin else []
+        elements = [e for e in self.active_plugin.elements if not self.active_plugin.get_element_attribute(e, "is_folder", False)] if self.active_plugin else []
 
         if not elements:
             self._create_generic_file()
@@ -464,15 +471,20 @@ class ProjectTreeDock:
         text_color = self.parent_window.palette().color(QPalette.ColorRole.WindowText).name()
 
         for element in elements:
-            icon = None
-            if element.icon_path and os.path.exists(element.icon_path):
-                if element.icon_path.lower().endswith(".svg"):
+            icon_path = element.plugin.get_element_attribute(element, "icon")
+            if icon_path:
+                # element_dirからの相対パスまたは絶対パスを考慮
+                if not os.path.isabs(icon_path):
+                    icon_path = os.path.join(element.element_dir, icon_path)
+            
+            if icon_path and os.path.exists(icon_path):
+                if icon_path.lower().endswith(".svg"):
                     # SVGの場合はcurrentColorを置換してロード
-                    icon = load_svg_icon(element.icon_path, text_color)
+                    icon = load_svg_icon(icon_path, text_color)
                 else:
                     # それ以外（PNG等）は色を変えずに保持する設定でロード
                     icon = QIcon()
-                    pixmap = QPixmap(element.icon_path)
+                    pixmap = QPixmap(icon_path)
                     icon.addPixmap(pixmap, QIcon.Mode.Normal, QIcon.State.Off)
                     icon.addPixmap(pixmap, QIcon.Mode.Normal, QIcon.State.On)
                     icon.addPixmap(pixmap, QIcon.Mode.Active, QIcon.State.Off)
@@ -498,7 +510,7 @@ class ProjectTreeDock:
             return
 
         # フォルダタイプの要素のみを抽出
-        elements = [e for e in self.active_plugin.elements if e.is_folder] if self.active_plugin else []
+        elements = [e for e in self.active_plugin.elements if self.active_plugin.get_element_attribute(e, "is_folder", False)] if self.active_plugin else []
 
         if not elements:
             self._create_generic_folder()
@@ -508,13 +520,17 @@ class ProjectTreeDock:
         text_color = self.parent_window.palette().color(QPalette.ColorRole.WindowText).name()
 
         for element in elements:
-            icon = None
-            if element.icon_path and os.path.exists(element.icon_path):
-                if element.icon_path.lower().endswith(".svg"):
-                    icon = load_svg_icon(element.icon_path, text_color)
+            icon_path = element.plugin.get_element_attribute(element, "icon")
+            if icon_path:
+                if not os.path.isabs(icon_path):
+                    icon_path = os.path.join(element.element_dir, icon_path)
+
+            if icon_path and os.path.exists(icon_path):
+                if icon_path.lower().endswith(".svg"):
+                    icon = load_svg_icon(icon_path, text_color)
                 else:
                     icon = QIcon()
-                    pixmap = QPixmap(element.icon_path)
+                    pixmap = QPixmap(icon_path)
                     icon.addPixmap(pixmap, QIcon.Mode.Normal, QIcon.State.Off)
                     icon.addPixmap(pixmap, QIcon.Mode.Normal, QIcon.State.On)
                     icon.addPixmap(pixmap, QIcon.Mode.Active, QIcon.State.Off)
@@ -546,7 +562,8 @@ class ProjectTreeDock:
 
     def _create_element_file(self, element):
         """プロファイルで定義された要素（ファイルまたはフォルダ）を作成する"""
-        label = "フォルダ名" if element.is_folder else "ファイル名 (拡張子なし)"
+        is_folder = element.plugin.get_element_attribute(element, "is_folder", False)
+        label = "フォルダ名" if is_folder else "ファイル名 (拡張子なし)"
         file_name, ok = QInputDialog.getText(self.dock_widget, f"新規 {element.name}", f"{label}:")
         if not ok or not file_name:
             return
@@ -555,7 +572,7 @@ class ProjectTreeDock:
         target_dir = os.path.join(self.current_project_path, element.path)
         os.makedirs(target_dir, exist_ok=True)
         
-        if element.is_folder:
+        if is_folder:
             path = os.path.join(target_dir, file_name)
             if os.path.exists(path):
                 QMessageBox.warning(self.dock_widget, "警告", "同名のフォルダが既に存在します。")
@@ -566,7 +583,8 @@ class ProjectTreeDock:
             except Exception as e:
                 QMessageBox.critical(self.dock_widget, "エラー", f"フォルダを作成できませんでした: {e}")
         else:
-            full_file_name = file_name + element.extension
+            extension = element.plugin.get_element_attribute(element, "extension") or ""
+            full_file_name = file_name + extension
             file_path = os.path.join(target_dir, full_file_name)
             
             if os.path.exists(file_path):
@@ -574,7 +592,8 @@ class ProjectTreeDock:
                 return
 
             try:
-                with open(file_path, 'w', encoding='utf-8') as f:
+                encoding = element.plugin.get_element_attribute(element, "encoding", file_path=file_path)
+                with open(file_path, 'w', encoding=encoding) as f:
                     f.write("")
                 
                 self.load_project(self.current_project_path)

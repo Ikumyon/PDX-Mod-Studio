@@ -75,7 +75,7 @@
        </property>
       </widget>
      </item>
-     <item row="2" column="0">
+     <item row="3" column="0">
       <widget class="QLabel" name="aiLabel">
        <property name="toolTip">
         <string>AIがこの選択肢を選ぶ相対的な確率を指定します。-1は未設定を意味します。0を指定するとAIは決してその選択肢を選びません。</string>
@@ -86,7 +86,7 @@ ai_chance</string>
        </property>
       </widget>
      </item>
-     <item row="2" column="1">
+     <item row="3" column="1">
       <widget class="QSpinBox" name="aiSpin">
        <property name="minimum">
         <number>-1</number>
@@ -96,7 +96,7 @@ ai_chance</string>
        </property>
       </widget>
      </item>
-     <item row="3" column="0">
+     <item row="4" column="0">
       <widget class="QLabel" name="triggerLabel">
        <property name="text">
         <string>出現条件
@@ -104,7 +104,7 @@ trigger</string>
        </property>
       </widget>
      </item>
-     <item row="3" column="1">
+     <item row="4" column="1">
       <widget class="QPlainTextEdit" name="triggerEdit">
        <property name="maximumSize">
         <size>
@@ -113,11 +113,11 @@ trigger</string>
         </size>
        </property>
        <property name="placeholderText">
-        <string>trigger</string>
+        <string>例: has_political_power &gt; 50</string>
        </property>
       </widget>
      </item>
-     <item row="4" column="0">
+     <item row="5" column="0">
       <widget class="QLabel" name="effectLabel">
        <property name="text">
         <string>効果
@@ -125,7 +125,7 @@ effect</string>
        </property>
       </widget>
      </item>
-     <item row="4" column="1">
+     <item row="5" column="1">
       <widget class="QPlainTextEdit" name="effectEdit">
        <property name="maximumSize">
         <size>
@@ -134,9 +134,35 @@ effect</string>
         </size>
        </property>
        <property name="placeholderText">
-        <string>選択時の効果スクリプト</string>
+        <string>例: add_political_power = -50
+add_stability = 0.05</string>
        </property>
       </widget>
+     </item>
+     <item row="2" column="0">
+      <widget class="QLabel" name="optionLocFileLabel">
+       <property name="text">
+        <string>翻訳先</string>
+       </property>
+      </widget>
+     </item>
+     <item row="2" column="1">
+      <layout class="QHBoxLayout" name="optionLocLayout">
+       <item>
+        <widget class="QLineEdit" name="optionLocFileEdit">
+         <property name="placeholderText">
+          <string>例: events_l_japanese.yml</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="optionLocFileBrowseButton">
+         <property name="text">
+          <string>参照</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
      </item>
     </layout>
    </item>

@@ -1,0 +1,8 @@
+{
+    "plugins": [
+        {
+            "id": "hoi4",
+            "enabled": true
+        }
+    ]
+}

@@ -154,25 +154,112 @@
        <property name="geometry">
         <rect>
          <x>0</x>
-         <y>0</y>
-         <width>486</width>
-         <height>879</height>
+         <y>-250</y>
+         <width>470</width>
+         <height>968</height>
         </rect>
        </property>
        <layout class="QVBoxLayout" name="editorLayout">
         <item>
-         <widget class="QLabel" name="editorTitle">
-          <property name="text">
-           <string>イベント編集</string>
-          </property>
-         </widget>
+         <layout class="QHBoxLayout" name="editorHeaderLayout">
+          <item>
+           <widget class="QLabel" name="editorTitle">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="text">
+             <string>イベント編集</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QFrame" name="modeSwitchFrame">
+            <property name="styleSheet">
+             <string notr="true">QToolButton {
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    padding: 0px 8px;
+}
+
+QToolButton:hover {
+    background: palette(light);
+}
+
+QToolButton:pressed {
+    background: palette(mid);
+}
+
+QToolButton:checked {
+    background: palette(highlight);
+}
+</string>
+            </property>
+            <property name="frameShape">
+             <enum>QFrame::Shape::StyledPanel</enum>
+            </property>
+            <property name="frameShadow">
+             <enum>QFrame::Shadow::Raised</enum>
+            </property>
+            <layout class="QHBoxLayout" name="modeSwitchLayout">
+             <property name="spacing">
+              <number>0</number>
+             </property>
+             <property name="leftMargin">
+              <number>2</number>
+             </property>
+             <property name="topMargin">
+              <number>2</number>
+             </property>
+             <property name="rightMargin">
+              <number>2</number>
+             </property>
+             <property name="bottomMargin">
+              <number>2</number>
+             </property>
+             <item>
+              <widget class="QToolButton" name="standardModeButton">
+               <property name="text">
+                <string>標準</string>
+               </property>
+               <property name="checkable">
+                <bool>true</bool>
+               </property>
+               <property name="checked">
+                <bool>true</bool>
+               </property>
+               <attribute name="buttonGroup">
+                <string notr="true">modeButtonGroup</string>
+               </attribute>
+              </widget>
+             </item>
+             <item>
+              <widget class="QToolButton" name="customModeButton">
+               <property name="text">
+                <string>カスタム</string>
+               </property>
+               <property name="checkable">
+                <bool>true</bool>
+               </property>
+               <attribute name="buttonGroup">
+                <string notr="true">modeButtonGroup</string>
+               </attribute>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+          </item>
+         </layout>
         </item>
         <item>
          <widget class="QGroupBox" name="basicGroup">
           <property name="title">
            <string>基本情報</string>
           </property>
-          <layout class="QFormLayout" name="basicFormLayout">
+          <layout class="QFormLayout" name="formLayout">
            <item row="0" column="0">
             <widget class="QLabel" name="eventIdLabel">
              <property name="text">
@@ -246,13 +333,38 @@
             </widget>
            </item>
            <item row="4" column="0">
+            <widget class="QLabel" name="titleLocFileLabel">
+             <property name="text">
+              <string>翻訳先</string>
+             </property>
+            </widget>
+           </item>
+           <item row="4" column="1">
+            <layout class="QHBoxLayout" name="titleLocLayout">
+             <item>
+              <widget class="QLineEdit" name="titleLocFileEdit">
+               <property name="placeholderText">
+                <string>例: events_l_japanese.yml</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QPushButton" name="titleLocFileBrowseButton">
+               <property name="text">
+                <string>参照</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item row="5" column="0">
             <widget class="QLabel" name="descKeyLabel">
              <property name="text">
               <string>説明キー</string>
              </property>
             </widget>
            </item>
-           <item row="4" column="1">
+           <item row="5" column="1">
             <widget class="QLineEdit" name="descKeyEdit">
              <property name="text">
               <string/>
@@ -262,14 +374,14 @@
              </property>
             </widget>
            </item>
-           <item row="5" column="0">
+           <item row="6" column="0">
             <widget class="QLabel" name="descLabel">
              <property name="text">
               <string>説明</string>
              </property>
             </widget>
            </item>
-           <item row="5" column="1">
+           <item row="6" column="1">
             <widget class="QPlainTextEdit" name="descEdit">
              <property name="plainText">
               <string/>
@@ -279,14 +391,39 @@
              </property>
             </widget>
            </item>
-           <item row="6" column="0">
+           <item row="7" column="0">
+            <widget class="QLabel" name="descLocFileLabel">
+             <property name="text">
+              <string>翻訳先</string>
+             </property>
+            </widget>
+           </item>
+           <item row="7" column="1">
+            <layout class="QHBoxLayout" name="descLocLayout">
+             <item>
+              <widget class="QLineEdit" name="descLocFileEdit">
+               <property name="placeholderText">
+                <string>例: events_l_japanese.yml</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QPushButton" name="descLocFileBrowseButton">
+               <property name="text">
+                <string>参照</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item row="8" column="0">
             <widget class="QLabel" name="pictureLabel">
              <property name="text">
               <string>画像</string>
              </property>
             </widget>
            </item>
-           <item row="6" column="1">
+           <item row="8" column="1">
             <layout class="QHBoxLayout" name="pictureLayout">
              <item>
               <widget class="QLineEdit" name="pictureEdit">
@@ -385,7 +522,8 @@ trigger</string>
                <item>
                 <widget class="QRadioButton" name="isTriggeredOnlyRadio">
                  <property name="text">
-                  <string>自然発生しない(is_triggered_only)</string>
+                  <string>自然発生しない
+(is_triggered_only)</string>
                  </property>
                  <property name="checked">
                   <bool>true</bool>
@@ -413,7 +551,8 @@ trigger</string>
                 <string/>
                </property>
                <property name="placeholderText">
-                <string>ここに条件を入力</string>
+                <string>例: tag = GER
+has_war = no</string>
                </property>
               </widget>
              </item>
@@ -436,7 +575,11 @@ MTTH</string>
               <string/>
              </property>
              <property name="placeholderText">
-              <string>ここに平均発生間隔を記入</string>
+              <string>例: days = 30
+modifier = {
+    factor = 0.5
+    has_government = fascism
+}</string>
              </property>
             </widget>
            </item>
@@ -454,7 +597,7 @@ Immediate</string>
               <string/>
              </property>
              <property name="placeholderText">
-              <string>即時実行されるスクリプトを入力</string>
+              <string>例: set_country_flag = event_fired_flag</string>
              </property>
             </widget>
            </item>
@@ -493,7 +636,7 @@ Immediate</string>
            <item row="0" column="1">
             <widget class="QPlainTextEdit" name="afterEdit">
              <property name="placeholderText">
-              <string>事後処理されるスクリプトを入力</string>
+              <string>例: clr_country_flag = temporary_flag</string>
              </property>
             </widget>
            </item>
@@ -526,6 +669,7 @@ Immediate</string>
  <resources/>
  <connections/>
  <buttongroups>
+  <buttongroup name="modeButtonGroup"/>
   <buttongroup name="buttonGroup"/>
  </buttongroups>
 </ui>

@@ -3,10 +3,24 @@ import os
 from PySide6.QtWidgets import QApplication, QMenu, QVBoxLayout, QToolButton, QWidget
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtCore import QFile, Qt, QSize
+import core.api
 
 def main():
     app = QApplication(sys.argv)
     
+    # Windowsのタスクバーアイコンを正しく表示するための設定
+    try:
+        import ctypes
+        myappid = 'pdx.mod.studio.v1' # 任意の識別子
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+    except Exception:
+        pass
+
+    # --- 外部プラグインから import 可能にするための登録 ---
+    import core.api
+    sys.modules['core.api'] = core.api
+    # -----------------------------------------------
+
     # UIファイルのパスを取得
     base_dir = os.path.dirname(__file__)
     
@@ -24,6 +38,14 @@ def main():
     if not window:
         print(f"UIのロードに失敗しました: {loader.errorString()}")
         sys.exit(-1)
+
+    # --- アプリケーションアイコンの設定 ---
+    from PySide6.QtGui import QIcon
+    icon_path = os.path.join(base_dir, "assets", "app_icon.ico")
+    if os.path.exists(icon_path):
+        window.setWindowIcon(QIcon(icon_path))
+        # タスクバー用のアイコン設定 (Windows)
+        app.setWindowIcon(QIcon(icon_path))
 
     # --- ドックの初期化 ---
     from core.project_tree_dock import ProjectTreeDock
@@ -129,6 +151,8 @@ def main():
         if not widget or getattr(widget, "current_mode_id", "") == mode_id:
             return
             
+        was_dirty = getattr(widget, "is_dirty", False)
+
         # モードの差し替え
         file_path = window.editorTabs.tabToolTip(current_tab_idx)
         # 現在のコンテンツを保持（変更されている可能性があるため）
@@ -147,6 +171,10 @@ def main():
             window.editorTabs.insertTab(current_tab_idx, new_widget, icon, file_name)
             window.editorTabs.setTabToolTip(current_tab_idx, file_path)
             window.editorTabs.setCurrentIndex(current_tab_idx)
+            
+            # 未保存状態を引き継ぐ
+            if was_dirty:
+                set_tab_dirty(current_tab_idx, True)
 
     mode_selector.currentIndexChanged.connect(on_mode_selector_changed)
 
@@ -162,6 +190,33 @@ def main():
         
         widget.current_mode_id = mode_id
         widget.available_modes = available_modes
+        widget.is_dirty = False
+        widget._last_notified_content = content # 最後に通知したときの内容
+
+        # --- 自動変更検知の仕組み（安全なタイマー監視） ---
+        from PySide6.QtCore import QTimer
+        def check_content_change():
+            # ウィジェットが破棄されていたら停止
+            try:
+                current_content = getattr(widget, "content", None)
+                if current_content is not None and current_content != widget._last_notified_content:
+                    widget._last_notified_content = current_content
+                    idx = window.editorTabs.indexOf(widget)
+                    if idx >= 0:
+                        set_tab_dirty(idx, True)
+            except (RuntimeError, ReferenceError):
+                # ウィジェットが既に削除されている場合
+                if hasattr(widget, "_dirty_timer"):
+                    widget._dirty_timer.stop()
+
+        # 100msごとにチェック（負荷は無視できるほど低いです）
+        widget._dirty_timer = QTimer(widget)
+        widget._dirty_timer.timeout.connect(check_content_change)
+        widget._dirty_timer.start(100)
+
+        if mode_id == "script_mode":
+            widget.textChanged.connect(lambda: set_tab_dirty(window.editorTabs.indexOf(widget), True))
+
         return widget
 
     def open_file(file_path):
@@ -174,12 +229,16 @@ def main():
                 window.editorTabs.setCurrentIndex(i)
                 return
         
+        # エレメントと利用可能なモードの特定
+        element = get_element_for_path(file_path)
+        encoding = "utf-8"
+        if element:
+            encoding = element.plugin.get_element_attribute(element, "encoding", file_path=file_path)
+        
         try:
-            with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
+            with open(file_path, 'r', encoding=encoding, errors='replace') as f:
                 content = f.read()
             
-            # エレメントと利用可能なモードの特定
-            element = get_element_for_path(file_path)
             available_modes = []
             if element:
                 available_modes = mode_manager.get_modes_for_element(element)
@@ -203,6 +262,75 @@ def main():
 
     window.open_file = open_file
 
+    # --- 保存機能の実実装 ---
+    from PySide6.QtGui import QKeySequence, QAction
+    from PySide6.QtWidgets import QMessageBox
+    from core.utils import load_svg_icon
+
+    # アイコンのロード
+    text_color = window.palette().color(window.foregroundRole()).name()
+    icon_dirty = load_svg_icon(os.path.join(base_dir, "assets/icons/save.svg"), "#ffcc00") # 目立つ色にする
+
+    def set_tab_dirty(index, dirty):
+        if index < 0 or index >= window.editorTabs.count():
+            return
+        widget = window.editorTabs.widget(index)
+        widget.is_dirty = dirty
+        
+        file_path = window.editorTabs.tabToolTip(index)
+        if dirty:
+            window.editorTabs.setTabIcon(index, icon_dirty)
+        else:
+            # 元のアイコンに戻す
+            icon = project_tree.get_icon_for_path(file_path)
+            window.editorTabs.setTabIcon(index, icon)
+
+    def save_current_file():
+        current_idx = window.editorTabs.currentIndex()
+        if current_idx < 0:
+            return
+            
+        file_path = window.editorTabs.tabToolTip(current_idx)
+        widget = window.editorTabs.widget(current_idx)
+        
+        content = ""
+        if hasattr(widget, "toPlainText"):
+            content = widget.toPlainText()
+        elif hasattr(widget, "content"):
+            content = widget.content
+            
+        # エレメントからエンコーディングを取得
+        element = get_element_for_path(file_path)
+        encoding = "utf-8"
+        if element:
+            encoding = element.plugin.get_element_attribute(element, "encoding", file_path=file_path)
+            
+        try:
+            with open(file_path, 'w', encoding=encoding) as f:
+                f.write(content)
+            window.statusBar().showMessage(f"保存しました: {file_path}", 3000)
+            widget._last_notified_content = content
+            set_tab_dirty(current_idx, False)
+        except Exception as e:
+            QMessageBox.critical(window, "保存エラー", f"ファイルを保存できませんでした: {e}")
+
+    save_action = window.findChild(QAction, "actionSaveProject")
+    if save_action:
+        save_action.setShortcut(QKeySequence.StandardKey.Save)
+        save_action.triggered.connect(save_current_file)
+        # メニューに追加
+        file_menu = window.findChild(QMenu, "menuFile")
+        if file_menu:
+            exit_action = window.findChild(QAction, "actionExit")
+            file_menu.insertAction(exit_action, save_action)
+            file_menu.insertSeparator(exit_action)
+    else:
+        # アクションが見つからない場合のフォールバック
+        save_action = QAction("保存", window)
+        save_action.setShortcut(QKeySequence.StandardKey.Save)
+        save_action.triggered.connect(save_current_file)
+        window.addAction(save_action)
+
     # --- アクティビティバーの設定 ---
     activity_bar = window.findChild(QWidget, "TLeftActivityBar")
     dock_action_map = {} # {QDockWidget: QAction}
@@ -210,7 +338,6 @@ def main():
     def update_activity_bar(dock_widget, area):
         if not activity_bar:
             return
-            
         is_left = (area == Qt.DockWidgetArea.LeftDockWidgetArea)
         
         if is_left and dock_widget not in dock_action_map:
@@ -309,7 +436,50 @@ def main():
         if plugins:
             plugin_combo.setCurrentIndex(0)
             on_plugin_selected(plugins[0])
+
+    # --- core.api のハンドラ登録 ---
+    # 1. メッセージ (ステータスバー)
+    core.api.register_message_handler(lambda text, timeout: window.statusBar().showMessage(text, timeout))
+
+    # 2. 進捗 (ステータスバーにプログレスバーを追加)
+    from PySide6.QtWidgets import QProgressBar
+    progress_bar = QProgressBar()
+    progress_bar.setMaximumWidth(200)
+    progress_bar.setTextVisible(True)
+    progress_bar.setVisible(False)
+    window.statusBar().addPermanentWidget(progress_bar)
     
+    def on_progress(value, text):
+        if value < 0 or value >= 100:
+            progress_bar.setVisible(False)
+            if text: window.statusBar().showMessage(text, 3000)
+        else:
+            progress_bar.setVisible(True)
+            progress_bar.setValue(value)
+            if text: progress_bar.setFormat(f"{text}: %p%")
+            else: progress_bar.setFormat("%p%")
+
+    core.api.register_progress_handler(on_progress)
+
+    # 3. タブ操作
+    def get_open_tabs():
+        tabs = []
+        if window.editorTabs:
+            for i in range(window.editorTabs.count()):
+                tabs.append({
+                    "index": i,
+                    "name": window.editorTabs.tabText(i),
+                    "path": window.editorTabs.tabToolTip(i),
+                    "widget": window.editorTabs.widget(i),
+                    "is_dirty": getattr(window.editorTabs.widget(i), "is_dirty", False)
+                })
+        return tabs
+
+    core.api.register_tabs_handler({
+        "get_tabs": get_open_tabs,
+        "open_tab": open_file
+    })
+
     # ウィンドウを表示
     window.show()
     sys.exit(app.exec())

@@ -3,5 +3,12 @@
     "output_languages": [
         "l_english",
         "l_japanese"
-    ]
+    ],
+    "event_id_format": "{namespace}.{number}",
+    "event_loc_file_format": "{namespace}_{lang}.yml",
+    "event_title_key_format": "{id}.t",
+    "event_desc_key_format": "{id}.d",
+    "event_option_key_format": "{id}.{a-z}",
+    "display_language": "l_japanese",
+    "loc_file_pattern": "*_l_*.yml"
 }
