@@ -12,10 +12,10 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QLineEdit, QListWidget, QPl
 from PySide6.QtSvgWidgets import QGraphicsSvgItem
 from PySide6.QtUiTools import QUiLoader
 
-from profiles.hoi4.script_parser import AssignmentNode, ObjectNode, Parser, ScalarNode, DocumentAst
+from plugins.hoi4.script_parser import AssignmentNode, ObjectNode, Parser, ScalarNode, DocumentAst
 
 
-from profiles.hoi4.events.event_parser import EventParser, ParsedEvent
+from plugins.hoi4.events.event_parser import EventParser, ParsedEvent
 
 
 MODE_NAME = "Event Editor"
@@ -155,7 +155,7 @@ class EditableTextItem(QGraphicsTextItem):
 
 def setup(widget, file_path, content):
     controller = EventEditorController(widget, file_path, content)
-    widget.profile_controller = controller
+    widget.plugin_controller = controller
     widget.toPlainText = lambda: widget.content
     widget.setPlainText = controller.set_content
     controller.bind()
@@ -171,7 +171,7 @@ class EventEditorController:
         self.updating = False
         self.localization_updates = {} # ローカライズの更新内容を保持
         # パーサーの初期化 (ダミーのプロファイルオブジェクトを渡す)
-        self.parser = EventParser(profile=object())
+        self.parser = EventParser(plugin=object())
 
     def bind(self):
         self.event_list = find(self.widget, QListWidget, "eventListWidget")

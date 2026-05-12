@@ -161,7 +161,7 @@ class ProjectTreeDock:
         if self.newFolderButton:
             self.newFolderButton.clicked.connect(self.on_new_folder_clicked)
             
-        self.active_profile = None
+        self.active_plugin = None
             
     def on_item_double_clicked(self, item, column):
         file_path = item.data(0, Qt.ItemDataRole.UserRole)
@@ -414,17 +414,17 @@ class ProjectTreeDock:
         if hasattr(self.parent_window, "editorTabs") and self.parent_window.editorTabs:
             self.parent_window.editorTabs.setCurrentIndex(index)
 
-    def set_active_profile(self, profile):
-        """アクティブなプロファイルを設定する"""
-        self.active_profile = profile
+    def set_active_plugin(self, plugin):
+        """アクティブなプラグインを設定する"""
+        self.active_plugin = plugin
         self.path_to_icon = {}
         
         # テーマのテキスト色を取得
         text_color = self.parent_window.palette().color(QPalette.ColorRole.WindowText).name()
         
         # 各要素のアイコンをキャッシュ
-        if profile and profile.elements:
-            for element in profile.elements:
+        if plugin and plugin.elements:
+            for element in plugin.elements:
                 if element.icon_path and os.path.exists(element.icon_path):
                     if element.icon_path.lower().endswith(".svg"):
                         icon = load_svg_icon(element.icon_path, text_color)
@@ -443,7 +443,7 @@ class ProjectTreeDock:
                     norm_path = os.path.normpath(element.path)
                     self.path_to_icon[norm_path] = icon
 
-        print(f"ProjectTreeDock: プロファイルを適用しました - {profile.name}")
+        print(f"ProjectTreeDock: プラグインを適用しました - {plugin.name}")
         # プロジェクトが開かれている場合は再読み込みしてアイコンを反映
         if hasattr(self, "current_project_path") and self.current_project_path:
             self.load_project(self.current_project_path)
@@ -454,7 +454,7 @@ class ProjectTreeDock:
             return
 
         # ファイルタイプの要素のみを抽出
-        elements = [e for e in self.active_profile.elements if not e.is_folder] if self.active_profile else []
+        elements = [e for e in self.active_plugin.elements if not e.is_folder] if self.active_plugin else []
 
         if not elements:
             self._create_generic_file()
@@ -481,9 +481,9 @@ class ProjectTreeDock:
                     icon.addPixmap(pixmap, QIcon.Mode.Selected, QIcon.State.On)
             
             if icon:
-                action = menu.addAction(icon, f"{element.name} を作成...")
+                action = menu.addAction(icon, f"{element.name}を作成...")
             else:
-                action = menu.addAction(f"{element.name} を作成...")
+                action = menu.addAction(f"{element.name}を作成...")
             action.triggered.connect(lambda checked=False, e=element: self._create_element_file(e))
         
         menu.addSeparator()
@@ -498,7 +498,7 @@ class ProjectTreeDock:
             return
 
         # フォルダタイプの要素のみを抽出
-        elements = [e for e in self.active_profile.elements if e.is_folder] if self.active_profile else []
+        elements = [e for e in self.active_plugin.elements if e.is_folder] if self.active_plugin else []
 
         if not elements:
             self._create_generic_folder()
@@ -523,9 +523,9 @@ class ProjectTreeDock:
                     icon.addPixmap(pixmap, QIcon.Mode.Selected, QIcon.State.On)
 
             if icon:
-                action = menu.addAction(icon, f"{element.name} フォルダを作成...")
+                action = menu.addAction(icon, f"{element.name}フォルダを作成...")
             else:
-                action = menu.addAction(f"{element.name} フォルダを作成...")
+                action = menu.addAction(f"{element.name}フォルダを作成...")
             action.triggered.connect(lambda checked=False, e=element: self._create_element_file(e))
         
         menu.addSeparator()

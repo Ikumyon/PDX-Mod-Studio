@@ -1,7 +1,6 @@
 import sys
 import os
 from PySide6.QtWidgets import QApplication, QMenu, QVBoxLayout, QToolButton, QWidget
-
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtCore import QFile, Qt, QSize
 
@@ -28,7 +27,7 @@ def main():
 
     # --- ドックの初期化 ---
     from core.project_tree_dock import ProjectTreeDock
-    from core.profile_manager import ProfileManager
+    from core.plugin_manager import PluginManager
     from core.mode_manager import ModeManager
     from core.editor import EditorWidget
     project_tree = ProjectTreeDock(window)
@@ -71,16 +70,16 @@ def main():
         window.editorTabs.setCornerWidget(mode_selector, Qt.Corner.TopRightCorner)
 
     def get_element_for_path(file_path):
-        """ファイルパスが属するプロファイル内のエレメントを特定する"""
-        profile = project_tree.active_profile
-        if not profile or not hasattr(project_tree, "current_project_path"):
+        """ファイルパスが属するプラグイン内のエレメントを特定する"""
+        plugin = project_tree.active_plugin
+        if not plugin or not hasattr(project_tree, "current_project_path"):
             return None
         
         try:
             rel_path = os.path.relpath(file_path, project_tree.current_project_path)
             norm_rel_dir = os.path.normpath(os.path.dirname(rel_path))
             
-            for element in profile.elements:
+            for element in plugin.elements:
                 e_path = os.path.normpath(element.path)
                 if norm_rel_dir == e_path or norm_rel_dir.startswith(e_path + os.sep):
                     return element
@@ -133,7 +132,6 @@ def main():
         # モードの差し替え
         file_path = window.editorTabs.tabToolTip(current_tab_idx)
         # 現在のコンテンツを保持（変更されている可能性があるため）
-        # ただし widget が EditorWidget かどうかで取得方法が異なる
         content = ""
         if hasattr(widget, "toPlainText"):
             content = widget.toPlainText()
@@ -184,7 +182,6 @@ def main():
             element = get_element_for_path(file_path)
             available_modes = []
             if element:
-                profile = project_tree.active_profile
                 available_modes = mode_manager.get_modes_for_element(element)
             
             # 初期モードの決定
@@ -205,9 +202,8 @@ def main():
             print(f"ファイルを開けませんでした: {e}")
 
     window.open_file = open_file
-    # ---------------------------
 
-    # ---------------------------------------
+    # --- アクティビティバーの設定 ---
     activity_bar = window.findChild(QWidget, "TLeftActivityBar")
     dock_action_map = {} # {QDockWidget: QAction}
     
@@ -227,92 +223,95 @@ def main():
             action = dock_action_map.pop(dock_widget)
             activity_bar.removeAction(action)
 
-    # アイコンサイズの設定
     if activity_bar:
         activity_bar.setIconSize(QSize(28, 28))
         activity_bar.setMovable(False)
 
-    # 初期状態の反映と監視設定
     for dock in docks:
-        # ドックの場所が変わった時（別のエリアに移動した時など）
         dock.dockLocationChanged.connect(lambda area, d=dock: update_activity_bar(d, area))
-        # フローティング状態が変わった時（切り離された時など）
         dock.topLevelChanged.connect(lambda floating, d=dock: update_activity_bar(d, window.dockWidgetArea(d)))
-        
-        # 初期エリアを取得して反映
         current_area = window.dockWidgetArea(dock)
         update_activity_bar(dock, current_area)
-    # ---------------------------------------
 
-    # --- プロファイルの読み込みとメニュー設定 ---
-    from PySide6.QtWidgets import QComboBox, QLabel, QHBoxLayout, QFrame
+    # --- プラグインの読み込みとメニュー設定 ---
+    from PySide6.QtWidgets import QComboBox, QLabel, QHBoxLayout
     
-    profiles_dir = os.path.join(base_dir, "profiles")
-    profile_manager = ProfileManager(profiles_dir)
-    profiles = profile_manager.load_profiles()
+    plugins_dir = os.path.join(base_dir, "plugins")
+    plugin_manager = PluginManager(plugins_dir)
+    plugins = plugin_manager.load_plugins()
 
-    def on_profile_selected(profile):
-        if not profile:
+    def on_plugin_selected(plugin):
+        if not plugin:
             return
-        print(f"プロファイルが選択されました: {profile.name} (Version: {profile.version})")
-        window.statusBar().showMessage(f"プロファイル '{profile.name}' が選択されました。")
-        # ProjectTreeDock にプロファイルを通知
-        project_tree.set_active_profile(profile)
+        print(f"プラグインが選択されました: {plugin.name} (Version: {plugin.version})")
+        window.statusBar().showMessage(f"プラグイン '{plugin.name}' が選択されました。")
+        # ProjectTreeDock にプラグインを通知
+        project_tree.set_active_plugin(plugin)
 
     # メニューバーにコンボボックスを配置
     menubar = window.menuBar()
     if menubar:
-        profile_container = QWidget()
-        profile_layout = QHBoxLayout(profile_container)
-        profile_layout.setContentsMargins(10, 0, 10, 0)
-        profile_layout.setSpacing(5)
+        plugin_container = QWidget()
+        plugin_layout = QHBoxLayout(plugin_container)
+        plugin_layout.setContentsMargins(10, 0, 10, 0)
+        plugin_layout.setSpacing(5)
         
-        label = QLabel("プロファイル:")
+        label = QLabel("プラグイン:")
         label.setStyleSheet("font-weight: bold; color: #888;")
-        profile_layout.addWidget(label)
+        plugin_layout.addWidget(label)
         
         from PySide6.QtGui import QIcon, QPixmap
         
-        profile_combo = QComboBox()
-        profile_combo.setMinimumWidth(200)
-        profile_combo.setIconSize(QSize(20, 20))
+        plugin_combo = QComboBox()
+        plugin_combo.setMinimumWidth(200)
+        plugin_combo.setIconSize(QSize(20, 20))
         
-        # プロファイルをコンボボックスに追加
-        for profile in profiles:
-            if profile.icon_path and os.path.exists(profile.icon_path):
-                # 全ての状態でオリジナルの画像を使用するように設定して、色味の変化を防ぐ
+        # プラグインをコンボボックスに追加
+        for plugin in plugins:
+            if plugin.icon_path and os.path.exists(plugin.icon_path):
                 icon = QIcon()
-                pixmap = QPixmap(profile.icon_path)
+                pixmap = QPixmap(plugin.icon_path)
                 icon.addPixmap(pixmap, QIcon.Mode.Normal, QIcon.State.Off)
                 icon.addPixmap(pixmap, QIcon.Mode.Normal, QIcon.State.On)
                 icon.addPixmap(pixmap, QIcon.Mode.Active, QIcon.State.Off)
                 icon.addPixmap(pixmap, QIcon.Mode.Active, QIcon.State.On)
                 icon.addPixmap(pixmap, QIcon.Mode.Selected, QIcon.State.Off)
                 icon.addPixmap(pixmap, QIcon.Mode.Selected, QIcon.State.On)
-                profile_combo.addItem(icon, profile.name, profile)
+                plugin_combo.addItem(icon, plugin.name, plugin)
             else:
-                profile_combo.addItem(profile.name, profile)
+                plugin_combo.addItem(plugin.name, plugin)
             
-        profile_layout.addWidget(profile_combo)
+        plugin_layout.addWidget(plugin_combo)
         
-        # コーナーウィジェットとしてセット
-        menubar.setCornerWidget(profile_container, Qt.Corner.TopRightCorner)
+        # プラグイン設定ボタン
+        from core.utils import load_svg_icon
+        settings_button = QToolButton()
+        settings_button.setIcon(load_svg_icon(os.path.join(base_dir, "assets/icons/settings.svg"), "#ffffff"))
+        settings_button.setToolTip("プラグイン設定")
+        settings_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        plugin_layout.addWidget(settings_button)
+
+        def on_settings_clicked():
+            plugin = plugin_combo.itemData(plugin_combo.currentIndex())
+            if plugin:
+                # ProjectTreeDockから現在のプロジェクトパスを取得
+                project_path = getattr(project_tree, "current_project_path", None)
+                plugin.show_settings(window, project_path)
         
-        # シグナル接続
-        profile_combo.currentIndexChanged.connect(
-            lambda index: on_profile_selected(profile_combo.itemData(index))
+        settings_button.clicked.connect(on_settings_clicked)
+        
+        menubar.setCornerWidget(plugin_container, Qt.Corner.TopRightCorner)
+        
+        plugin_combo.currentIndexChanged.connect(
+            lambda index: on_plugin_selected(plugin_combo.itemData(index))
         )
         
-        # 初期状態の設定（最初のプロファイルを選択）
-        if profiles:
-            profile_combo.setCurrentIndex(0)
-            on_profile_selected(profiles[0])
-    # -----------------------------------------
+        if plugins:
+            plugin_combo.setCurrentIndex(0)
+            on_plugin_selected(plugins[0])
     
     # ウィンドウを表示
     window.show()
-    
-    # イベントループの開始
     sys.exit(app.exec())
 
 if __name__ == "__main__":

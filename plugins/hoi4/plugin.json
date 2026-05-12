@@ -3,5 +3,7 @@
     "name": "Hearts of Iron IV",
     "version": "1.14.*",
     "format_version": "1",
-    "icon": "DLC_HoI4.png"
+    "icon": "DLC_HoI4.png",
+    "settings_form": "settings.ui",
+    "settings_logic": "settings.py"
 }

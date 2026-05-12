@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>settings_dialog</class>
+ <widget class="QWidget" name="settings_dialog">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>400</width>
+    <height>500</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>プロファイル設定</string>
+  </property>
+  <layout class="QVBoxLayout" name="mainLayout">
+   <item>
+    <widget class="QLabel" name="settingsTitle">
+     <property name="text">
+      <string>Hearts of Iron IV プロファイル設定</string>
+     </property>
+     <property name="styleSheet">
+      <string>font-size: 14pt; font-weight: bold; color: #ffffff;</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="generalGroup">
+     <property name="title">
+      <string>全般設定</string>
+     </property>
+     <layout class="QFormLayout" name="generalFormLayout">
+      <item row="0" column="0">
+       <widget class="QLabel" name="gamePathLabel">
+        <property name="text">
+         <string>ゲーム本体のパス:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <layout class="QHBoxLayout" name="gamePathLayout">
+        <item>
+         <widget class="QLineEdit" name="gamePathEdit">
+          <property name="placeholderText">
+           <string>例: C:/Program Files (x86)/Steam/steamapps/common/Hearts of Iron IV</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="gamePathBrowseButton">
+          <property name="text">
+           <string>参照...</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="localisationGroup">
+     <property name="title">
+      <string>ローカリゼーション</string>
+     </property>
+     <layout class="QVBoxLayout" name="localisationLayout">
+      <item>
+       <widget class="QLabel" name="outputLabel">
+        <property name="text">
+         <string>自動出力・更新する言語:</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QListWidget" name="outputLanguagesList">
+        <property name="minimumSize">
+         <size>
+          <width>0</width>
+          <height>250</height>
+         </size>
+        </property>
+        <property name="toolTip">
+         <string>チェックを入れた言語のローカリゼーションファイルが自動的に生成・更新されます。</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <spacer name="verticalSpacer">
+     <property name="orientation">
+      <enum>Qt::Orientation::Vertical</enum>
+     </property>
+     <property name="sizeHint" stdset="0">
+      <size>
+       <width>20</width>
+       <height>40</height>
+      </size>
+     </property>
+    </spacer>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

@@ -3,7 +3,7 @@ from typing import Any, Optional
 import os
 import json
 
-from profiles.hoi4.script_parser import (AssignmentNode, ObjectNode, Parser, infer_value_type, 
+from plugins.hoi4.script_parser import (AssignmentNode, ObjectNode, Parser, infer_value_type, 
                                         node_value, value_range, Diagnostic, SourcePosition, SourceRange)
 
 # プロファイル内で使用するデータ保持用クラス
@@ -62,8 +62,8 @@ class ParsedEvent:
 
 
 class EventParser:
-    def __init__(self, profile: Any):
-        self.profile = profile
+    def __init__(self, plugin: Any):
+        self.plugin = plugin
         self.schema = {}
         schema_path = os.path.join(os.path.dirname(__file__), "event_schema.json")
         if os.path.exists(schema_path):
@@ -77,7 +77,7 @@ class EventParser:
         import os
         relative_path = os.path.relpath(path, project_root) if project_root else path
         ast, tokens, diagnostics = Parser(text).parse()
-        document_type = self.profile.classify_document(relative_path) if hasattr(self.profile, "classify_document") else "unknown"
+        document_type = self.plugin.classify_document(relative_path) if hasattr(self.plugin, "classify_document") else "unknown"
         
         # イベント構造の抽出
         events = self._extract_events(ast)
@@ -130,17 +130,17 @@ class EventParser:
 
     def extract_entities(self, document: Document) -> list[Entity]:
         entities: list[Entity] = []
-        if not hasattr(self.profile, "matching_entity_rules"):
+        if not hasattr(self.plugin, "matching_entity_rules"):
             return entities
             
-        for rule in self.profile.matching_entity_rules(document.document_type):
+        for rule in self.plugin.matching_entity_rules(document.document_type):
             for assignment in document.ast.items:
                 if isinstance(assignment, AssignmentNode) and assignment.key == rule.key:
                     entities.append(self._build_entity(document, assignment, rule, parent_id=""))
         return entities
 
     def _build_entity(self, document: Document, assignment: AssignmentNode, rule: EntityRule, parent_id: str) -> Entity:
-        schema = self.profile.schemas.get(rule.schema)
+        schema = self.plugin.schemas.get(rule.schema)
         properties = self._extract_properties(assignment.value, schema)
         external_id = self._resolve_entity_id(document, assignment, properties, rule)
         internal_id = f"{document.id}:{assignment.range.start_offset}:{rule.kind}:{external_id or assignment.key}"
@@ -246,7 +246,7 @@ class EventParser:
                 seen.add((prop.name, reference.target_kind, reference.target_id))
                 entity.references.append(reference)
 
-        for rule in self.profile.reference_rules:
+        for rule in self.plugin.reference_rules:
             if rule.source_kind != entity.kind:
                 continue
             for prop in entity.properties.get(rule.property, []):
@@ -267,7 +267,7 @@ class EventParser:
                 )
 
     def _extract_relations(self, entity: Entity) -> None:
-        for rule in self.profile.relation_rules:
+        for rule in self.plugin.relation_rules:
             if rule.source_kind != entity.kind:
                 continue
             for prop in entity.properties.get(rule.property, []):
