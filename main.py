@@ -1,6 +1,6 @@
 import sys
 import os
-from PySide6.QtWidgets import QApplication, QMenu, QVBoxLayout, QToolButton, QWidget
+from PySide6.QtWidgets import QApplication, QMenu, QVBoxLayout, QToolButton, QWidget, QTabBar
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtCore import QFile, Qt, QSize
 import core.api
@@ -65,31 +65,100 @@ def main():
         for dock in docks:
             view_menu.addAction(dock.toggleViewAction())
 
-    # --- エディタータブの設定 ---
-    window.editorTabs = window.findChild(object, "editorTabs")
-    if window.editorTabs:
-        window.editorTabs.tabCloseRequested.connect(lambda index: (
-            window.editorTabs.removeTab(index),
-            project_tree.update_open_editors(window.editorTabs)
-        ))
-        def on_tab_changed(index):
-            project_tree.sync_selection(index)
-            update_mode_selector(index)
-            
-        window.editorTabs.currentChanged.connect(on_tab_changed)
-        # 初期状態のリスト更新
+    # --- エディタータブの設定 (QTabBar + QStackedWidget への適応) ---
+    tab_bar_container = window.findChild(object, "editorTabBarContainer")
+    editor_stacked = window.findChild(object, "editorStackedWidget")
+    tab_corner_container = window.findChild(object, "tabCornerContainer")
+
+    if not tab_bar_container or not editor_stacked:
+        print("Error: editorTabBarContainer or editorStackedWidget not found in UI")
+        sys.exit(-1)
+
+    # QTabBar をプログラム側で生成（QUiLoader の制限回避）
+    editor_tab_bar = QTabBar(tab_bar_container)
+    editor_tab_bar.setDocumentMode(True)
+    editor_tab_bar.setTabsClosable(True)
+    editor_tab_bar.setExpanding(False)
+    if tab_bar_container.layout():
+        tab_bar_container.layout().addWidget(editor_tab_bar)
+
+    class EditorTabProxy(QWidget):
+        def __init__(self, tab_bar, stacked_widget):
+            super().__init__()
+            self.tab_bar = tab_bar
+            self.stacked_widget = stacked_widget
+            self.tabCloseRequested = tab_bar.tabCloseRequested
+            self.currentChanged = tab_bar.currentChanged
+
+        def count(self): return self.tab_bar.count()
+        def currentIndex(self): return self.tab_bar.currentIndex()
+        def setCurrentIndex(self, index):
+            self.tab_bar.setCurrentIndex(index)
+            self.stacked_widget.setCurrentIndex(index)
+        def widget(self, index): return self.stacked_widget.widget(index)
+        def tabText(self, index): return self.tab_bar.tabText(index)
+        def setTabText(self, index, text): self.tab_bar.setTabText(index, text)
+        def tabToolTip(self, index): return self.tab_bar.tabToolTip(index)
+        def setTabToolTip(self, index, tip): self.tab_bar.setTabToolTip(index, tip)
+        def setTabIcon(self, index, icon): self.tab_bar.setTabIcon(index, icon)
+        def removeTab(self, index):
+            w = self.stacked_widget.widget(index)
+            self.tab_bar.removeTab(index)
+            if w: self.stacked_widget.removeWidget(w)
+        def addTab(self, widget, icon, text):
+            self.stacked_widget.addWidget(widget)
+            idx = self.tab_bar.addTab(icon, text)
+            return idx
+        def insertTab(self, index, widget, icon, text):
+            self.stacked_widget.insertWidget(index, widget)
+            idx = self.tab_bar.insertTab(index, icon, text)
+            return idx
+        def indexOf(self, widget): return self.stacked_widget.indexOf(widget)
+        def setCornerWidget(self, widget, corner):
+            if tab_corner_container and tab_corner_container.layout():
+                # 既存のウィジェットのうち、modeSelectorButton 以外を削除
+                layout = tab_corner_container.layout()
+                for i in reversed(range(layout.count())):
+                    item = layout.itemAt(i)
+                    w = item.widget()
+                    if w and w.objectName() != "modeSelectorButton":
+                        layout.removeItem(item)
+                        w.deleteLater()
+                layout.addWidget(widget)
+
+    window.editorTabs = EditorTabProxy(editor_tab_bar, editor_stacked)
+    editor_tab_bar.currentChanged.connect(editor_stacked.setCurrentIndex)
+
+    # シグナルの接続
+    window.editorTabs.tabCloseRequested.connect(lambda index: (
+        window.editorTabs.removeTab(index),
         project_tree.update_open_editors(window.editorTabs)
+    ))
+
+    def on_tab_changed(index):
+        project_tree.sync_selection(index)
+        update_mode_selector(index)
+
+    window.editorTabs.currentChanged.connect(on_tab_changed)
+    # 初期状態のリスト更新
+    project_tree.update_open_editors(window.editorTabs)
 
     # --- モード管理の初期化 ---
     mode_manager = ModeManager()
     
-    # モード切り替え用のコンボボックスをタブの右端に配置
-    from PySide6.QtWidgets import QComboBox
-    mode_selector = QComboBox()
-    mode_selector.setMinimumWidth(150)
-    mode_selector.setVisible(False) # 初期状態は非表示
-    if window.editorTabs:
-        window.editorTabs.setCornerWidget(mode_selector, Qt.Corner.TopRightCorner)
+    # モード切り替え用のボタンをUIから取得
+    mode_selector = window.findChild(QToolButton, "modeSelectorButton")
+    if mode_selector:
+        mode_selector.setVisible(False) # 初期状態は非表示
+        mode_selector.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        mode_selector.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        mode_selector.setIconSize(QSize(20, 20))
+        mode_icon_path = os.path.join(base_dir, "assets", "icons", "panel-top-open.svg")
+        if os.path.exists(mode_icon_path):
+            from core.utils import load_svg_icon
+            icon_color = window.palette().color(window.foregroundRole()).name()
+            mode_selector.setIcon(load_svg_icon(mode_icon_path, icon_color))
+        mode_selector.setStyleSheet("QToolButton::menu-indicator { image: none; }") # 三角マークを隠す場合は設定
 
     def get_element_for_path(file_path):
         """ファイルパスが属するプラグイン内のエレメントを特定する"""
@@ -109,9 +178,10 @@ def main():
             pass
         return None
 
+    # --- modeSelectorButton のメニュー更新ロジック ---
     def update_mode_selector(index):
-        if not window.editorTabs or index < 0:
-            mode_selector.setVisible(False)
+        if not mode_selector or not window.editorTabs or index < 0:
+            if mode_selector: mode_selector.setVisible(False)
             return
             
         widget = window.editorTabs.widget(index)
@@ -119,65 +189,74 @@ def main():
             mode_selector.setVisible(False)
             return
             
-        # タブに紐付けられた利用可能なモードリストを取得
         available_modes = getattr(widget, "available_modes", [])
         current_mode_id = getattr(widget, "current_mode_id", "script_mode")
         
-        mode_selector.blockSignals(True)
-        mode_selector.clear()
+        # メニューの構築
+        menu = QMenu(mode_selector)
+        current_mode_name = "スクリプトモード"
         
         # 1. 外部定義モード
         for mode in available_modes:
-            mode_selector.addItem(mode.name, mode.mode_id)
+            action = menu.addAction(mode.name)
+            action.setData(mode.mode_id)
+            if mode.mode_id == current_mode_id:
+                current_mode_name = mode.name
+                action.setCheckable(True)
+                action.setChecked(True)
+            action.triggered.connect(lambda checked=False, m_id=mode.mode_id: on_mode_selected(m_id))
             
-        # 2. 標準スクリプトモード (常に最後に追加)
-        mode_selector.addItem("スクリプトモード", "script_mode")
+        menu.addSeparator()
         
-        # 現在のモードを選択
-        idx = mode_selector.findData(current_mode_id)
-        if idx >= 0:
-            mode_selector.setCurrentIndex(idx)
+        # 2. 標準スクリプトモード
+        script_action = menu.addAction("スクリプトモード")
+        script_action.setData("script_mode")
+        if current_mode_id == "script_mode":
+            script_action.setCheckable(True)
+            script_action.setChecked(True)
+        script_action.triggered.connect(lambda checked=False: on_mode_selected("script_mode"))
         
-        mode_selector.blockSignals(False)
+        mode_selector.setMenu(menu)
+        mode_selector.setText("")
+        mode_selector.setToolTip(current_mode_name)
+        mode_selector.setFixedSize(32, 28)
         mode_selector.setVisible(True)
+        mode_selector.update() # 再描画を促す
 
-    def on_mode_selector_changed(index):
+    def on_mode_selected(mode_id):
         current_tab_idx = window.editorTabs.currentIndex()
         if current_tab_idx < 0:
             return
             
-        mode_id = mode_selector.itemData(index)
         widget = window.editorTabs.widget(current_tab_idx)
         if not widget or getattr(widget, "current_mode_id", "") == mode_id:
             return
             
         was_dirty = getattr(widget, "is_dirty", False)
-
-        # モードの差し替え
         file_path = window.editorTabs.tabToolTip(current_tab_idx)
-        # 現在のコンテンツを保持（変更されている可能性があるため）
+
         content = ""
         if hasattr(widget, "toPlainText"):
             content = widget.toPlainText()
-        elif hasattr(widget, "content"): # カスタムモードの場合
+        elif hasattr(widget, "content"):
             content = widget.content
             
         new_widget = create_widget_for_mode(mode_id, file_path, content, getattr(widget, "available_modes", []))
         if new_widget:
-            # タブのウィジェットを差し替え
             window.editorTabs.removeTab(current_tab_idx)
             icon = project_tree.get_icon_for_path(file_path)
             file_name = os.path.basename(file_path)
             window.editorTabs.insertTab(current_tab_idx, new_widget, icon, file_name)
             window.editorTabs.setTabToolTip(current_tab_idx, file_path)
             window.editorTabs.setCurrentIndex(current_tab_idx)
-            
-            # 未保存状態を引き継ぐ
+
             if was_dirty:
                 set_tab_dirty(current_tab_idx, True)
             core.api.notify_mode_changed(file_path, mode_id)
+            update_mode_selector(current_tab_idx)
 
-    mode_selector.currentIndexChanged.connect(on_mode_selector_changed)
+    # 初期表示の更新（定義後に実行）
+    update_mode_selector(window.editorTabs.currentIndex())
 
     def create_widget_for_mode(mode_id, file_path, content, available_modes):
         if mode_id == "script_mode":
@@ -337,6 +416,7 @@ def main():
         for i in range(window.editorTabs.count()):
             if window.editorTabs.tabToolTip(i) == file_path:
                 window.editorTabs.setCurrentIndex(i)
+                update_mode_selector(i)
                 return
         
         # エレメントと利用可能なモードの特定
@@ -364,6 +444,7 @@ def main():
             index = window.editorTabs.addTab(editor, icon, file_name)
             window.editorTabs.setTabToolTip(index, file_path)
             window.editorTabs.setCurrentIndex(index)
+            update_mode_selector(index)
             
             # 「開いているエディター」リストの更新
             project_tree.update_open_editors(window.editorTabs)
