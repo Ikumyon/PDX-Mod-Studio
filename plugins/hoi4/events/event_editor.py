@@ -1,23 +1,42 @@
 from __future__ import annotations
 
-import os
 import json
+import os
 from dataclasses import dataclass, field
 from typing import Optional
 
-from PySide6.QtCore import Qt, QFile, QRectF, QTimer
-from PySide6.QtGui import QPen, QBrush, QColor, QFont, QPainter, QPixmap
-from PySide6.QtWidgets import (QCheckBox, QComboBox, QLineEdit, QListWidget, QPlainTextEdit, QRadioButton, QPushButton, QSpinBox, 
-                               QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsTextItem, QScrollArea, QGraphicsPixmapItem,
-                               QGraphicsEllipseItem, QSplitter)
+import core.api
+from PySide6.QtCore import QFile, Qt, QTimer
+from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen, QPixmap
 from PySide6.QtSvgWidgets import QGraphicsSvgItem
 from PySide6.QtUiTools import QUiLoader
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
+    QGraphicsEllipseItem,
+    QGraphicsPixmapItem,
+    QGraphicsRectItem,
+    QGraphicsScene,
+    QGraphicsTextItem,
+    QGraphicsView,
+    QLineEdit,
+    QListWidget,
+    QPlainTextEdit,
+    QPushButton,
+    QRadioButton,
+    QScrollArea,
+    QSpinBox,
+    QSplitter,
+)
 
-from plugins.hoi4.script_parser import AssignmentNode, ObjectNode, Parser, ScalarNode, DocumentAst
-
-
-from plugins.hoi4.script_parser import AssignmentNode, ObjectNode, Parser, ScalarNode, DocumentAst, SchemaEvaluator, ParsedEntity
-import core.api
+from plugins.hoi4.script_parser import (
+    AssignmentNode,
+    ObjectNode,
+    ParsedEntity,
+    Parser,
+    ScalarNode,
+    SchemaEvaluator,
+)
 
 class ParsedEvent:
     def __init__(self, entity: ParsedEntity):
@@ -239,7 +258,7 @@ class EventEditorController:
             try:
                 with open(path, "r", encoding="utf-8") as f:
                     self.format_config = json.load(f)
-            except:
+            except Exception:
                 self.format_config = {}
         else:
             self.format_config = {}
@@ -252,7 +271,7 @@ class EventEditorController:
             if os.path.exists(settings_path):
                 with open(settings_path, 'r', encoding='utf-8') as f:
                     return json.load(f)
-        except:
+        except Exception:
             pass
         return {}
 
@@ -269,14 +288,14 @@ class EventEditorController:
         try:
             doc = self.parser.parse_document(self.file_path, self.widget.content)
             return doc.properties.get("add_namespace", "")
-        except:
+        except Exception:
             return ""
 
     def apply_format(self, fmt, **kwargs):
         """フォーマット文字列に値を適用する"""
         try:
             return fmt.format(**kwargs)
-        except:
+        except Exception:
             # フォールバック: 単純置換
             res = fmt
             for k, v in kwargs.items():
@@ -826,8 +845,10 @@ class EventEditorController:
             if ai_chance_node and isinstance(ai_chance_node.value, ObjectNode):
                 factor_node = first([item for item in ai_chance_node.value.items if isinstance(item, AssignmentNode) and item.key == "factor"])
                 if factor_node and isinstance(factor_node.value, ScalarNode):
-                    try: factor = float(factor_node.value.value)
-                    except: pass
+                    try:
+                        factor = float(factor_node.value.value)
+                    except Exception:
+                        pass
             option_factors.append(factor)
         
         total_factor = sum(option_factors)
@@ -1295,9 +1316,8 @@ class EventEditorController:
         if not event_id: return
         # メモリ上のデータから再度パースして最新の状態を取得
         text = self.widget.content
-        ast, _, _ = Parser(text).parse()
-        events = self.parser._extract_events(ast, self.file_path)
-        
+        events = self.parser.parse_document(self.file_path, text).events
+
         target = None
         for ev in events:
             if ev.event_id == event_id:
@@ -1600,7 +1620,7 @@ class EventEditorController:
             return plugin
         try:
             return self.widget.parent().parent().active_plugin
-        except:
+        except Exception:
             return None
 
     def on_save_triggered(self):

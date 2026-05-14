@@ -1,17 +1,41 @@
 from __future__ import annotations
 
-import os
 import json
-from typing import Optional, Any
-
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtWidgets import (QWidget, QLineEdit, QPlainTextEdit, QPushButton, QSpinBox, 
-                               QCheckBox, QTreeWidget, QTreeWidgetItem, QStackedWidget,
-                               QToolButton, QMessageBox, QRadioButton)
-
-from plugins.hoi4.script_parser import AssignmentNode, ObjectNode, ScalarNode, Parser, SchemaEvaluator, ParsedEntity
-import core.api
+import os
 from dataclasses import dataclass, field
+from typing import Any, Optional
+
+import core.api
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen, QPixmap, QTextOption
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QGraphicsPixmapItem,
+    QGraphicsRectItem,
+    QGraphicsScene,
+    QGraphicsTextItem,
+    QGraphicsView,
+    QLineEdit,
+    QMessageBox,
+    QPlainTextEdit,
+    QPushButton,
+    QRadioButton,
+    QSpinBox,
+    QStackedWidget,
+    QToolButton,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QWidget,
+)
+
+from plugins.hoi4.script_parser import (
+    AssignmentNode,
+    ObjectNode,
+    ParsedEntity,
+    Parser,
+    ScalarNode,
+    SchemaEvaluator,
+)
 
 @dataclass
 class Document:
@@ -244,7 +268,7 @@ class DecisionEditorController:
             try:
                 with open(path, "r", encoding="utf-8") as f:
                     self.format_config = json.load(f)
-            except:
+            except Exception:
                 self.format_config = {}
         else:
             self.format_config = {}
@@ -268,7 +292,7 @@ class DecisionEditorController:
             if os.path.exists(settings_path):
                 with open(settings_path, 'r', encoding='utf-8') as f:
                     return json.load(f)
-        except:
+        except Exception:
             pass
         return {}
 
@@ -284,7 +308,7 @@ class DecisionEditorController:
                 content = f.read()
                 self.file_contents[path] = content
                 return content
-        except:
+        except Exception:
             return ""
 
     def bind(self):
@@ -377,10 +401,18 @@ class DecisionEditorController:
         self.stacked_cost = find(self.widget, QStackedWidget, "stackedCost")
         self.pp_page = find(self.widget, QWidget, "ppPage")
         self.custom_cost_page = find(self.widget, QWidget, "CostomCostPage")
+        self.spin_cost = find(self.widget, QSpinBox, "spinCost")
         
         # モード切替
         self.btn_standard_mode = find(self.widget, QToolButton, "decisionStandardModeButton")
         self.btn_detail_mode = find(self.widget, QToolButton, "decisionDetailModeButton")
+        self.preview_graphics = find(self.widget, QGraphicsView, "previewGraphicsView")
+
+        if self.preview_graphics:
+            self.preview_scene = QGraphicsScene()
+            self.preview_graphics.setScene(self.preview_scene)
+            self.preview_graphics.setBackgroundBrush(QBrush(QColor("#151815")))
+            self.preview_graphics.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         # イベント接続
         if self.tree_decisions:
@@ -397,6 +429,18 @@ class DecisionEditorController:
             self.radio_pp_cost.toggled.connect(self.on_cost_type_changed)
         if self.radio_custom_cost:
             self.radio_custom_cost.toggled.connect(self.on_cost_type_changed)
+        if self.spin_cost:
+            self.spin_cost.valueChanged.connect(lambda _value: self.update_preview())
+        if self.edit_decision_localisation:
+            self.edit_decision_localisation.textChanged.connect(lambda _text: self.update_preview())
+        if self.text_decision_desc_localisation:
+            self.text_decision_desc_localisation.textChanged.connect(self.update_preview)
+        if self.edit_decision_icon:
+            self.edit_decision_icon.textChanged.connect(lambda _text: self.update_preview())
+        if self.edit_category_localisation:
+            self.edit_category_localisation.textChanged.connect(lambda _text: self.update_preview())
+        if self.edit_category_desc_localisation:
+            self.edit_category_desc_localisation.textChanged.connect(self.update_preview)
 
         # ボタン接続
         if self.btn_add_category: self.btn_add_category.clicked.connect(self.add_category)
@@ -421,6 +465,7 @@ class DecisionEditorController:
         
         # ディシジョンプロパティの接続
         self.connect_scalar(self.edit_decision_icon, "icon")
+        self.connect_spin(self.spin_cost, "cost")
         self.connect_spin(self.spin_days_remove, "days_remove")
         self.connect_spin(self.spin_days_re_enable, "days_re_enable")
         self.connect_bool(self.check_fire_only_once, "fire_only_once")
@@ -617,6 +662,7 @@ class DecisionEditorController:
             self.load_selected_item()
         finally:
             self.updating = False
+            self.update_preview()
 
     def merge_decisions(self, primary: list[ParsedDecision], secondary: list[ParsedDecision]) -> list[ParsedDecision]:
         merged = list(primary)
@@ -649,6 +695,7 @@ class DecisionEditorController:
     def on_tree_selection_changed(self, current, previous):
         if self.updating: return
         self.load_selected_item()
+        self.update_preview()
 
     def load_selected_item(self):
         if not self.tree_decisions: return
@@ -751,6 +798,7 @@ class DecisionEditorController:
                 set_plain(self.text_custom_cost_localisation, "")
                 set_line(self.edit_custom_cost_loc_file, "")
             
+            set_spin(self.spin_cost, prop_text(data, "cost"))
             set_spin(self.spin_days_remove, prop_text(data, "days_remove"))
             set_spin(self.spin_days_re_enable, prop_text(data, "days_re_enable"))
             set_checked(self.check_fire_only_once, prop_bool(data, "fire_only_once"))
@@ -770,6 +818,244 @@ class DecisionEditorController:
                 if self.radio_pp_cost: self.radio_pp_cost.setChecked(True)
                 if self.stacked_cost: self.stacked_cost.setCurrentWidget(self.pp_page)
 
+    def asset_path(self, *parts):
+        return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "asset", "icons", *parts))
+
+    def current_preview_category(self):
+        data = self.get_current_data()
+        if isinstance(data, ParsedDecisionCategory):
+            return data
+
+        if isinstance(data, ParsedDecision) and self.tree_decisions:
+            item = self.tree_decisions.currentItem()
+            if item and item.parent():
+                parent_data = item.parent().data(0, Qt.ItemDataRole.UserRole)
+                if isinstance(parent_data, ParsedDecisionCategory):
+                    return parent_data
+
+            for category in self.categories:
+                if any(dec.id == data.id for dec in category.decisions):
+                    return category
+
+        return self.categories[0] if self.categories else None
+
+    def current_preview_decision_id(self):
+        data = self.get_current_data()
+        return data.id if isinstance(data, ParsedDecision) else ""
+
+    def localised_text(self, key, fallback=""):
+        if not key:
+            return fallback
+        plugin = self.get_hoi4_plugin()
+        registry = getattr(plugin, "localisation_registry", None) if plugin else None
+        if registry:
+            status, entry = registry.search_key_status(key)
+            if entry and entry.get("value"):
+                return entry["value"]
+        return fallback or key
+
+    def category_title_for_preview(self, category):
+        data = self.get_current_data()
+        if isinstance(data, ParsedDecisionCategory) and data.id == category.id:
+            text = self._get_loc_text(self.edit_category_localisation).strip()
+            if text:
+                return text
+        return self.localised_text(category.id, category.id)
+
+    def category_desc_for_preview(self, category):
+        data = self.get_current_data()
+        if isinstance(data, ParsedDecisionCategory) and data.id == category.id:
+            text = self._get_loc_text(self.edit_category_desc_localisation).strip()
+            if text:
+                return text
+        desc_key = f"{category.id}_desc"
+        return self.localised_text(desc_key, desc_key)
+
+    def decision_title_for_preview(self, decision):
+        data = self.get_current_data()
+        if isinstance(data, ParsedDecision) and data.id == decision.id:
+            text = self._get_loc_text(self.edit_decision_localisation).strip()
+            if text:
+                return text
+        return self.localised_text(decision.id, decision.id)
+
+    def decision_cost_for_preview(self, decision):
+        data = self.get_current_data()
+        is_current = isinstance(data, ParsedDecision) and data.id == decision.id
+        if is_current and self.spin_cost:
+            return str(self.spin_cost.value())
+        return prop_text(decision, "cost") or "0"
+
+    def decision_uses_custom_cost(self, decision):
+        data = self.get_current_data()
+        if isinstance(data, ParsedDecision) and data.id == decision.id and self.radio_custom_cost:
+            return self.radio_custom_cost.isChecked()
+        return decision.first("custom_cost_trigger") is not None
+
+    def add_preview_text(self, parent, text, x, y, width, size=9, color="#f2f2e8", bold=False, align=None):
+        item = QGraphicsTextItem(text, parent)
+        item.setTextWidth(width)
+        font = QFont("Segoe UI", size)
+        font.setBold(bold)
+        item.setFont(font)
+        item.setDefaultTextColor(QColor(color))
+        if align is not None:
+            option = QTextOption(item.document().defaultTextOption())
+            option.setAlignment(align)
+            item.document().setDefaultTextOption(option)
+        item.setPos(x, y)
+        self.preview_items.append(item)
+        return item
+
+    def add_centered_preview_text(self, parent, text, center_x, y, max_width, size=9, color="#f2f2e8", bold=False):
+        item = QGraphicsTextItem(text, parent)
+        font = QFont("Segoe UI", size)
+        font.setBold(bold)
+        item.setFont(font)
+        item.setDefaultTextColor(QColor(color))
+
+        natural_width = item.boundingRect().width()
+        if natural_width > max_width:
+            item.setTextWidth(max_width)
+            option = QTextOption(item.document().defaultTextOption())
+            option.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            item.document().setDefaultTextOption(option)
+            item.setPos(center_x - max_width / 2, y)
+        else:
+            item.setPos(center_x - natural_width / 2, y)
+
+        self.preview_items.append(item)
+        return item
+
+    def add_preview_pixmap(self, parent, path, x, y, width, height):
+        pixmap = QPixmap(path)
+        if pixmap.isNull():
+            return None
+        pixmap = pixmap.scaled(
+            width,
+            height,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        item = QGraphicsPixmapItem(pixmap, parent)
+        item.setPos(x + (width - pixmap.width()) / 2, y + (height - pixmap.height()) / 2)
+        self.preview_items.append(item)
+        return item
+
+    def draw_preview_placeholder(self):
+        width = 520
+        height = 320
+        frame = QGraphicsRectItem(0, 0, width, height)
+        frame.setBrush(QBrush(QColor("#111412")))
+        frame.setPen(QPen(QColor("#3b3830"), 2))
+        self.preview_scene.addItem(frame)
+        self.preview_items.append(frame)
+
+        pixmap = QPixmap(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "placeholder.png")))
+        if not pixmap.isNull():
+            pixmap = pixmap.scaled(width, height, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
+            image = QGraphicsPixmapItem(pixmap, frame)
+            image.setOpacity(0.35)
+            image.setPos((width - pixmap.width()) / 2, (height - pixmap.height()) / 2)
+            self.preview_items.append(image)
+
+        overlay = QGraphicsRectItem(0, 0, width - 72, 58, frame)
+        overlay.setPos(36, 130)
+        overlay.setBrush(QBrush(QColor(0, 0, 0, 160)))
+        overlay.setPen(QPen(QColor("#5f5646"), 1))
+        self.preview_items.append(overlay)
+        self.add_preview_text(frame, "Select a category or decision", 54, 145, width - 108, 12, "#f0e9d8", True)
+        self.preview_scene.setSceneRect(0, 0, width, height)
+
+    def draw_decision_row(self, parent, decision, y, selected=False):
+        row_height = 39
+        row = QGraphicsRectItem(0, 0, 500, row_height, parent)
+        row.setPos(10, y)
+        row.setBrush(QBrush(QColor("#213f22" if not selected else "#284d29")))
+        row.setPen(QPen(QColor("#5f7f51" if selected else "#1b291b"), 1))
+        self.preview_items.append(row)
+
+        icon_path = self.asset_path("generic_decision.png")
+        self.add_preview_pixmap(row, icon_path, 10, 4, 31, 31)
+
+        title = self.decision_title_for_preview(decision)
+        self.add_preview_text(row, title, 60, 5, 300, 9, "#f5f3e8", True)
+
+        if self.decision_uses_custom_cost(decision):
+            custom = prop_text(decision, "custom_cost_text") or "custom"
+            self.add_preview_text(row, self.localised_text(custom, custom), 394, 6, 74, 8, "#efc84a", True)
+        else:
+            self.add_preview_pixmap(row, self.asset_path("pp_icon.png"), 387, 8, 20, 20)
+            self.add_preview_text(row, self.decision_cost_for_preview(decision), 413, 5, 42, 9, "#ffcf25", True)
+
+        self.add_preview_pixmap(row, self.asset_path("mail_checkmark.png"), 462, 4, 34, 30)
+
+    def update_preview(self):
+        if not hasattr(self, "preview_scene"):
+            return
+        self.preview_scene.clear()
+        self.preview_items = []
+
+        category = self.current_preview_category()
+        if not category:
+            self.draw_preview_placeholder()
+            return
+
+        width = 520
+        row_height = 39
+        row_count = max(1, len(category.decisions))
+        height = 154 + row_count * row_height + 14
+
+        frame = QGraphicsRectItem(0, 0, width, height)
+        frame.setBrush(QBrush(QColor("#101412")))
+        frame.setPen(QPen(QColor("#4a4539"), 2))
+        self.preview_scene.addItem(frame)
+        self.preview_items.append(frame)
+
+        top_bar = QGraphicsRectItem(0, 0, width - 16, 42, frame)
+        top_bar.setPos(8, 8)
+        top_bar.setBrush(QBrush(QColor("#211c17")))
+        top_bar.setPen(QPen(QColor("#62513d"), 1))
+        self.preview_items.append(top_bar)
+        self.add_preview_pixmap(top_bar, self.asset_path("generic_decision.png"), 8, 2, 54, 38)
+
+        title_box = QGraphicsRectItem(0, 0, 350, 22, frame)
+        title_box.setPos(96, 16)
+        title_box.setBrush(QBrush(QColor("#12100d")))
+        title_box.setPen(QPen(QColor("#352b22"), 1))
+        self.preview_items.append(title_box)
+        title = self.category_title_for_preview(category)
+        self.add_centered_preview_text(frame, title, 271, 12, 350, 8, "#ffffff", True)
+
+        fold_button = QGraphicsRectItem(0, 0, 22, 22, frame)
+        fold_button.setPos(480, 15)
+        fold_button.setBrush(QBrush(QColor("#7c6040")))
+        fold_button.setPen(QPen(QColor("#b89b66"), 1))
+        self.preview_items.append(fold_button)
+        self.add_preview_text(frame, "^", 482, 12, 18, 11, "#f7e7bd", True, Qt.AlignmentFlag.AlignCenter)
+
+        desc_panel = QGraphicsRectItem(0, 0, width - 20, 98, frame)
+        desc_panel.setPos(10, 54)
+        desc_panel.setBrush(QBrush(QColor("#171717")))
+        desc_panel.setPen(QPen(QColor("#323232"), 1))
+        self.preview_items.append(desc_panel)
+        desc = self.category_desc_for_preview(category)
+        self.add_preview_text(frame, desc, 28, 62, width - 58, 9, "#ffffff", True)
+
+        selected_decision_id = self.current_preview_decision_id()
+        if category.decisions:
+            for index, decision in enumerate(category.decisions):
+                self.draw_decision_row(frame, decision, 156 + index * row_height, decision.id == selected_decision_id)
+        else:
+            empty = QGraphicsRectItem(0, 0, 500, row_height, frame)
+            empty.setPos(10, 156)
+            empty.setBrush(QBrush(QColor("#1c2421")))
+            empty.setPen(QPen(QColor("#303833"), 1))
+            self.preview_items.append(empty)
+            self.add_preview_text(empty, "No decisions in this category", 60, 6, 340, 9, "#b8b8ad", True)
+
+        self.preview_scene.setSceneRect(0, 0, width, height)
+
     def on_cost_type_changed(self):
         if self.updating: return
         if not self.stacked_cost: return
@@ -778,6 +1064,7 @@ class DecisionEditorController:
             self.stacked_cost.setCurrentWidget(self.pp_page)
         elif self.radio_custom_cost and self.radio_custom_cost.isChecked():
             self.stacked_cost.setCurrentWidget(self.custom_cost_page)
+        self.update_preview()
 
     def add_category(self):
         text = self.widget.content
@@ -1248,8 +1535,10 @@ def set_plain(control, value):
 
 def set_spin(control, value):
     if control:
-        try: control.setValue(int(value or 0))
-        except: control.setValue(0)
+        try:
+            control.setValue(int(value or 0))
+        except Exception:
+            control.setValue(0)
 
 def set_checked(control, value):
     if control:

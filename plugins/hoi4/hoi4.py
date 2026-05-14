@@ -1,12 +1,25 @@
-import os
 import json
-from PySide6.QtWidgets import QFileDialog, QListWidgetItem, QDialog, QVBoxLayout, QMessageBox, QLineEdit, QComboBox, QPushButton, QLabel, QToolButton, QHBoxLayout, QScrollArea, QSplitter, QCheckBox
-from PySide6.QtCore import Qt, QFile, QFileSystemWatcher, QTimer, QSize
+import os
+
+import core.api
+from PySide6.QtCore import QFile, QFileSystemWatcher, QSize, Qt, QTimer
 from PySide6.QtGui import QIcon
 from PySide6.QtUiTools import QUiLoader
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QFileDialog,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QToolButton,
+    QVBoxLayout,
+)
+
 from core.plugin_manager import ModElement
 from plugins.hoi4.localisation.registry import LocalisationRegistry
-import core.api
 
 # グローバルなレジストリインスタンス
 _registry = None
@@ -150,7 +163,7 @@ def setup_settings_controls(widget, plugin, project_path):
         try:
             with open(settings_file, 'r', encoding='utf-8') as f:
                 settings = json.load(f)
-        except:
+        except Exception:
             settings = DEFAULT_SETTINGS.copy()
     else:
         settings = DEFAULT_SETTINGS.copy()
@@ -305,7 +318,8 @@ def initialize(plugin):
             try:
                 with open(settings_file, 'r', encoding='utf-8') as f:
                     settings.update(json.load(f))
-            except: pass
+            except Exception:
+                pass
             
         game_path = settings.get("game_path")
         lang = settings.get("display_language", "l_japanese")
