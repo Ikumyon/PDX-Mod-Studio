@@ -1,161 +1,74 @@
 {
-    "document_properties": {
-        "add_namespace": {
-            "display_name": "ネームスペース",
-            "type": "string",
-            "ui_widget": "namespaceEdit"
-        }
+  "schema_name": "hoi4_event",
+  "file_scope": "events",
+  "root_pattern": "named_block",
+  "id_rule": {
+    "source": "inner_property",
+    "property_name": "id",
+    "type": "identifier",
+    "role": "event_id"
+  },
+  "unknown_keys": "warn",
+  "fields": {
+    "id": {
+        "type": "identifier",
+        "required": true
     },
-    "entity_rules": [
-        {
-            "document_type": "event_file",
-            "key": "country_event",
-            "kind": "event",
-            "subtype": "country_event",
-            "schema": "event",
-            "id": {
-                "from": "property",
-                "property": "id"
-            },
-            "children": [
-                {
-                    "key": "option",
-                    "kind": "event_option",
-                    "subtype": "option",
-                    "schema": "event_option",
-                    "id": {
-                        "from": "property",
-                        "property": "name"
-                    }
-                }
-            ]
-        },
-        {
-            "document_type": "event_file",
-            "key": "news_event",
-            "kind": "event",
-            "subtype": "news_event",
-            "schema": "event",
-            "id": {
-                "from": "property",
-                "property": "id"
-            },
-            "children": [
-                {
-                    "key": "option",
-                    "kind": "event_option",
-                    "subtype": "option",
-                    "schema": "event_option",
-                    "id": {
-                        "from": "property",
-                        "property": "name"
-                    }
-                }
-            ]
-        }
-    ],
-    "schemas": {
-        "event": {
-            "properties": {
-                "id": {
-                    "type": "string",
-                    "display_name": "ID",
-                    "required": true,
-                    "identity": true
-                },
-                "title": {
-                    "type": "string",
-                    "display_name": "Title",
-                    "reference": {
-                        "kind": "localisation",
-                        "state_if_missing": "external_possible"
-                    }
-                },
-                "desc": {
-                    "type": "string",
-                    "display_name": "Description",
-                    "reference": {
-                        "kind": "localisation",
-                        "state_if_missing": "external_possible"
-                    }
-                },
-                "picture": {
-                    "type": "string",
-                    "display_name": "Picture",
-                    "reference": {
-                        "kind": "asset",
-                        "state_if_missing": "external_possible"
-                    }
-                },
-                "fire_only_once": {
-                    "type": "bool",
-                    "display_name": "Fire only once"
-                },
-                "is_triggered_only": {
-                    "type": "bool",
-                    "display_name": "Triggered only"
-                },
-                "major": {
-                    "type": "bool",
-                    "display_name": "Major"
-                },
-                "hidden": {
-                    "type": "bool",
-                    "display_name": "Hidden"
-                },
-                "trigger": {
-                    "type": "object",
-                    "display_name": "Trigger"
-                },
-                "mean_time_to_happen": {
-                    "type": "object",
-                    "display_name": "Mean time to happen"
-                },
-                "option": {
-                    "type": "object",
-                    "display_name": "Option",
-                    "multiple": true
-                }
-            }
-        },
-        "event_option": {
-            "properties": {
-                "name": {
-                    "type": "string",
-                    "display_name": "Name",
-                    "required": true,
-                    "identity": true,
-                    "reference": {
-                        "kind": "localisation",
-                        "state_if_missing": "external_possible"
-                    }
-                },
-                "trigger": {
-                    "type": "object",
-                    "display_name": "Trigger"
-                },
-                "ai_chance": {
-                    "type": "object",
-                    "display_name": "AI chance"
-                },
-                "hidden_effect": {
-                    "type": "object",
-                    "display_name": "Hidden Effect"
-                },
-                "tooltip": {
-                    "type": "string",
-                    "display_name": "Tooltip"
-                }
-            }
-        }
+    "title": {
+        "type": "localisation_key",
+        "required": true
     },
-    "relations": [
-        {
-            "source_kind": "event",
-            "property": "picture",
-            "target_kind": "asset",
-            "type": "uses_asset",
-            "label": "uses asset"
+    "desc": { 
+        "type": "localisation_key"
+    },
+    "picture": { 
+        "type": "sprite_id"
+    },
+    "is_triggered_only": { 
+        "type": "boolean",
+        "allowed_values": ["yes", "no"] 
+    },
+    "fire_only_once": {
+         "type": "boolean",
+        "allowed_values": ["yes", "no"] 
+    },
+    "trigger": {
+        "type": "trigger_block",
+        "context": "country"
+    },
+    "mean_time_to_happen": {
+        "type": "mtth_block"
+    },
+    "immediate": {
+        "type": "effect_block",
+        "context": "country"
+    },
+    "option": {
+        "type": "object",
+        "multiple": true,
+        "schema": "event_option"
+    }
+  },
+  "sub_schemas": {
+    "event_option": {
+      "fields": {
+        "name": {
+          "type": "localisation_key",
+          "required": true
+        },
+        "trigger": {
+          "type": "trigger_block",
+          "required": false
+        },
+        "ai_chance": {
+          "type": "ai_chance_block",
+          "required": false
+        },
+        "tooltip": {
+          "type": "localisation_key",
+          "required": false
         }
-    ]
+      }
+    }
+  }
 }

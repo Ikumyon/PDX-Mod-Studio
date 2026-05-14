@@ -8,5 +8,8 @@
     "logic": "event_editor.py",
     "parser": "event_parser.py",
     "parser_entry": "EventParser",
-    "schema": "event_schema.json"
+    "schema": "event_schema.json",
+    "children": [
+        { "name": "イベントを作成", "path": "events", "extension": ".txt" }
+    ]
 }

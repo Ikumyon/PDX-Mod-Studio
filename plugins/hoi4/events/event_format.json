@@ -1,0 +1,22 @@
+{
+  "event": {
+    "key_order": [
+      "id",
+      "title",
+      "desc",
+      "picture",
+      "",
+      "is_triggered_only",
+      "fire_only_once",
+      "major",
+      "hidden",
+      "",
+      "trigger",
+      "",
+      "immediate",
+      "",
+      "option",
+      "after"
+    ]
+  }
+}

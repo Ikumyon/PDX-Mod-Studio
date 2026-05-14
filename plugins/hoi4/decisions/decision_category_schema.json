@@ -1,0 +1,154 @@
+{
+  "schema_name": "hoi4_decision_category",
+  "file_scope": "common/decisions/categories",
+  "root_pattern": "named_block",
+  "id_rule": {
+    "source": "outer_key",
+    "type": "identifier",
+    "role": "decision_category_id"
+  },
+  "unknown_keys": "warn",
+  "fields": {
+    "allowed": {
+      "type": "trigger_block",
+      "required": false,
+      "multiple": false,
+      "context": "country"
+    },
+    "visible": {
+      "type": "trigger_block",
+      "required": false,
+      "multiple": false,
+      "context": "country"
+    },
+    "priority": {
+      "type": [
+        "integer",
+        "scripted_value_block"
+      ],
+      "required": false,
+      "multiple": false
+    },
+    "icon": {
+      "type": "sprite_id",
+      "required": false,
+      "multiple": false,
+      "reference": "interface_gfx_sprite"
+    },
+    "picture": {
+      "type": "sprite_id",
+      "required": false,
+      "multiple": false,
+      "reference": "interface_gfx_sprite"
+    },
+    "visible_when_empty": {
+      "type": "boolean",
+      "required": false,
+      "multiple": false,
+      "allowed_values": [
+        "yes",
+        "no"
+      ]
+    },
+    "highlight_states": {
+      "type": "object",
+      "required": false,
+      "multiple": false,
+      "schema": "decision_category_highlight_states"
+    },
+    "on_map_area": {
+      "type": "object",
+      "required": false,
+      "multiple": true,
+      "schema": "decision_category_on_map_area"
+    },
+    "scripted_gui": {
+      "type": "identifier",
+      "required": false,
+      "multiple": false,
+      "reference": "scripted_gui"
+    }
+  },
+  "sub_schemas": {
+    "decision_category_highlight_states": {
+      "fields": {
+        "highlight_state_targets": {
+          "type": "object",
+          "required": false,
+          "multiple": false,
+          "fields": {
+            "state": {
+              "type": "state_id",
+              "required": false,
+              "multiple": true
+            }
+          }
+        },
+        "highlight_color_while_active": {
+          "type": "integer",
+          "required": false,
+          "multiple": false
+        },
+        "highlight_color_before_active": {
+          "type": "integer",
+          "required": false,
+          "multiple": false
+        }
+      }
+    },
+    "decision_category_on_map_area": {
+      "variants": {
+        "fixed_state": {
+          "fields": {
+            "state": {
+              "type": "state_id",
+              "required": "yes_or_optional",
+              "multiple": false
+            },
+            "name": {
+              "type": "localisation_key",
+              "required": false,
+              "multiple": false
+            },
+            "zoom": {
+              "type": "integer",
+              "required": false,
+              "multiple": false
+            },
+            "target_root_trigger": {
+              "type": "trigger_block",
+              "required": false,
+              "multiple": false,
+              "context": "country"
+            }
+          }
+        },
+        "target_array": {
+          "fields": {
+            "target_array": {
+              "type": "array_id",
+              "required": "yes_or_optional",
+              "multiple": false
+            },
+            "name": {
+              "type": "localisation_key",
+              "required": false,
+              "multiple": false
+            },
+            "zoom": {
+              "type": "integer",
+              "required": false,
+              "multiple": false
+            },
+            "target_trigger": {
+              "type": "trigger_block",
+              "required": false,
+              "multiple": false,
+              "context": "target_state_or_scope"
+            }
+          }
+        }
+      }
+    }
+  }
+}

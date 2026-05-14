@@ -5,22 +5,24 @@ from PySide6.QtCore import QFile
 from PySide6.QtUiTools import QUiLoader
 
 
-class ModeDefinition:
-    def __init__(self, mode_id, name, py_path, ui_path):
-        self.mode_id = mode_id
+class EditorDefinition:
+    def __init__(self, editor_id, name, py_path, ui_path):
+        self.editor_id = editor_id
         self.name = name
         self.py_path = py_path
         self.ui_path = ui_path
 
 
-class ModeManager:
-    def __init__(self):
-        self.modes = {}
-        self.script_mode_id = "script_mode"
 
-    def get_modes_for_element(self, element):
-        mode = self.register_element(element)
-        return [mode] if mode else []
+class EditorRegistry:
+    def __init__(self):
+        self.editors = {}
+        self.text_editor_id = "text"
+
+    def get_editors_for_element(self, element):
+        editor = self.register_element(element)
+        return [editor] if editor else []
+
 
     def register_element(self, element):
         if not getattr(element, "form", None) or not getattr(element, "logic", None):
@@ -35,35 +37,38 @@ class ModeManager:
         if not os.path.exists(ui_path) or not os.path.exists(py_path):
             return None
 
-        mode_id = f"{element.id}:{element.document_type or element.path}:form"
-        if mode_id not in self.modes:
-            mode_name = self._extract_mode_name(py_path) or element.name
-            self.modes[mode_id] = ModeDefinition(mode_id, mode_name, py_path, ui_path)
-        return self.modes[mode_id]
+        editor_id = f"{element.id}:{element.document_type or element.path}:form"
+        if editor_id not in self.editors:
+            editor_name = self._extract_editor_name(py_path) or element.name
+            self.editors[editor_id] = EditorDefinition(editor_id, editor_name, py_path, ui_path)
+        return self.editors[editor_id]
 
-    def _extract_mode_name(self, py_path):
+    def _extract_editor_name(self, py_path):
+
         try:
             with open(py_path, "r", encoding="utf-8") as handle:
                 module = ast.parse(handle.read(), filename=py_path)
             for node in module.body:
                 if not isinstance(node, ast.Assign):
                     continue
-                if not any(isinstance(target, ast.Name) and target.id == "MODE_NAME" for target in node.targets):
+                if not any(isinstance(target, ast.Name) and target.id in ("MODE_NAME", "EDITOR_NAME") for target in node.targets):
                     continue
                 value = ast.literal_eval(node.value)
                 return value if isinstance(value, str) else None
         except Exception as error:
-            print(f"Failed to extract MODE_NAME from {py_path}: {error}")
+            print(f"Failed to extract EDITOR_NAME from {py_path}: {error}")
+
             return None
         return None
 
-    def create_mode_widget(self, mode_id, parent, file_path, content):
-        if mode_id not in self.modes:
+    def create_editor_widget(self, editor_id, parent, file_path, content):
+        if editor_id not in self.editors:
             return None
 
-        mode = self.modes[mode_id]
+        editor = self.editors[editor_id]
         loader = QUiLoader()
-        ui_file = QFile(mode.ui_path)
+        ui_file = QFile(editor.ui_path)
+
         if not ui_file.open(QFile.ReadOnly):
             return None
 
@@ -74,19 +79,20 @@ class ModeManager:
             return None
 
         try:
-            with open(mode.py_path, "r", encoding="utf-8") as handle:
+            with open(editor.py_path, "r", encoding="utf-8") as handle:
                 py_code = handle.read()
 
             widget.file_path = file_path
-            widget.mode_id = mode_id
+            widget.editor_id = editor_id
             widget.content = content
+
 
             namespace = {
                 "widget": widget,
                 "parent": parent,
                 "file_path": file_path,
                 "content": content,
-                "__file__": mode.py_path,
+                "__file__": editor.py_path,
             }
             exec(py_code, namespace)
 
@@ -94,6 +100,7 @@ class ModeManager:
             if callable(setup):
                 setup(widget, file_path, content)
         except Exception as error:
-            print(f"Error binding logic for mode {mode_id}: {error}")
+            print(f"Error binding logic for editor {editor_id}: {error}")
 
         return widget
+

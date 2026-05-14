@@ -155,6 +155,9 @@ class ProjectTreeDock:
             self.refreshTreeButton.clicked.connect(lambda: self.load_project(self.current_project_path) if hasattr(self, "current_project_path") and self.current_project_path else None)
         if self.modElementsTree:
             self.modElementsTree.itemDoubleClicked.connect(self.on_item_double_clicked)
+            self.modElementsTree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+            self.modElementsTree.customContextMenuRequested.connect(self.on_tree_context_menu)
+
         if self.openEditorsList:
             self.openEditorsList.itemClicked.connect(self.on_editor_item_clicked)
         if self.newFileButton:
@@ -168,7 +171,38 @@ class ProjectTreeDock:
         file_path = item.data(0, Qt.ItemDataRole.UserRole)
         if file_path and os.path.isfile(file_path):
             if hasattr(self.parent_window, "open_file"):
-                self.parent_window.open_file(file_path)
+                self.parent_window.open_file(file_path, "text")
+
+    def on_tree_context_menu(self, pos):
+        if not self.modElementsTree:
+            return
+        item = self.modElementsTree.itemAt(pos)
+        if not item:
+            return
+            
+        file_path = item.data(0, Qt.ItemDataRole.UserRole)
+        if not file_path or not os.path.isfile(file_path):
+            return
+            
+        menu = QMenu(self.modElementsTree)
+        
+        # 1. 外部エディタ（利用可能なら優先して上に表示）
+        try:
+            editors = core.api.get_editors_for_file(file_path, include_script=False)
+            if editors:
+                for editor in editors:
+                    action = menu.addAction(f"{editor['name']} で開く")
+                    action.triggered.connect(lambda checked=False, e_id=editor['id']: self.parent_window.open_file(file_path, e_id))
+                menu.addSeparator()
+        except Exception as e:
+            print(f"Error getting editors for context menu: {e}")
+
+        # 2. デフォルトのテキストエディタ
+        text_action = menu.addAction("テキストエディタで開く")
+        text_action.triggered.connect(lambda: self.parent_window.open_file(file_path, "text"))
+            
+        menu.exec(self.modElementsTree.mapToGlobal(pos))
+
             
     def setup_title_bar(self):
         self.explorerTitleBar = self.dock_widget.findChild(QWidget, "explorerTitleBar")
@@ -470,39 +504,104 @@ class ProjectTreeDock:
         menu = QMenu(self.newFileButton)
         text_color = self.parent_window.palette().color(QPalette.ColorRole.WindowText).name()
 
-        for element in elements:
-            icon_path = element.plugin.get_element_attribute(element, "icon")
-            if icon_path:
-                # element_dirからの相対パスまたは絶対パスを考慮
-                if not os.path.isabs(icon_path):
-                    icon_path = os.path.join(element.element_dir, icon_path)
-            
-            if icon_path and os.path.exists(icon_path):
-                if icon_path.lower().endswith(".svg"):
-                    # SVGの場合はcurrentColorを置換してロード
-                    icon = load_svg_icon(icon_path, text_color)
-                else:
-                    # それ以外（PNG等）は色を変えずに保持する設定でロード
-                    icon = QIcon()
-                    pixmap = QPixmap(icon_path)
-                    icon.addPixmap(pixmap, QIcon.Mode.Normal, QIcon.State.Off)
-                    icon.addPixmap(pixmap, QIcon.Mode.Normal, QIcon.State.On)
-                    icon.addPixmap(pixmap, QIcon.Mode.Active, QIcon.State.Off)
-                    icon.addPixmap(pixmap, QIcon.Mode.Active, QIcon.State.On)
-                    icon.addPixmap(pixmap, QIcon.Mode.Selected, QIcon.State.Off)
-                    icon.addPixmap(pixmap, QIcon.Mode.Selected, QIcon.State.On)
-            
-            if icon:
-                action = menu.addAction(icon, f"{element.name}を作成...")
-            else:
-                action = menu.addAction(f"{element.name}を作成...")
-            action.triggered.connect(lambda checked=False, e=element: self._create_element_file(e))
+        # 統合ツリーを構築
+        unified_tree = self._build_unified_creation_tree(elements, text_color)
+        
+        # メニューに反映
+        self._populate_creation_menu(menu, unified_tree)
         
         menu.addSeparator()
         generic_action = menu.addAction(self.icon_file, "汎用ファイル...")
         generic_action.triggered.connect(self._create_generic_file)
         
         menu.exec(self.newFileButton.mapToGlobal(self.newFileButton.rect().bottomLeft()))
+
+    def _build_unified_creation_tree(self, elements, text_color):
+        tree = []
+        for element in elements:
+            icon = self._get_element_icon(element, text_color)
+            # 全ての要素はchildrenキーでメニュー項目を定義する必要がある（旧形式は廃止）
+            children = element.raw.get("children")
+            if children:
+                for item in children:
+                    self._merge_into_tree(tree, item, element, icon)
+        return tree
+
+    def _merge_into_tree(self, current_level, item, element, element_icon):
+        item_id = item.get("id")
+        item_name = item.get("name", "名称未設定")
+        children = item.get("children")
+        
+        # マージ対象を探す (ID優先、なければ名前)
+        target = None
+        if item_id:
+            target = next((node for node in current_level if node.get("id") == item_id), None)
+        else:
+            # アクション（childrenなし）はマージ対象外とする（同名でも別々に表示）
+            target = next((node for node in current_level if node.get("name") == item_name and "children" in node), None)
+            
+        if children:
+            if not target:
+                target = {
+                    "id": item_id,
+                    "name": item_name,
+                    "icon": self.icon_folder, # 階層にはフォルダアイコンを使用
+                    "children": []
+                }
+                current_level.append(target)
+            
+            for child in children:
+                self._merge_into_tree(target["children"], child, element, element_icon)
+        else:
+            # リーフ項目（アクション）
+            leaf = {
+                "name": item_name,
+                "icon": element_icon, # アクションには要素のアイコンを使用
+                "element": element,
+                "path": item.get("path"),
+                "extension": item.get("extension")
+            }
+            current_level.append(leaf)
+
+    def _populate_creation_menu(self, menu, tree_nodes):
+        for node in tree_nodes:
+            name = node.get("name", "名称未設定")
+            icon = node.get("icon")
+            children = node.get("children")
+            
+            if children:
+                sub_menu = menu.addMenu(icon, name) if icon else menu.addMenu(name)
+                self._populate_creation_menu(sub_menu, children)
+            else:
+                # アクション
+                action = menu.addAction(icon, name) if icon else menu.addAction(name)
+                element = node.get("element")
+                path = node.get("path")
+                ext = node.get("extension")
+                action.triggered.connect(lambda checked=False, e=element, p=path, x=ext, n=name: 
+                                         self._create_element_file(e, path_override=p, extension_override=x, name_override=n))
+
+    def _get_element_icon(self, element, text_color):
+        icon_path = element.plugin.get_element_attribute(element, "icon")
+        if icon_path:
+            if not os.path.isabs(icon_path):
+                icon_path = os.path.join(element.element_dir, icon_path)
+        
+        if icon_path and os.path.exists(icon_path):
+            if icon_path.lower().endswith(".svg"):
+                return load_svg_icon(icon_path, text_color)
+            else:
+                icon = QIcon()
+                pixmap = QPixmap(icon_path)
+                icon.addPixmap(pixmap, QIcon.Mode.Normal, QIcon.State.Off)
+                icon.addPixmap(pixmap, QIcon.Mode.Normal, QIcon.State.On)
+                icon.addPixmap(pixmap, QIcon.Mode.Active, QIcon.State.Off)
+                icon.addPixmap(pixmap, QIcon.Mode.Active, QIcon.State.On)
+                icon.addPixmap(pixmap, QIcon.Mode.Selected, QIcon.State.Off)
+                icon.addPixmap(pixmap, QIcon.Mode.Selected, QIcon.State.On)
+                return icon
+        return None
+
 
     def on_new_folder_clicked(self):
         if not hasattr(self, "current_project_path") or not self.current_project_path:
@@ -560,16 +659,18 @@ class ProjectTreeDock:
             except Exception as e:
                 QMessageBox.critical(self.dock_widget, "エラー", f"フォルダを作成できませんでした: {e}")
 
-    def _create_element_file(self, element):
+    def _create_element_file(self, element, path_override=None, extension_override=None, name_override=None):
         """プロファイルで定義された要素（ファイルまたはフォルダ）を作成する"""
         is_folder = element.plugin.get_element_attribute(element, "is_folder", False)
+        display_name = name_override if name_override else element.name
         label = "フォルダ名" if is_folder else "ファイル名 (拡張子なし)"
-        file_name, ok = QInputDialog.getText(self.dock_widget, f"新規 {element.name}", f"{label}:")
+        file_name, ok = QInputDialog.getText(self.dock_widget, f"新規 {display_name}", f"{label}:")
         if not ok or not file_name:
             return
 
         # 相対パスを考慮してターゲットディレクトリを決定
-        target_dir = os.path.join(self.current_project_path, element.path)
+        rel_path = path_override if path_override is not None else element.path
+        target_dir = os.path.join(self.current_project_path, rel_path)
         os.makedirs(target_dir, exist_ok=True)
         
         if is_folder:
@@ -583,7 +684,7 @@ class ProjectTreeDock:
             except Exception as e:
                 QMessageBox.critical(self.dock_widget, "エラー", f"フォルダを作成できませんでした: {e}")
         else:
-            extension = element.plugin.get_element_attribute(element, "extension") or ""
+            extension = extension_override if extension_override is not None else (element.plugin.get_element_attribute(element, "extension") or "")
             full_file_name = file_name + extension
             file_path = os.path.join(target_dir, full_file_name)
             

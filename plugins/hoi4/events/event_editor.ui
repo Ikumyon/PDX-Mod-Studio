@@ -239,7 +239,7 @@ QToolButton:checked {
              <item>
               <widget class="QToolButton" name="customModeButton">
                <property name="text">
-                <string>カスタム</string>
+                <string>詳細</string>
                </property>
                <property name="checkable">
                 <bool>true</bool>

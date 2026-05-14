@@ -3,5 +3,39 @@
     "path": "common/decisions",
     "extension": ".txt",
     "icon": "mail-checkmark-24-regular.svg",
-    "document_type": "decision_file"
+    "document_type": "decision_file",
+    "form": "decision_editor.ui",
+    "logic": "decision_editor.py",
+    "parser": "script_parser.py",
+    "schema": "decision_schema.json",
+    "children": [
+        {
+            "id": "common",
+            "name": "共通（common）",
+            "children": [
+                {
+                    "id": "decisions",
+                    "name": "ディシジョン",
+                    "children": [
+                        { "name": "ディシジョンを作成", "path": "common/decisions", "extension": ".txt" },
+                        { "name": "カテゴリを作成", "path": "common/decisions/categories", "extension": ".txt" }
+                    ]
+                }
+            ]
+        }
+    ],
+    "schema_rules": [
+        {
+            "path": "common/decisions/categories",
+            "document_type": "decision_category_file",
+            "schema": "decision_category_schema.json",
+            "role": "category"
+        },
+        {
+            "path": "common/decisions",
+            "document_type": "decision_file",
+            "schema": "decision_schema.json",
+            "role": "decision"
+        }
+    ]
 }

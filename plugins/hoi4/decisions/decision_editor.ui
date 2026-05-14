@@ -1,0 +1,1600 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>Hoi4DecisionEditor</class>
+ <widget class="QWidget" name="Hoi4DecisionEditor">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>835</width>
+    <height>580</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>HOI4 ディシジョン構文エディタ</string>
+  </property>
+  <layout class="QVBoxLayout" name="rootLayout">
+   <item>
+    <widget class="QSplitter" name="mainSplitter">
+     <property name="orientation">
+      <enum>Qt::Orientation::Horizontal</enum>
+     </property>
+     <widget class="QWidget" name="leftPanel">
+      <property name="minimumSize">
+       <size>
+        <width>0</width>
+        <height>0</height>
+       </size>
+      </property>
+      <layout class="QVBoxLayout" name="leftLayout">
+       <item>
+        <widget class="QLabel" name="labelTreeTitle">
+         <property name="text">
+          <string>一覧(category / decision)</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <layout class="QGridLayout" name="treeButtonGrid">
+         <item row="0" column="0">
+          <widget class="QPushButton" name="btnAddCategory">
+           <property name="text">
+            <string>カテゴリ追加</string>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="1">
+          <widget class="QPushButton" name="btnAddDecision">
+           <property name="text">
+            <string>ディシジョン追加</string>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="0">
+          <widget class="QPushButton" name="btnDuplicateItem">
+           <property name="text">
+            <string>複製</string>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="1">
+          <widget class="QPushButton" name="btnDeleteItem">
+           <property name="text">
+            <string>削除</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <widget class="QTreeWidget" name="treeDecisions">
+         <property name="headerHidden">
+          <bool>false</bool>
+         </property>
+         <column>
+          <property name="text">
+           <string notr="true">1</string>
+          </property>
+         </column>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="editorPanel">
+      <property name="minimumSize">
+       <size>
+        <width>0</width>
+        <height>0</height>
+       </size>
+      </property>
+      <layout class="QVBoxLayout" name="editorLayout">
+       <item>
+        <layout class="QHBoxLayout" name="editorHeaderLayout">
+         <item>
+          <widget class="QLabel" name="labelEditorTitle">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="styleSheet">
+            <string>font-weight: bold;</string>
+           </property>
+           <property name="text">
+            <string>編集</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QFrame" name="decisionModeSwitchFrame">
+           <property name="styleSheet">
+            <string notr="true">QToolButton {
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    padding: 0px 8px;
+}
+
+QToolButton:hover {
+    background: palette(light);
+}
+
+QToolButton:pressed {
+    background: palette(mid);
+}
+
+QToolButton:checked {
+    background: palette(highlight);
+}
+</string>
+           </property>
+           <property name="frameShape">
+            <enum>QFrame::Shape::StyledPanel</enum>
+           </property>
+           <property name="frameShadow">
+            <enum>QFrame::Shadow::Raised</enum>
+           </property>
+           <layout class="QHBoxLayout" name="decisionModeSwitchLayout">
+            <property name="spacing">
+             <number>0</number>
+            </property>
+            <property name="leftMargin">
+             <number>2</number>
+            </property>
+            <property name="topMargin">
+             <number>2</number>
+            </property>
+            <property name="rightMargin">
+             <number>2</number>
+            </property>
+            <property name="bottomMargin">
+             <number>2</number>
+            </property>
+            <item>
+             <widget class="QToolButton" name="decisionStandardModeButton">
+              <property name="text">
+               <string>標準</string>
+              </property>
+              <property name="checkable">
+               <bool>true</bool>
+              </property>
+              <property name="checked">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QToolButton" name="decisionDetailModeButton">
+              <property name="text">
+               <string>詳細</string>
+              </property>
+              <property name="checkable">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <widget class="QStackedWidget" name="stackedEditor">
+         <property name="currentIndex">
+          <number>0</number>
+         </property>
+         <widget class="QWidget" name="pageCategory">
+          <layout class="QVBoxLayout" name="pageCategoryLayout">
+           <item>
+            <widget class="QScrollArea" name="scrollCategory">
+             <property name="horizontalScrollBarPolicy">
+              <enum>Qt::ScrollBarPolicy::ScrollBarAlwaysOff</enum>
+             </property>
+             <property name="widgetResizable">
+              <bool>true</bool>
+             </property>
+             <widget class="QWidget" name="scrollCategoryContents">
+              <property name="geometry">
+               <rect>
+                <x>0</x>
+                <y>-113</y>
+                <width>353</width>
+                <height>1083</height>
+               </rect>
+              </property>
+              <layout class="QVBoxLayout" name="scrollCategoryLayout">
+               <item>
+                <widget class="QGroupBox" name="groupCategoryBasic">
+                 <property name="title">
+                  <string>カテゴリ基本</string>
+                 </property>
+                 <layout class="QVBoxLayout" name="pageCategoryVerticalLayout">
+                  <item>
+                   <layout class="QHBoxLayout" name="categoryIdHorizontalLayout">
+                    <item>
+                     <widget class="QLabel" name="labelCategoryId">
+                      <property name="text">
+                       <string>カテゴリID(category id)</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item>
+                     <widget class="QLineEdit" name="editCategoryId">
+                      <property name="placeholderText">
+                       <string>例: sample_decision_category</string>
+                      </property>
+                     </widget>
+                    </item>
+                   </layout>
+                  </item>
+                  <item>
+                   <widget class="QGroupBox" name="groupCategoryName">
+                    <property name="title">
+                     <string>表示名</string>
+                    </property>
+                    <layout class="QFormLayout" name="groupCategoryNameForm">
+                     <item row="0" column="0">
+                      <widget class="QLabel" name="labelCategoryLocalisation">
+                       <property name="text">
+                        <string>表示名</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="0" column="1">
+                      <widget class="QLineEdit" name="editCategoryLocalisation">
+                       <property name="text">
+                        <string/>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="1" column="0">
+                      <widget class="QLabel" name="labelCategoryLocFile">
+                       <property name="text">
+                        <string>翻訳先</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="1" column="1">
+                      <layout class="QHBoxLayout" name="categoryLocFileLayout">
+                       <item>
+                        <widget class="QLineEdit" name="editCategoryLocFile"/>
+                       </item>
+                       <item>
+                        <widget class="QPushButton" name="btnSelectCategoryLocFile">
+                         <property name="text">
+                          <string>参照</string>
+                         </property>
+                        </widget>
+                       </item>
+                      </layout>
+                     </item>
+                    </layout>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QGroupBox" name="groupCategoryDesc">
+                    <property name="title">
+                     <string>説明</string>
+                    </property>
+                    <layout class="QFormLayout" name="groupCategoryDescForm">
+                     <item row="0" column="0">
+                      <widget class="QLabel" name="labelCategoryDescLocalisation">
+                       <property name="text">
+                        <string>説明</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="1" column="0">
+                      <widget class="QLabel" name="labelCategoryDescLocFile">
+                       <property name="text">
+                        <string>翻訳先</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="1" column="1">
+                      <layout class="QHBoxLayout" name="categoryDescLocFileLayout">
+                       <item>
+                        <widget class="QLineEdit" name="editCategoryDescLocFile"/>
+                       </item>
+                       <item>
+                        <widget class="QPushButton" name="btnSelectCategoryDescLocFile">
+                         <property name="text">
+                          <string>参照</string>
+                         </property>
+                        </widget>
+                       </item>
+                      </layout>
+                     </item>
+                     <item row="0" column="1">
+                      <widget class="QPlainTextEdit" name="editCategoryDescLocalisation"/>
+                     </item>
+                    </layout>
+                   </widget>
+                  </item>
+                  <item>
+                   <layout class="QFormLayout" name="groupCategoryKeysLayout">
+                    <item row="0" column="0">
+                     <widget class="QLabel" name="labelCategoryIcon">
+                      <property name="text">
+                       <string>アイコン(icon)</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item row="0" column="1">
+                     <layout class="QHBoxLayout" name="categoryIconLayout">
+                      <item>
+                       <widget class="QLineEdit" name="editCategoryIcon"/>
+                      </item>
+                      <item>
+                       <widget class="QPushButton" name="btnSelectCategoryIcon">
+                        <property name="text">
+                         <string>選択</string>
+                        </property>
+                       </widget>
+                      </item>
+                     </layout>
+                    </item>
+                    <item row="2" column="0">
+                     <widget class="QLabel" name="labelCategoryPriority">
+                      <property name="text">
+                       <string>優先度(priority)</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item row="1" column="0">
+                     <widget class="QLabel" name="labelCategoryPicture">
+                      <property name="text">
+                       <string>画像(picture)</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item row="1" column="1">
+                     <layout class="QHBoxLayout" name="categoryPictureLayout">
+                      <item>
+                       <widget class="QLineEdit" name="editCategoryPicture">
+                        <property name="text">
+                         <string/>
+                        </property>
+                       </widget>
+                      </item>
+                      <item>
+                       <widget class="QPushButton" name="btnSelectCategoryPicture">
+                        <property name="text">
+                         <string>選択</string>
+                        </property>
+                       </widget>
+                      </item>
+                     </layout>
+                    </item>
+                    <item row="3" column="0">
+                     <widget class="QLabel" name="labelCategoryVisibleWhenEmpty">
+                      <property name="text">
+                       <string>空でも表示</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item row="3" column="1">
+                     <widget class="QCheckBox" name="checkCategoryVisibleWhenEmpty">
+                      <property name="text">
+                       <string>visible_when_empty = yes</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item row="4" column="0">
+                     <widget class="QLabel" name="labelCategoryScriptedGui">
+                      <property name="text">
+                       <string>スクリプトGUI(scripted_gui)</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item row="4" column="1">
+                     <widget class="QLineEdit" name="editCategoryScriptedGui">
+                      <property name="placeholderText">
+                       <string>例: my_scripted_gui</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item row="5" column="0">
+                     <widget class="QLabel" name="labelCategoryOnMapArea">
+                      <property name="text">
+                       <string>マップ領域(on_map_area)</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item row="5" column="1">
+                     <widget class="QLineEdit" name="editCategoryOnMapArea">
+                      <property name="placeholderText">
+                       <string>例: area_id</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item row="6" column="0">
+                     <widget class="QLabel" name="labelCategoryMapArea">
+                      <property name="text">
+                       <string>マップ領域(map_area)</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item row="6" column="1">
+                     <widget class="QLineEdit" name="editCategoryMapArea">
+                      <property name="placeholderText">
+                       <string>例: area_id</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item row="2" column="1">
+                     <widget class="QPlainTextEdit" name="ptCategoryPriority"/>
+                    </item>
+                   </layout>
+                  </item>
+                 </layout>
+                </widget>
+               </item>
+               <item>
+                <widget class="QGroupBox" name="groupCategoryTriggers">
+                 <property name="title">
+                  <string>カテゴリ条件</string>
+                 </property>
+                 <layout class="QVBoxLayout" name="groupCategoryTriggersLayout">
+                  <item>
+                   <widget class="QLabel" name="labelCategoryAllowed">
+                    <property name="text">
+                     <string>許可条件(allowed)</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QPlainTextEdit" name="textCategoryAllowed">
+                    <property name="minimumSize">
+                     <size>
+                      <width>0</width>
+                      <height>0</height>
+                     </size>
+                    </property>
+                    <property name="placeholderText">
+                     <string>tag = JAP</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QLabel" name="labelCategoryVisible">
+                    <property name="text">
+                     <string>表示条件(visible)</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QPlainTextEdit" name="textCategoryVisible">
+                    <property name="minimumSize">
+                     <size>
+                      <width>0</width>
+                      <height>0</height>
+                     </size>
+                    </property>
+                    <property name="placeholderText">
+                     <string>has_completed_focus = focus_id</string>
+                    </property>
+                   </widget>
+                  </item>
+                 </layout>
+                </widget>
+               </item>
+               <item>
+                <widget class="QGroupBox" name="groupCategoryMap">
+                 <property name="title">
+                  <string>カテゴリのマップ・強調表示</string>
+                 </property>
+                 <layout class="QVBoxLayout" name="groupCategoryMapLayout">
+                  <item>
+                   <widget class="QLabel" name="labelCategoryHighlightStates">
+                    <property name="text">
+                     <string>州強調(highlight_states)</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QPlainTextEdit" name="textCategoryHighlightStates">
+                    <property name="minimumSize">
+                     <size>
+                      <width>0</width>
+                      <height>0</height>
+                     </size>
+                    </property>
+                    <property name="placeholderText">
+                     <string>state = 123</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QLabel" name="labelCategoryHighlightProvinces">
+                    <property name="text">
+                     <string>プロヴィンス強調(highlight_provinces)</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QPlainTextEdit" name="textCategoryHighlightProvinces">
+                    <property name="minimumSize">
+                     <size>
+                      <width>0</width>
+                      <height>0</height>
+                     </size>
+                    </property>
+                    <property name="placeholderText">
+                     <string>1234 5678</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QLabel" name="labelCategoryHighlightBefore">
+                    <property name="text">
+                     <string>有効化前の色(highlight_color_before_active)</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QLineEdit" name="editHighlightColorBefore">
+                    <property name="placeholderText">
+                     <string>例: 0 255 0</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QLabel" name="labelCategoryHighlightActive">
+                    <property name="text">
+                     <string>有効化中の色(highlight_color_while_active)</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QLineEdit" name="editHighlightColorActive">
+                    <property name="placeholderText">
+                     <string>例: 255 255 0</string>
+                    </property>
+                   </widget>
+                  </item>
+                 </layout>
+                </widget>
+               </item>
+               <item>
+                <spacer name="categoryBottomSpacer">
+                 <property name="orientation">
+                  <enum>Qt::Orientation::Vertical</enum>
+                 </property>
+                 <property name="sizeHint" stdset="0">
+                  <size>
+                   <width>20</width>
+                   <height>40</height>
+                  </size>
+                 </property>
+                </spacer>
+               </item>
+              </layout>
+             </widget>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+         <widget class="QWidget" name="pageDecision">
+          <layout class="QVBoxLayout" name="pageDecisionLayout">
+           <item>
+            <widget class="QScrollArea" name="scrollDecision">
+             <property name="widgetResizable">
+              <bool>true</bool>
+             </property>
+             <widget class="QWidget" name="scrollDecisionContents">
+              <property name="geometry">
+               <rect>
+                <x>0</x>
+                <y>0</y>
+                <width>406</width>
+                <height>2909</height>
+               </rect>
+              </property>
+              <layout class="QVBoxLayout" name="scrollDecisionLayout">
+               <item>
+                <widget class="QGroupBox" name="groupDecisionBasic">
+                 <property name="title">
+                  <string>本体基本</string>
+                 </property>
+                 <layout class="QVBoxLayout" name="pageDecisionVerticalLayout">
+                  <item>
+                   <layout class="QFormLayout" name="decisionIdForm">
+                    <item row="0" column="0">
+                     <widget class="QLabel" name="labelDecisionId">
+                      <property name="text">
+                       <string>本体ID(decision id)</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item row="0" column="1">
+                     <widget class="QLineEdit" name="editDecisionId">
+                      <property name="placeholderText">
+                       <string>例: sample_decision</string>
+                      </property>
+                     </widget>
+                    </item>
+                   </layout>
+                  </item>
+                  <item>
+                   <widget class="QGroupBox" name="groupDecisionName">
+                    <property name="title">
+                     <string>表示名(name)</string>
+                    </property>
+                    <layout class="QFormLayout" name="groupDecisionNameForm">
+                     <item row="0" column="0">
+                      <widget class="QLabel" name="labelDecisionName">
+                       <property name="text">
+                        <string>表示名</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="0" column="1">
+                      <widget class="QLineEdit" name="editDecisionLocalisation"/>
+                     </item>
+                     <item row="1" column="0">
+                      <widget class="QLabel" name="labelDecisionLocFile">
+                       <property name="text">
+                        <string>翻訳先</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="1" column="1">
+                      <layout class="QHBoxLayout" name="decisionLocFileLayout">
+                       <item>
+                        <widget class="QLineEdit" name="editDecisionLocFile"/>
+                       </item>
+                       <item>
+                        <widget class="QPushButton" name="nameLocFileBrowseButton">
+                         <property name="text">
+                          <string>参照</string>
+                         </property>
+                        </widget>
+                       </item>
+                      </layout>
+                     </item>
+                    </layout>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QGroupBox" name="groupDecisionDesc">
+                    <property name="title">
+                     <string>説明(description)</string>
+                    </property>
+                    <layout class="QFormLayout" name="groupDecisionDescForm">
+                     <item row="0" column="0">
+                      <widget class="QLabel" name="labelDecisionDesc">
+                       <property name="text">
+                        <string>説明</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="0" column="1">
+                      <widget class="QPlainTextEdit" name="plainTextEdit_2"/>
+                     </item>
+                     <item row="1" column="0">
+                      <widget class="QLabel" name="labelDecisionDescLocFile">
+                       <property name="text">
+                        <string>翻訳先</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="1" column="1">
+                      <layout class="QHBoxLayout" name="decisionDescLocFileLayout">
+                       <item>
+                        <widget class="QLineEdit" name="editDecisionDescLocFile"/>
+                       </item>
+                       <item>
+                        <widget class="QPushButton" name="descLocFileBrowseButton">
+                         <property name="text">
+                          <string>参照</string>
+                         </property>
+                        </widget>
+                       </item>
+                      </layout>
+                     </item>
+                    </layout>
+                   </widget>
+                  </item>
+                  <item>
+                   <layout class="QFormLayout" name="decisionKeysForm">
+                    <item row="0" column="0">
+                     <widget class="QLabel" name="labelDecisionIcon">
+                      <property name="text">
+                       <string>アイコン(icon)</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item row="0" column="1">
+                     <layout class="QHBoxLayout" name="decisionIconLayout">
+                      <item>
+                       <widget class="QLineEdit" name="editDecisionIcon">
+                        <property name="placeholderText">
+                         <string>例: generic_political_discourse</string>
+                        </property>
+                       </widget>
+                      </item>
+                      <item>
+                       <widget class="QPushButton" name="btnSelectDecisionIcon">
+                        <property name="text">
+                         <string>選択</string>
+                        </property>
+                       </widget>
+                      </item>
+                     </layout>
+                    </item>
+                    <item row="1" column="0">
+                     <widget class="QLabel" name="labelDaysRemove">
+                      <property name="text">
+                       <string>削除までの日数(days_remove)</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item row="1" column="1">
+                     <widget class="QSpinBox" name="spinDaysRemove">
+                      <property name="minimum">
+                       <number>0</number>
+                      </property>
+                      <property name="maximum">
+                       <number>99999</number>
+                      </property>
+                     </widget>
+                    </item>
+                    <item row="2" column="0">
+                     <widget class="QLabel" name="labelDaysReEnable">
+                      <property name="text">
+                       <string>再有効化までの日数(days_re_enable)</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item row="2" column="1">
+                     <widget class="QSpinBox" name="spinDaysReEnable">
+                      <property name="minimum">
+                       <number>0</number>
+                      </property>
+                      <property name="maximum">
+                       <number>99999</number>
+                      </property>
+                     </widget>
+                    </item>
+                    <item row="3" column="0">
+                     <widget class="QLabel" name="labelFireOnlyOnce">
+                      <property name="text">
+                       <string>一度だけ</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item row="3" column="1">
+                     <widget class="QCheckBox" name="checkFireOnlyOnce">
+                      <property name="text">
+                       <string>fire_only_once = yes</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item row="4" column="0">
+                     <widget class="QLabel" name="labelCancelIfNotVisible">
+                      <property name="text">
+                       <string>見えない時キャンセル</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item row="4" column="1">
+                     <widget class="QCheckBox" name="checkCancelIfNotVisible">
+                      <property name="text">
+                       <string>cancel_if_not_visible = yes</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item row="5" column="0">
+                     <widget class="QLabel" name="labelFixedRandomSeed">
+                      <property name="text">
+                       <string>固定ランダム</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item row="5" column="1">
+                     <widget class="QCheckBox" name="checkFixedRandomSeed">
+                      <property name="text">
+                       <string>fixed_random_seed = yes</string>
+                      </property>
+                     </widget>
+                    </item>
+                   </layout>
+                  </item>
+                 </layout>
+                </widget>
+               </item>
+               <item>
+                <widget class="QGroupBox" name="groupCost">
+                 <property name="title">
+                  <string>コスト</string>
+                 </property>
+                 <layout class="QVBoxLayout" name="verticalLayout">
+                  <item>
+                   <layout class="QHBoxLayout" name="horizontalLayout">
+                    <item>
+                     <widget class="QRadioButton" name="radioPPCost">
+                      <property name="text">
+                       <string>政治力</string>
+                      </property>
+                      <property name="checked">
+                       <bool>true</bool>
+                      </property>
+                     </widget>
+                    </item>
+                    <item>
+                     <widget class="QRadioButton" name="radioCustomCost">
+                      <property name="text">
+                       <string>カスタムコスト</string>
+                      </property>
+                     </widget>
+                    </item>
+                   </layout>
+                  </item>
+                  <item>
+                   <widget class="QStackedWidget" name="stackedCost">
+                    <property name="currentIndex">
+                     <number>1</number>
+                    </property>
+                    <widget class="QWidget" name="ppPage">
+                     <layout class="QHBoxLayout" name="horizontalLayout_2">
+                      <item>
+                       <widget class="QLabel" name="labelCost">
+                        <property name="text">
+                         <string>コスト(cost)</string>
+                        </property>
+                       </widget>
+                      </item>
+                      <item>
+                       <widget class="QSpinBox" name="spinCost">
+                        <property name="sizePolicy">
+                         <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+                          <horstretch>0</horstretch>
+                          <verstretch>0</verstretch>
+                         </sizepolicy>
+                        </property>
+                       </widget>
+                      </item>
+                     </layout>
+                    </widget>
+                    <widget class="QWidget" name="CostomCostPage">
+                     <layout class="QFormLayout" name="formLayout">
+                      <property name="leftMargin">
+                       <number>0</number>
+                      </property>
+                      <property name="topMargin">
+                       <number>0</number>
+                      </property>
+                      <property name="rightMargin">
+                       <number>0</number>
+                      </property>
+                      <property name="bottomMargin">
+                       <number>0</number>
+                      </property>
+                      <item row="0" column="0">
+                       <widget class="QLabel" name="labelCustomCostKey">
+                        <property name="text">
+                         <string>キー</string>
+                        </property>
+                       </widget>
+                      </item>
+                      <item row="0" column="1">
+                       <widget class="QLineEdit" name="customCostKeyEdit"/>
+                      </item>
+                      <item row="1" column="0">
+                       <widget class="QLabel" name="labelCustomCostText">
+                        <property name="text">
+                         <string>文章</string>
+                        </property>
+                       </widget>
+                      </item>
+                      <item row="2" column="0">
+                       <widget class="QLabel" name="labelCustomCostLocFile">
+                        <property name="text">
+                         <string>翻訳先</string>
+                        </property>
+                       </widget>
+                      </item>
+                      <item row="2" column="1">
+                       <layout class="QHBoxLayout" name="horizontalLayout_3">
+                        <item>
+                         <widget class="QLineEdit" name="customCostLocFileEdit"/>
+                        </item>
+                        <item>
+                         <widget class="QPushButton" name="customCostLocFileBrowseButton">
+                          <property name="text">
+                           <string>参照</string>
+                          </property>
+                         </widget>
+                        </item>
+                       </layout>
+                      </item>
+                      <item row="1" column="1">
+                       <widget class="QPlainTextEdit" name="customCostTextEdit"/>
+                      </item>
+                     </layout>
+                    </widget>
+                   </widget>
+                  </item>
+                 </layout>
+                </widget>
+               </item>
+               <item>
+                <widget class="QGroupBox" name="groupDecisionTriggers">
+                 <property name="title">
+                  <string>本体条件</string>
+                 </property>
+                 <layout class="QVBoxLayout" name="groupDecisionTriggersLayout">
+                  <item>
+                   <widget class="QLabel" name="labelVisible">
+                    <property name="text">
+                     <string>表示条件(visible)</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QPlainTextEdit" name="textVisible">
+                    <property name="minimumSize">
+                     <size>
+                      <width>0</width>
+                      <height>0</height>
+                     </size>
+                    </property>
+                    <property name="placeholderText">
+                     <string>has_completed_focus = focus_id</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QLabel" name="labelAvailable">
+                    <property name="text">
+                     <string>実行条件(available)</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QPlainTextEdit" name="textAvailable">
+                    <property name="minimumSize">
+                     <size>
+                      <width>0</width>
+                      <height>0</height>
+                     </size>
+                    </property>
+                    <property name="placeholderText">
+                     <string>has_political_power &gt; 25</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QLabel" name="labelCustomCostTrigger">
+                    <property name="text">
+                     <string>カスタムコスト条件(custom_cost_trigger)</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QPlainTextEdit" name="textCustomCostTrigger">
+                    <property name="minimumSize">
+                     <size>
+                      <width>0</width>
+                      <height>0</height>
+                     </size>
+                    </property>
+                    <property name="placeholderText">
+                     <string>always = yes</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QLabel" name="labelRemoveTrigger">
+                    <property name="text">
+                     <string>削除条件(remove_trigger)</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QPlainTextEdit" name="textRemoveTrigger">
+                    <property name="minimumSize">
+                     <size>
+                      <width>0</width>
+                      <height>0</height>
+                     </size>
+                    </property>
+                    <property name="placeholderText">
+                     <string>has_war = yes</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QLabel" name="labelCancelTrigger">
+                    <property name="text">
+                     <string>キャンセル条件(cancel_trigger)</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QPlainTextEdit" name="textCancelTrigger">
+                    <property name="minimumSize">
+                     <size>
+                      <width>0</width>
+                      <height>0</height>
+                     </size>
+                    </property>
+                    <property name="placeholderText">
+                     <string>has_war = yes</string>
+                    </property>
+                   </widget>
+                  </item>
+                 </layout>
+                </widget>
+               </item>
+               <item>
+                <widget class="QGroupBox" name="groupDecisionEffects">
+                 <property name="title">
+                  <string>本体効果</string>
+                 </property>
+                 <layout class="QVBoxLayout" name="groupDecisionEffectsLayout">
+                  <item>
+                   <widget class="QLabel" name="labelCompleteEffect">
+                    <property name="text">
+                     <string>完了時効果(complete_effect)</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QPlainTextEdit" name="textCompleteEffect">
+                    <property name="minimumSize">
+                     <size>
+                      <width>0</width>
+                      <height>0</height>
+                     </size>
+                    </property>
+                    <property name="placeholderText">
+                     <string>add_political_power = -25</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QLabel" name="labelTimeoutEffect">
+                    <property name="text">
+                     <string>時間切れ効果(timeout_effect)</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QPlainTextEdit" name="textTimeoutEffect">
+                    <property name="minimumSize">
+                     <size>
+                      <width>0</width>
+                      <height>0</height>
+                     </size>
+                    </property>
+                    <property name="placeholderText">
+                     <string>add_stability = -0.05</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QLabel" name="labelRemoveEffect">
+                    <property name="text">
+                     <string>削除時効果(remove_effect)</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QPlainTextEdit" name="textRemoveEffect">
+                    <property name="minimumSize">
+                     <size>
+                      <width>0</width>
+                      <height>0</height>
+                     </size>
+                    </property>
+                    <property name="placeholderText">
+                     <string>clr_country_flag = flag_id</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QLabel" name="labelCancelEffect">
+                    <property name="text">
+                     <string>キャンセル時効果(cancel_effect)</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QPlainTextEdit" name="textCancelEffect">
+                    <property name="minimumSize">
+                     <size>
+                      <width>0</width>
+                      <height>0</height>
+                     </size>
+                    </property>
+                    <property name="placeholderText">
+                     <string>add_political_power = 10</string>
+                    </property>
+                   </widget>
+                  </item>
+                 </layout>
+                </widget>
+               </item>
+               <item>
+                <widget class="QGroupBox" name="groupMission">
+                 <property name="title">
+                  <string>ミッションキー</string>
+                 </property>
+                 <layout class="QFormLayout" name="groupMissionForm">
+                  <item row="0" column="0">
+                   <widget class="QLabel" name="labelDaysMissionTimeout">
+                    <property name="text">
+                     <string>期限日数(days_mission_timeout)</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="0" column="1">
+                   <widget class="QSpinBox" name="spinDaysMissionTimeout">
+                    <property name="minimum">
+                     <number>0</number>
+                    </property>
+                    <property name="maximum">
+                     <number>99999</number>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="1" column="0">
+                   <widget class="QLabel" name="labelSelectableMission">
+                    <property name="text">
+                     <string>選択式ミッション</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="1" column="1">
+                   <widget class="QCheckBox" name="checkSelectableMission">
+                    <property name="text">
+                     <string>selectable_mission = yes</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="2" column="0">
+                   <widget class="QLabel" name="labelIsGood">
+                    <property name="text">
+                     <string>良いミッション</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="2" column="1">
+                   <widget class="QCheckBox" name="checkIsGood">
+                    <property name="text">
+                     <string>is_good = yes</string>
+                    </property>
+                   </widget>
+                  </item>
+                 </layout>
+                </widget>
+               </item>
+               <item>
+                <widget class="QGroupBox" name="groupMissionActivation">
+                 <property name="title">
+                  <string>ミッション発動条件</string>
+                 </property>
+                 <layout class="QVBoxLayout" name="groupMissionActivationLayout">
+                  <item>
+                   <widget class="QLabel" name="labelActivation">
+                    <property name="text">
+                     <string>発動条件(activation)</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QPlainTextEdit" name="textActivation">
+                    <property name="minimumSize">
+                     <size>
+                      <width>0</width>
+                      <height>0</height>
+                     </size>
+                    </property>
+                    <property name="placeholderText">
+                     <string>has_war = yes</string>
+                    </property>
+                   </widget>
+                  </item>
+                 </layout>
+                </widget>
+               </item>
+               <item>
+                <widget class="QGroupBox" name="groupTargeted">
+                 <property name="title">
+                  <string>対象国キー</string>
+                 </property>
+                 <layout class="QVBoxLayout" name="groupTargetedLayout">
+                  <item>
+                   <widget class="QLabel" name="labelTargets">
+                    <property name="text">
+                     <string>対象国一覧(targets)</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QPlainTextEdit" name="textTargets">
+                    <property name="minimumSize">
+                     <size>
+                      <width>0</width>
+                      <height>0</height>
+                     </size>
+                    </property>
+                    <property name="placeholderText">
+                     <string>GER FRA ITA</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QLabel" name="labelTargetArray">
+                    <property name="text">
+                     <string>対象配列(target_array)</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QLineEdit" name="editTargetArray">
+                    <property name="placeholderText">
+                     <string>例: global.country_array</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QCheckBox" name="checkTargetsDynamic">
+                    <property name="text">
+                     <string>動的対象(targets_dynamic = yes)</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QCheckBox" name="checkTargetNonExisting">
+                    <property name="text">
+                     <string>存在しない国も対象(target_non_existing = yes)</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QLabel" name="labelTargetRootTrigger">
+                    <property name="text">
+                     <string>対象元条件(target_root_trigger)</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QPlainTextEdit" name="textTargetRootTrigger">
+                    <property name="minimumSize">
+                     <size>
+                      <width>0</width>
+                      <height>0</height>
+                     </size>
+                    </property>
+                    <property name="placeholderText">
+                     <string>is_major = yes</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QLabel" name="labelTargetTrigger">
+                    <property name="text">
+                     <string>対象条件(target_trigger)</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QPlainTextEdit" name="textTargetTrigger">
+                    <property name="minimumSize">
+                     <size>
+                      <width>0</width>
+                      <height>0</height>
+                     </size>
+                    </property>
+                    <property name="placeholderText">
+                     <string>has_war = no</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QLabel" name="labelOnMapMode">
+                    <property name="text">
+                     <string>マップモード(on_map_mode)</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QLineEdit" name="editOnMapMode">
+                    <property name="placeholderText">
+                     <string>例: diplomatic_map_mode</string>
+                    </property>
+                   </widget>
+                  </item>
+                 </layout>
+                </widget>
+               </item>
+               <item>
+                <widget class="QGroupBox" name="groupStateTarget">
+                 <property name="title">
+                  <string>州対象キー</string>
+                 </property>
+                 <layout class="QFormLayout" name="groupStateTargetForm">
+                  <item row="0" column="0">
+                   <widget class="QLabel" name="labelStateTarget">
+                    <property name="text">
+                     <string>州対象(state_target)</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="0" column="1">
+                   <widget class="QComboBox" name="comboStateTarget">
+                    <item>
+                     <property name="text">
+                      <string/>
+                     </property>
+                    </item>
+                    <item>
+                     <property name="text">
+                      <string>yes</string>
+                     </property>
+                    </item>
+                    <item>
+                     <property name="text">
+                      <string>no</string>
+                     </property>
+                    </item>
+                    <item>
+                     <property name="text">
+                      <string>any</string>
+                     </property>
+                    </item>
+                    <item>
+                     <property name="text">
+                      <string>any_owned_state</string>
+                     </property>
+                    </item>
+                    <item>
+                     <property name="text">
+                      <string>any_controlled_state</string>
+                     </property>
+                    </item>
+                   </widget>
+                  </item>
+                 </layout>
+                </widget>
+               </item>
+               <item>
+                <widget class="QGroupBox" name="groupModifiers">
+                 <property name="title">
+                  <string>補正ブロック</string>
+                 </property>
+                 <layout class="QVBoxLayout" name="groupModifiersLayout">
+                  <item>
+                   <widget class="QLabel" name="labelModifier">
+                    <property name="text">
+                     <string>補正(modifier)</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QPlainTextEdit" name="textModifier">
+                    <property name="minimumSize">
+                     <size>
+                      <width>0</width>
+                      <height>0</height>
+                     </size>
+                    </property>
+                    <property name="placeholderText">
+                     <string>political_power_gain = 0.1</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QLabel" name="labelTargetedModifier">
+                    <property name="text">
+                     <string>対象補正(targeted_modifier)</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QPlainTextEdit" name="textTargetedModifier">
+                    <property name="minimumSize">
+                     <size>
+                      <width>0</width>
+                      <height>0</height>
+                     </size>
+                    </property>
+                    <property name="placeholderText">
+                     <string>opinion_gain_monthly = 0.1</string>
+                    </property>
+                   </widget>
+                  </item>
+                 </layout>
+                </widget>
+               </item>
+               <item>
+                <widget class="QGroupBox" name="groupAi">
+                 <property name="title">
+                  <string>AI</string>
+                 </property>
+                 <layout class="QVBoxLayout" name="groupAiLayout">
+                  <item>
+                   <widget class="QLabel" name="labelAiWillDo">
+                    <property name="text">
+                     <string>AI判断(ai_will_do)</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QPlainTextEdit" name="textAiWillDo">
+                    <property name="minimumSize">
+                     <size>
+                      <width>0</width>
+                      <height>0</height>
+                     </size>
+                    </property>
+                    <property name="placeholderText">
+                     <string>factor = 1</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QLabel" name="labelAiHintPpCost">
+                    <property name="text">
+                     <string>AI政治力コスト目安(ai_hint_pp_cost)</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QSpinBox" name="spinAiHintPpCost">
+                    <property name="minimum">
+                     <number>0</number>
+                    </property>
+                    <property name="maximum">
+                     <number>9999</number>
+                    </property>
+                   </widget>
+                  </item>
+                 </layout>
+                </widget>
+               </item>
+               <item>
+                <widget class="QGroupBox" name="groupWarWith">
+                 <property name="title">
+                  <string>戦争警告</string>
+                 </property>
+                 <layout class="QFormLayout" name="groupWarWithForm">
+                  <item row="0" column="0">
+                   <widget class="QLabel" name="labelWarWithOnComplete">
+                    <property name="text">
+                     <string>完了時戦争警告(war_with_on_complete)</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="0" column="1">
+                   <widget class="QLineEdit" name="editWarWithOnComplete"/>
+                  </item>
+                  <item row="1" column="0">
+                   <widget class="QLabel" name="labelWarWithOnRemove">
+                    <property name="text">
+                     <string>削除時戦争警告(war_with_on_remove)</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="1" column="1">
+                   <widget class="QLineEdit" name="editWarWithOnRemove"/>
+                  </item>
+                  <item row="2" column="0">
+                   <widget class="QLabel" name="labelWarWithOnTimeout">
+                    <property name="text">
+                     <string>時間切れ戦争警告(war_with_on_timeout)</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="2" column="1">
+                   <widget class="QLineEdit" name="editWarWithOnTimeout"/>
+                  </item>
+                  <item row="3" column="0">
+                   <widget class="QLabel" name="labelWarWithTargetOnComplete">
+                    <property name="text">
+                     <string>対象完了時戦争警告(war_with_target_on_complete)</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="3" column="1">
+                   <widget class="QLineEdit" name="editWarWithTargetOnComplete"/>
+                  </item>
+                  <item row="4" column="0">
+                   <widget class="QLabel" name="labelWarWithTargetOnRemove">
+                    <property name="text">
+                     <string>対象削除時戦争警告(war_with_target_on_remove)</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="4" column="1">
+                   <widget class="QLineEdit" name="editWarWithTargetOnRemove"/>
+                  </item>
+                  <item row="5" column="0">
+                   <widget class="QLabel" name="labelWarWithTargetOnTimeout">
+                    <property name="text">
+                     <string>対象時間切れ戦争警告(war_with_target_on_timeout)</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="5" column="1">
+                   <widget class="QLineEdit" name="editWarWithTargetOnTimeout"/>
+                  </item>
+                 </layout>
+                </widget>
+               </item>
+               <item>
+                <spacer name="decisionBottomSpacer">
+                 <property name="orientation">
+                  <enum>Qt::Orientation::Vertical</enum>
+                 </property>
+                 <property name="sizeHint" stdset="0">
+                  <size>
+                   <width>20</width>
+                   <height>40</height>
+                  </size>
+                 </property>
+                </spacer>
+               </item>
+              </layout>
+             </widget>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="previewPanel">
+      <property name="minimumSize">
+       <size>
+        <width>0</width>
+        <height>0</height>
+       </size>
+      </property>
+      <layout class="QVBoxLayout" name="previewLayout">
+       <item>
+        <widget class="QLabel" name="labelPreviewTitle">
+         <property name="styleSheet">
+          <string>font-weight: bold;</string>
+         </property>
+         <property name="text">
+          <string>プレビュー</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGraphicsView" name="previewGraphicsView">
+         <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>0</height>
+          </size>
+         </property>
+         <property name="verticalScrollBarPolicy">
+          <enum>Qt::ScrollBarPolicy::ScrollBarAsNeeded</enum>
+         </property>
+         <property name="horizontalScrollBarPolicy">
+          <enum>Qt::ScrollBarPolicy::ScrollBarAsNeeded</enum>
+         </property>
+         <property name="renderHints">
+          <set>QPainter::RenderHint::Antialiasing|QPainter::RenderHint::TextAntialiasing</set>
+         </property>
+         <property name="dragMode">
+          <enum>QGraphicsView::DragMode::ScrollHandDrag</enum>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

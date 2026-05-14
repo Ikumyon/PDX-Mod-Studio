@@ -1,7 +1,8 @@
 import os
 import json
-from PySide6.QtWidgets import QFileDialog, QListWidgetItem, QDialog, QVBoxLayout, QMessageBox, QLineEdit, QComboBox, QPushButton
-from PySide6.QtCore import Qt, QFile, QFileSystemWatcher, QTimer
+from PySide6.QtWidgets import QFileDialog, QListWidgetItem, QDialog, QVBoxLayout, QMessageBox, QLineEdit, QComboBox, QPushButton, QLabel, QToolButton, QHBoxLayout, QScrollArea, QSplitter, QCheckBox
+from PySide6.QtCore import Qt, QFile, QFileSystemWatcher, QTimer, QSize
+from PySide6.QtGui import QIcon
 from PySide6.QtUiTools import QUiLoader
 from core.plugin_manager import ModElement
 from plugins.hoi4.localisation.registry import LocalisationRegistry
@@ -14,14 +15,70 @@ _watcher = None
 # --- 設定関連の定数とロジック ---
 DEFAULT_SETTINGS = {
     "game_path": "",
+    "event_namespace": "{file}",
     "event_id_format": "{namespace}.{number}",
-    "event_loc_file_format": "{namespace}_{lang}.yml",
+    "event_loc_file_format": "{lang}/{namespace}_l_{lang}.yml",
     "event_title_key_format": "{id}.t",
     "event_desc_key_format": "{id}.d",
     "event_option_key_format": "{id}.{a-z}",
+    "decision_category_id_format": "{category}_{number}",
+    "decision_id_format": "{category}_{number}",
+    "decision_loc_file_format": "{lang}/decisions_l_{lang}.yml",
     "display_language": "l_japanese",
-    "save_empty_localisation": False
+    "save_empty_localisation": False,
+    "explicit_no_export": False
 }
+
+# 設定キーごとの利用可能な変数定義
+VARIABLE_DEFINITIONS = {
+    "event_namespace": ["{project_name}", "{file}"],
+    "event_id_format": ["{namespace}", "{number}", "{file}", "{a-z}"],
+    "event_loc_file_format": ["{id}", "{namespace}", "{lang}", "{file}"],
+    "event_title_key_format": ["{id}", "{namespace}", "{number}", "{file}"],
+    "event_desc_key_format": ["{id}", "{namespace}", "{number}", "{file}"],
+    "event_option_key_format": ["{id}", "{a-z}", "{number}", "{namespace}", "{file}"],
+    "decision_category_id_format": ["{file}", "{number}", "{a-z}"],
+    "decision_id_format": ["{category}", "{number}", "{file}", "{a-z}"],
+    "decision_loc_file_format": ["{id}", "{category}", "{lang}", "{file}"]
+}
+
+class VariableSelectorDialog(QDialog):
+    """フォーマット変数を選択して編集するためのダイアログ"""
+    def __init__(self, parent, variables, current_text):
+        super().__init__(parent)
+        self.setWindowTitle("変数を選択")
+        
+        layout = QVBoxLayout(self)
+        
+        # 変数ボタンの配置
+        layout.addWidget(QLabel("利用可能な変数:"))
+        btn_layout = QHBoxLayout()
+        for var in variables:
+            btn = QPushButton(var)
+            btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            btn.clicked.connect(lambda _, v=var: self.insert_variable(v))
+            btn_layout.addWidget(btn)
+        btn_layout.addStretch()
+        layout.addLayout(btn_layout)
+        
+        layout.addSpacing(10)
+        
+        # プレビュー兼編集エリア
+        layout.addWidget(QLabel("現在の形式:"))
+        self.edit = QLineEdit(current_text)
+        layout.addWidget(self.edit)
+        
+        # 決定ボタン
+        self.ok_btn = QPushButton("決定")
+        self.ok_btn.clicked.connect(self.accept)
+        layout.addWidget(self.ok_btn)
+
+    def insert_variable(self, var):
+        self.edit.insert(var)
+        self.edit.setFocus()
+
+    def get_text(self):
+        return self.edit.text()
 
 def save_plugin_settings(path, settings):
     """設定をJSONファイルに保存する"""
@@ -59,10 +116,36 @@ def load_plugin_elements(plugin):
         except Exception as e:
             print(f"Failed to load HoI4 element {item}: {e}")
 
+def get_colored_icon(path, color):
+    """SVGの色を置換してQIconを生成する"""
+    if not os.path.exists(path):
+        return QIcon()
+    
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            svg_data = f.read()
+        
+        # currentColor または #000000 を指定色（16進数）で置換
+        hex_color = color.name()
+        svg_data = svg_data.replace('currentColor', hex_color)
+        svg_data = svg_data.replace('#000000', hex_color)
+        
+        from PySide6.QtGui import QPixmap
+        pixmap = QPixmap()
+        pixmap.loadFromData(svg_data.encode('utf-8'), "SVG")
+        return QIcon(pixmap)
+    except Exception as e:
+        print(f"Failed to colorize icon {path}: {e}")
+        return QIcon(path)
+
 def setup_settings_controls(widget, plugin, project_path):
     """設定画面の初期化ロジック"""
     settings_file = os.path.join(plugin.path, "settings.json")
     
+    # 現在のテキストカラーを取得
+    palette = widget.palette()
+    text_color = palette.color(widget.foregroundRole())
+
     if os.path.exists(settings_file):
         try:
             with open(settings_file, 'r', encoding='utf-8') as f:
@@ -81,6 +164,13 @@ def setup_settings_controls(widget, plugin, project_path):
     
     if updated or not os.path.exists(settings_file):
         save_plugin_settings(settings_file, settings)
+
+    # 共通の変数選択ダイアログ表示用ヘルパー
+    def open_variable_dialog(target_edit, settings_key):
+        variables = VARIABLE_DEFINITIONS.get(settings_key, [])
+        dialog = VariableSelectorDialog(widget, variables, target_edit.text())
+        if dialog.exec() == QDialog.Accepted:
+            target_edit.setText(dialog.get_text())
 
     # ゲーム本体のパス設定
     game_path_edit = widget.findChild(QLineEdit, "gamePathEdit")
@@ -101,24 +191,47 @@ def setup_settings_controls(widget, plugin, project_path):
                 game_path_edit.setText(path)
         browse_button.clicked.connect(on_browse)
 
-    # イベントエディタ設定の同期
+    # 設定項目とウィジェット名のマッピング
     settings_map = {
+        "eventNamespaceEdit": "event_namespace",
         "idFormatEdit": "event_id_format",
         "locFileFormatEdit": "event_loc_file_format",
         "titleKeyFormatEdit": "event_title_key_format",
         "descKeyFormatEdit": "event_desc_key_format",
-        "optionKeyFormatEdit": "event_option_key_format"
+        "optionKeyFormatEdit": "event_option_key_format",
+        "decisionCategoryIdFormatEdit": "decision_category_id_format",
+        "decisionIdFormatEdit": "decision_id_format",
+        "decisionLocFileFormatEdit": "decision_loc_file_format"
     }
 
+    # 各入力欄とBrowseボタン（鉛筆アイコン）の自動紐付け
     for widget_name, settings_key in settings_map.items():
         edit = widget.findChild(QLineEdit, widget_name)
-        if edit:
-            edit.setText(settings.get(settings_key, DEFAULT_SETTINGS[settings_key]))
-            edit.textChanged.connect(lambda text, key=settings_key: (
-                settings.update({key: text}),
-                save_plugin_settings(settings_file, settings)
-            ))
+        if not edit:
+            continue
+            
+        # 既存の値セットと変更検知
+        edit.setText(settings.get(settings_key, DEFAULT_SETTINGS[settings_key]))
+        edit.textChanged.connect(lambda text, key=settings_key: (
+            settings.update({key: text}),
+            save_plugin_settings(settings_file, settings)
+        ))
         
+        # Browseボタンの自動検出とセットアップ
+        # 命名規則: Edit -> BrowseButton (例: idFormatEdit -> idFormatBrowseButton)
+        browse_name = widget_name.replace("Edit", "BrowseButton")
+        browse_btn = widget.findChild(QToolButton, browse_name)
+        
+        if browse_btn:
+            # 鉛筆アイコンの設定（テーマカラー適用）
+            icon_path = os.path.join(plugin.path, "asset", "icons", "pencil.svg")
+            browse_btn.setIcon(get_colored_icon(icon_path, text_color))
+            browse_btn.setIconSize(QSize(16, 16))
+            browse_btn.setText("")
+            
+            # クリックイベントの接続
+            browse_btn.clicked.connect(lambda _, e=edit, k=settings_key: open_variable_dialog(e, k))
+
     # 表示優先言語のコンボボックス
     display_lang_combo = widget.findChild(QComboBox, "displayLanguageCombo")
     if display_lang_combo:
@@ -147,12 +260,20 @@ def setup_settings_controls(widget, plugin, project_path):
         ))
 
     # 空の翻訳を保存するかどうかのチェックボックス
-    from PySide6.QtWidgets import QCheckBox
     save_empty_check = widget.findChild(QCheckBox, "saveEmptyLocCheck")
     if save_empty_check:
         save_empty_check.setChecked(settings.get("save_empty_localisation", False))
         save_empty_check.toggled.connect(lambda checked: (
             settings.update({"save_empty_localisation": checked}),
+            save_plugin_settings(settings_file, settings)
+        ))
+
+    # チェック解除時に no を書き込むかどうかのチェックボックス
+    explicit_no_check = widget.findChild(QCheckBox, "explicitNoCheck")
+    if explicit_no_check:
+        explicit_no_check.setChecked(settings.get("explicit_no_export", False))
+        explicit_no_check.toggled.connect(lambda checked: (
+            settings.update({"explicit_no_export": checked}),
             save_plugin_settings(settings_file, settings)
         ))
 
@@ -284,60 +405,6 @@ def initialize(plugin):
         update_registry()
 
     plugin.localisation_registry = _registry
-    
-def setup_settings_ui_legacy(widget, project_path, plugin):
-    settings_file = os.path.join(plugin.path, "settings.json")
-    
-    def on_save_clicked():
-        # GUIの各項目から現在の設定値を読み取る
-        new_settings = {
-            "game_path": widget.findChild(QLineEdit, "gamePathEdit").text(),
-            "display_language": widget.findChild(QComboBox, "languageCombo").currentData(),
-            # ... 他の設定項目
-        }
-        
-        # ファイルに書き込む
-        try:
-            with open(settings_file, 'w', encoding='utf-8') as f:
-                json.dump(new_settings, f, indent=4, ensure_ascii=False)
-            
-            # 再スキャンを強制
-            plugin.refresh_localisation()
-            core.api.show_message("設定を保存し、ローカライズ情報を再読込しました")
-        except Exception as e:
-            core.api.show_message(f"保存に失敗しました: {e}")
-
-    # 保存ボタンの取得と接続 (UIファイル内のオブジェクト名に合わせる)
-    save_btn = widget.findChild(QPushButton, "saveButton")
-    if save_btn:
-        save_btn.clicked.connect(on_save_clicked)
-    
-    # このプラグイン内の各要素フォルダを走査して登録する（実装詳細はプラグインに閉じる）
-    plugin_path = plugin.path
-    for item in os.listdir(plugin_path):
-        element_dir = os.path.join(plugin_path, item)
-        if os.path.isdir(element_dir):
-            config_path = os.path.join(element_dir, "config.json")
-            if os.path.exists(config_path):
-                try:
-                    with open(config_path, 'r', encoding='utf-8') as f:
-                        config = json.load(f)
-                        
-                    # コアの ModElement を作成して登録
-                    element = ModElement(
-                        id=item,
-                        name=config.get("name", item),
-                        path=config.get("path", ""),
-                        plugin=plugin,
-                        element_dir=element_dir,
-                        raw=config # JSONデータをそのまま持たせておく
-                    )
-                    plugin.elements.append(element)
-                except Exception as e:
-                    print(f"Failed to load HoI4 element {item}: {e}")
-
-# --- 属性取得のフック関数 ---
-# コア側 (Plugin.get_element_attribute) から呼び出される
 
 def get_extension(element):
     """要素の拡張子を返す"""

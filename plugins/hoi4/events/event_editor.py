@@ -16,8 +16,58 @@ from PySide6.QtUiTools import QUiLoader
 from plugins.hoi4.script_parser import AssignmentNode, ObjectNode, Parser, ScalarNode, DocumentAst
 
 
-from plugins.hoi4.events.event_parser import EventParser, ParsedEvent
+from plugins.hoi4.script_parser import AssignmentNode, ObjectNode, Parser, ScalarNode, DocumentAst, SchemaEvaluator, ParsedEntity
 import core.api
+
+class ParsedEvent:
+    def __init__(self, entity: ParsedEntity):
+        self.entity = entity
+        self.id = entity.id
+        self.node = entity.node
+        self.source_path = entity.source_path
+        
+        self.event_id = self.id
+        self.key = "country_event"
+        self.options: list[AssignmentNode] = []
+
+    def first(self, key: str):
+        return self.entity.first(key)
+
+@dataclass
+class Document:
+    events: list[ParsedEvent] = field(default_factory=list)
+    properties: dict = field(default_factory=dict)
+
+class EventParser:
+    def __init__(self, plugin=None):
+        self.plugin = plugin
+        base_dir = os.path.dirname(__file__)
+        with open(os.path.join(base_dir, "event_schema.json"), "r", encoding="utf-8") as f:
+            self.schema_data = json.load(f)
+        self.evaluator = SchemaEvaluator(self.schema_data)
+        self.schema = self.schema_data
+
+    def parse_document(self, path: str, content: str) -> Document:
+        parser = Parser(content)
+        ast, _, _ = parser.parse()
+        
+        doc = Document()
+        
+        for item in getattr(ast, "items", []):
+            if isinstance(item, AssignmentNode) and item.key == "add_namespace":
+                if isinstance(item.value, ScalarNode):
+                    doc.properties["add_namespace"] = str(item.value.value)
+        
+        entities = self.evaluator.evaluate(ast, path)
+        for e in entities:
+            pe = ParsedEvent(e)
+            if isinstance(e.node, AssignmentNode):
+                pe.key = e.node.key
+            for opt_node in e.properties.get("option", []):
+                pe.options.append(opt_node)
+            doc.events.append(pe)
+            
+        return doc
 
 
 MODE_NAME = "Event Editor"
@@ -177,6 +227,22 @@ class EventEditorController:
         self.loc_timer.setSingleShot(True)
         self.loc_timer.timeout.connect(self.update_localisation_ui)
         core.api.register_loc_changed_handler(self.update_localisation_ui)
+        
+        self.is_detailed_mode = False
+        self.system_widgets = []
+        self.format_config = {}
+        self.load_format_config()
+
+    def load_format_config(self):
+        path = os.path.join(os.path.dirname(__file__), "event_format.json")
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    self.format_config = json.load(f)
+            except:
+                self.format_config = {}
+        else:
+            self.format_config = {}
 
     def get_plugin_settings(self):
         """plugins/hoi4/settings.json を読み込む"""
@@ -222,10 +288,17 @@ class EventEditorController:
         if lang is None:
             lang = self.get_plugin_settings().get("display_language", "l_japanese")
         fallback_id = f"{namespace}.{number}"
+        file_stem = os.path.splitext(os.path.basename(self.file_path))[0]
+        # l_japanese -> japanese のようにプレフィックスを除去
+        display_lang = lang or ""
+        if display_lang.startswith("l_"):
+            display_lang = display_lang[2:]
+
         values = {
             "namespace": namespace,
+            "file": file_stem,
             "number": number,
-            "lang": lang,
+            "lang": display_lang,
             "id": event_id or fallback_id,
         }
         values.update(self.option_format_values(option_index))
@@ -372,7 +445,46 @@ class EventEditorController:
         if self.after:
             self.after.focusOutEvent = lambda event: self.on_top_text_focus_out("after", self.after, event)
 
+        # モード切替ボタンの接続
+        self.standard_mode_btn = find(self.widget, object, "standardModeButton")
+        self.detailed_mode_btn = find(self.widget, object, "customModeButton") # UI上は詳細
+        
+        if self.standard_mode_btn:
+            self.standard_mode_btn.clicked.connect(lambda: self.set_detailed_mode(False))
+        if self.detailed_mode_btn:
+            self.detailed_mode_btn.clicked.connect(lambda: self.set_detailed_mode(True))
+
+        # システム項目の収集
+        self.system_widgets = [
+            find(self.widget, object, "eventIdLabel"), self.event_id,
+            find(self.widget, object, "titleKeyLabel"), self.title_key,
+            find(self.widget, object, "titleLocFileLabel"), self.title_loc_file,
+            find(self.widget, object, "titleLocFileBrowseButton"),
+            find(self.widget, object, "descKeyLabel"), self.desc_key,
+            find(self.widget, object, "descLocFileLabel"), self.desc_loc_file,
+            find(self.widget, object, "descLocFileBrowseButton"),
+        ]
+        # Noneを除外
+        self.system_widgets = [w for w in self.system_widgets if w is not None]
+
         self.refresh()
+        self.set_detailed_mode(False) # 初期状態は標準
+
+    def set_detailed_mode(self, enabled):
+        self.is_detailed_mode = enabled
+        for w in self.system_widgets:
+            w.setVisible(enabled)
+            
+        # ボタンの状態を更新
+        if self.standard_mode_btn: self.standard_mode_btn.setChecked(not enabled)
+        if self.detailed_mode_btn: self.detailed_mode_btn.setChecked(enabled)
+        
+        # 既存のオプションの表示を更新
+        if self.options_layout:
+            for i in range(self.options_layout.count() - 1):
+                opt_widget = self.options_layout.itemAt(i).widget()
+                if opt_widget:
+                    self._apply_mode_to_option_widget(opt_widget)
 
     def on_top_text_focus_out(self, key, edit, event):
         QPlainTextEdit.focusOutEvent(edit, event)
@@ -792,6 +904,19 @@ class EventEditorController:
 
             # レイアウトに追加 (addOptionButton の上に挿入)
             self.options_layout.insertWidget(self.options_layout.count() - 1, option_widget)
+            self._apply_mode_to_option_widget(option_widget)
+
+    def _apply_mode_to_option_widget(self, widget):
+        # 詳細モードのみ表示する項目
+        targets = [
+            find(widget, object, "nameKeyLabel"),
+            find(widget, object, "nameKeyEdit"),
+            find(widget, object, "optionLocFileLabel"),
+            find(widget, object, "optionLocFileEdit"),
+            find(widget, object, "optionLocFileBrowseButton"),
+        ]
+        for t in targets:
+            if t: t.setVisible(self.is_detailed_mode)
 
     def on_option_text_focus_out(self, idx, key, edit, event):
         QPlainTextEdit.focusOutEvent(edit, event)
@@ -874,7 +999,7 @@ class EventEditorController:
         while True:
             new_id = self.apply_format(
                 id_fmt,
-                **self.format_values(namespace=namespace, number=counter, option_index=0),
+                **self.format_values(namespace=namespace, number=counter, option_index=counter-1),
             )
             if not any(e.event_id == new_id for e in self.events):
                 break
@@ -1026,6 +1151,7 @@ class EventEditorController:
             # 通常発生の場合、is_triggered_only を削除
             self.replace_property("is_triggered_only", "")
             
+        self.reformat_event(self.selected_event_id)
         self.update_trigger_ui()
 
     def update_trigger_ui(self):
@@ -1077,7 +1203,11 @@ class EventEditorController:
 
     def connect_bool(self, control, property_name):
         if control:
-            control.toggled.connect(lambda checked, name=property_name: self.replace_property(name, "yes" if checked else ""))
+            def on_toggled(checked, name=property_name):
+                settings = self.get_plugin_settings()
+                val = "yes" if checked else ("no" if settings.get("explicit_no_export", False) else "")
+                self.replace_property(name, val)
+            control.toggled.connect(on_toggled)
 
     def replace_property(self, property_name, replacement):
         if self.updating:
@@ -1159,6 +1289,95 @@ class EventEditorController:
             self.selected_event_id = replacement
             
         self.refresh()
+        self.reformat_event(self.selected_event_id)
+
+    def reformat_event(self, event_id):
+        if not event_id: return
+        # メモリ上のデータから再度パースして最新の状態を取得
+        text = self.widget.content
+        ast, _, _ = Parser(text).parse()
+        events = self.parser._extract_events(ast, self.file_path)
+        
+        target = None
+        for ev in events:
+            if ev.event_id == event_id:
+                target = ev
+                break
+        
+        if not target: return
+        
+        # インデントレベルの決定 (イベントは1段)
+        indent_level = 1
+        tabs = "\t" * indent_level
+        
+        # ブロックの中身を再構築
+        config = self.format_config.get("event", {})
+        key_order = config.get("key_order", [])
+        
+        # 既存のノードを辞書に整理
+        nodes = {}
+        if isinstance(target.node.value, ObjectNode):
+            for item in target.node.value.items:
+                if isinstance(item, AssignmentNode):
+                    # 同一キーが複数ある場合（optionなど）はリストで保持
+                    if item.key not in nodes:
+                        nodes[item.key] = []
+                    nodes[item.key].append(item)
+        
+        lines = []
+        used_keys = set()
+        
+        # 定義された順序に従って追加（空行対応）
+        for key in key_order:
+            if key == "": # 空行（スペーサー）
+                if lines and lines[-1] != "":
+                    lines.append("")
+                continue
+                
+            if key in nodes:
+                for node in nodes[key]:
+                    formatted = self.format_ast_node(node, indent_level)
+                    if formatted:
+                        lines.append(f"{tabs}{formatted}")
+                used_keys.add(key)
+        
+        # 定義にないキーを追加
+        for key, node_list in nodes.items():
+            if key not in used_keys:
+                for node in node_list:
+                    formatted = self.format_ast_node(node, indent_level)
+                    if formatted:
+                        lines.append(f"{tabs}{formatted}")
+        
+        # 末尾の空行を削除
+        while lines and lines[-1] == "":
+            lines.pop()
+        
+        inner_text = "\n".join(lines)
+        node_range = target.node.value.range
+        new_text = text[:node_range.start_offset + 1] + "\n" + inner_text + "\n" + text[node_range.end_offset - 1:]
+        
+        self.widget.content = new_text
+        self.refresh()
+
+    def format_ast_node(self, node, indent_level):
+        from plugins.hoi4.script_parser import ScalarNode, ObjectNode, AssignmentNode
+        if isinstance(node, AssignmentNode):
+            val = self.format_ast_node(node.value, indent_level)
+            return f"{node.key} = {val}"
+        if isinstance(node, ScalarNode):
+            return node.raw
+        if isinstance(node, ObjectNode):
+            tabs = "\t" * (indent_level + 1)
+            inner_lines = []
+            for item in node.items:
+                formatted = self.format_ast_node(item, indent_level + 1)
+                if formatted:
+                    inner_lines.append(f"{tabs}{formatted}")
+            
+            close_tabs = "\t" * indent_level
+            return "{\n" + "\n".join(inner_lines) + f"\n{close_tabs}}}"
+        return ""
 
     def index_for_event_id(self, event_id):
         if not event_id:
@@ -1264,7 +1483,7 @@ class EventEditorController:
         filename = widget.text().strip() if widget and hasattr(widget, "text") else ""
         if not filename or not filename.lower().endswith(".yml"):
             filename = self.default_loc_filename()
-        return os.path.basename(filename)
+        return filename
 
     def save_localisation(self, key, text, loc_file_widget=None):
         """ローカライズ情報を適切なファイルに保存する"""

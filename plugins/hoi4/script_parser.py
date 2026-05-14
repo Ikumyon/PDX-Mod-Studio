@@ -422,3 +422,92 @@ def infer_value_type(node: AstNode) -> str:
     if isinstance(node, ObjectNode):
         return "object"
     return "raw"
+
+
+@dataclass
+class ParsedEntity:
+    schema_name: str
+    id: str
+    parent_id: Optional[str]
+    properties: dict[str, list[AssignmentNode]] = field(default_factory=dict)
+    node: Optional[AstNode] = field(default=None)
+    source_path: str = ""
+
+    def first(self, key: str) -> Optional[AssignmentNode]:
+        nodes = self.properties.get(key, [])
+        return nodes[0] if nodes else None
+
+class SchemaEvaluator:
+    def __init__(self, schema: dict):
+        self.schema = schema
+        self.schema_name = schema.get("schema_name", "unknown")
+        self.root_pattern = schema.get("root_pattern", "named_block")
+        self.id_rule = schema.get("id_rule", {})
+        self.fields = schema.get("fields", {})
+
+    def evaluate(self, ast: AstNode, path: str = "") -> list[ParsedEntity]:
+        entities: list[ParsedEntity] = []
+        if not hasattr(ast, "items"):
+            return entities
+
+        if self.root_pattern == "named_block":
+            for item in getattr(ast, "items", []):
+                if not isinstance(item, AssignmentNode) or not isinstance(item.value, ObjectNode):
+                    continue
+                entity = self._evaluate_node(
+                    node_key=item.key,
+                    parent_key=None,
+                    node=item,
+                    path=path
+                )
+                if entity:
+                    entities.append(entity)
+
+        elif self.root_pattern == "nested_named_block":
+            for outer in getattr(ast, "items", []):
+                if not isinstance(outer, AssignmentNode) or not isinstance(outer.value, ObjectNode):
+                    continue
+                parent_key = outer.key
+                for inner in outer.value.items:
+                    if not isinstance(inner, AssignmentNode) or not isinstance(inner.value, ObjectNode):
+                        continue
+                    entity = self._evaluate_node(
+                        node_key=inner.key,
+                        parent_key=parent_key,
+                        node=inner,
+                        path=path
+                    )
+                    if entity:
+                        entities.append(entity)
+
+        return entities
+
+    def _evaluate_node(self, node_key: str, parent_key: Optional[str], node: AssignmentNode, path: str) -> Optional[ParsedEntity]:
+        entity_id = node_key
+        entity_parent_id = parent_key
+
+        source = self.id_rule.get("source")
+        if source == "inner_property":
+            prop_name = self.id_rule.get("property_name", "id")
+            if isinstance(node.value, ObjectNode):
+                for child in node.value.items:
+                    if isinstance(child, AssignmentNode) and child.key == prop_name:
+                        if hasattr(child.value, "value"):
+                            entity_id = str(child.value.value)
+                        break
+
+        entity = ParsedEntity(
+            schema_name=self.schema_name,
+            id=entity_id,
+            parent_id=entity_parent_id,
+            node=node,
+            source_path=path,
+            properties={}
+        )
+
+        if isinstance(node.value, ObjectNode):
+            for child in node.value.items:
+                if isinstance(child, AssignmentNode):
+                    entity.properties.setdefault(child.key, []).append(child)
+
+        return entity

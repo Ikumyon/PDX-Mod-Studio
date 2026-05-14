@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>400</width>
+    <width>664</width>
     <height>600</height>
    </rect>
   </property>
@@ -64,90 +64,223 @@
       <string>イベント設定</string>
      </property>
      <layout class="QFormLayout" name="editorAssistFormLayout">
-      <item row="0" column="0">
+      <item row="1" column="0">
        <widget class="QLabel" name="idFormatLabel">
         <property name="text">
          <string>ID形式:</string>
         </property>
        </widget>
       </item>
-      <item row="0" column="1">
-       <widget class="QLineEdit" name="idFormatEdit">
-        <property name="text">
-         <string>{namespace}.{number}</string>
-        </property>
-        <property name="placeholderText">
-         <string>例: {namespace}.{number}</string>
-        </property>
-       </widget>
+      <item row="1" column="1">
+       <layout class="QHBoxLayout" name="idFormatLayout">
+        <item>
+         <widget class="QLineEdit" name="idFormatEdit">
+          <property name="placeholderText">
+           <string>例: {namespace}.{number}</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QToolButton" name="idFormatBrowseButton">
+          <property name="text">
+           <string>...</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
       </item>
-      <item row="1" column="0">
+      <item row="2" column="0">
        <widget class="QLabel" name="locFileFormatLabel">
         <property name="text">
          <string>翻訳ファイル形式:</string>
         </property>
        </widget>
       </item>
-      <item row="1" column="1">
-       <widget class="QLineEdit" name="locFileFormatEdit">
-        <property name="text">
-         <string>{namespace}_{lang}.yml</string>
-        </property>
-        <property name="placeholderText">
-         <string>例: {namespace}_{lang}.yml</string>
-        </property>
-       </widget>
+      <item row="2" column="1">
+       <layout class="QHBoxLayout" name="locFileFormatLayout">
+        <item>
+         <widget class="QLineEdit" name="locFileFormatEdit">
+          <property name="placeholderText">
+           <string>例: {namespace}_{lang}.yml</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QToolButton" name="locFileFormatBrowseButton">
+          <property name="text">
+           <string>...</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
       </item>
-      <item row="2" column="0">
+      <item row="3" column="0">
        <widget class="QLabel" name="titleKeyFormatLabel">
         <property name="text">
          <string>タイトルキー形式:</string>
         </property>
        </widget>
       </item>
-      <item row="2" column="1">
-       <widget class="QLineEdit" name="titleKeyFormatEdit">
-        <property name="text">
-         <string>{id}.t</string>
-        </property>
-        <property name="placeholderText">
-         <string>例: {id}.t</string>
-        </property>
-       </widget>
+      <item row="3" column="1">
+       <layout class="QHBoxLayout" name="titleKeyFormatLayout">
+        <item>
+         <widget class="QLineEdit" name="titleKeyFormatEdit">
+          <property name="placeholderText">
+           <string>例: {id}.t</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QToolButton" name="titleKeyFormatBrowseButton">
+          <property name="text">
+           <string>...</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
       </item>
-      <item row="3" column="0">
+      <item row="4" column="0">
        <widget class="QLabel" name="descKeyFormatLabel">
         <property name="text">
          <string>説明キー形式:</string>
         </property>
        </widget>
       </item>
-      <item row="3" column="1">
-       <widget class="QLineEdit" name="descKeyFormatEdit">
-        <property name="text">
-         <string>{id}.d</string>
-        </property>
-        <property name="placeholderText">
-         <string>例: {id}.d</string>
-        </property>
-       </widget>
+      <item row="4" column="1">
+       <layout class="QHBoxLayout" name="descKeyFormatLayout">
+        <item>
+         <widget class="QLineEdit" name="descKeyFormatEdit">
+          <property name="placeholderText">
+           <string>例: {id}.d</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QToolButton" name="descKeyFormatBrowseButton">
+          <property name="text">
+           <string>...</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
       </item>
-      <item row="4" column="0">
+      <item row="5" column="0">
        <widget class="QLabel" name="optionKeyFormatLabel">
         <property name="text">
          <string>選択肢キー形式:</string>
         </property>
        </widget>
       </item>
-      <item row="4" column="1">
-       <widget class="QLineEdit" name="optionKeyFormatEdit">
+      <item row="5" column="1">
+       <layout class="QHBoxLayout" name="optionKeyFormatLayout">
+        <item>
+         <widget class="QLineEdit" name="optionKeyFormatEdit">
+          <property name="placeholderText">
+           <string>例: {id}.{a-z}</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QToolButton" name="optionKeyFormatBrowseButton">
+          <property name="text">
+           <string>...</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item row="0" column="0">
+       <widget class="QLabel" name="eventNamespaceLabel">
         <property name="text">
-         <string>{id}.{a-z}</string>
-        </property>
-        <property name="placeholderText">
-         <string>例: {id}.{a-z}</string>
+         <string>ネームスペース</string>
         </property>
        </widget>
+      </item>
+      <item row="0" column="1">
+       <layout class="QHBoxLayout" name="horizontalLayout">
+        <item>
+         <widget class="QLineEdit" name="eventNamespaceEdit"/>
+        </item>
+        <item>
+         <widget class="QToolButton" name="eventNamespaceBrowseButton">
+          <property name="text">
+           <string>...</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="decisionSettingsGroup">
+     <property name="title">
+      <string>ディシジョン設定</string>
+     </property>
+     <layout class="QFormLayout" name="decisionFormLayout">
+      <item row="0" column="0">
+       <widget class="QLabel" name="decisionCategoryIdFormatLabel">
+        <property name="text">
+         <string>カテゴリID形式</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <layout class="QHBoxLayout" name="decisionCategoryIdFormatLayout">
+        <item>
+         <widget class="QLineEdit" name="decisionCategoryIdFormatEdit"/>
+        </item>
+        <item>
+         <widget class="QToolButton" name="decisionCategoryIdFormatBrowseButton">
+          <property name="text">
+           <string>...</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item row="2" column="1">
+       <layout class="QHBoxLayout" name="decisionLocFileFormatLayout">
+        <item>
+         <widget class="QLineEdit" name="decisionLocFileFormatEdit"/>
+        </item>
+        <item>
+         <widget class="QToolButton" name="decisionLocFileFormatBrowseButton">
+          <property name="text">
+           <string>...</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="decisionLocFileFormatLabel">
+        <property name="text">
+         <string>翻訳ファイル形式</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="decisionIdFormatLabel">
+        <property name="text">
+         <string>ディシジョンID形式</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <layout class="QHBoxLayout" name="decisionIdFormatLayout">
+        <item>
+         <widget class="QLineEdit" name="decisionIdFormatEdit"/>
+        </item>
+        <item>
+         <widget class="QToolButton" name="decisionIdFormatBrowseButton">
+          <property name="text">
+           <string>...</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
       </item>
      </layout>
     </widget>
@@ -176,17 +309,27 @@
         </item>
         <item>
          <widget class="QCheckBox" name="saveEmptyLocCheck">
-          <property name="text">
-           <string>空の文章も翻訳ファイルに書き出す</string>
-          </property>
           <property name="toolTip">
            <string>チェックを入れると空の文章を保存し、外すと翻訳ファイルから削除（ゲーム内でキーが表示される状態）します。</string>
+          </property>
+          <property name="text">
+           <string>空の文章も翻訳ファイルに書き出す</string>
           </property>
          </widget>
         </item>
        </layout>
       </item>
      </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QCheckBox" name="explicitNoCheck">
+     <property name="toolTip">
+      <string>有効にすると、エディタでチェックを外した際にスクリプトへ 'property = no' を書き込みます。無効にすると、スクリプトからその項目自体を削除してデフォルト値（通常はno扱い）に任せます。</string>
+     </property>
+     <property name="text">
+      <string>チェック解除時に値を 'no' に固定する</string>
+     </property>
     </widget>
    </item>
    <item>

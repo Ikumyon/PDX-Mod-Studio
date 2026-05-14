@@ -3,7 +3,7 @@ import os
 _current_project_path = None
 _project_path_handlers = []
 _loc_changed_handlers = []
-_mode_changed_handlers = []
+
 _message_handler = None
 _progress_handler = None
 _tabs_handler = None
@@ -38,16 +38,19 @@ def notify_loc_changed():
         except Exception as e:
             print(f"Error in loc changed handler: {e}")
 
-def register_mode_changed_handler(handler):
-    global _mode_changed_handlers
-    _mode_changed_handlers.append(handler)
+_file_saved_handlers = []
 
-def notify_mode_changed(file_path: str, mode_id: str):
-    for handler in _mode_changed_handlers:
+def register_file_saved_handler(handler):
+    global _file_saved_handlers
+    _file_saved_handlers.append(handler)
+
+def notify_file_saved(file_path: str):
+    for handler in _file_saved_handlers:
         try:
-            handler(file_path, mode_id)
+            handler(file_path)
         except Exception as e:
-            print(f"Error in mode changed handler: {e}")
+            print(f"Error in file saved handler: {e}")
+
 
 # --- メッセージ API ---
 def register_message_handler(handler):
@@ -81,12 +84,13 @@ def get_open_tabs() -> list:
         return _tabs_handler["get_tabs"]()
     return []
 
-def open_tab(file_path: str):
+def open_tab(file_path: str, editor_id: str = None):
     """指定したファイルをタブで開く（既に開いていれば切り替える）"""
     if _tabs_handler and "open_tab" in _tabs_handler:
-        _tabs_handler["open_tab"](file_path)
+        _tabs_handler["open_tab"](file_path, editor_id)
 
-def register_mode_handler(handler_dict):
+
+def register_editor_handler(handler_dict):
     global _mode_handler
     _mode_handler = handler_dict
 
@@ -95,25 +99,11 @@ def get_element_for_file(file_path: str):
         return _mode_handler["get_element_for_file"](file_path)
     return None
 
-def get_modes_for_file(file_path: str, include_script: bool = True):
-    if _mode_handler and "get_modes_for_file" in _mode_handler:
-        return _mode_handler["get_modes_for_file"](file_path, include_script)
-    return [{"id": "script_mode", "name": "スクリプトモード"}] if include_script else []
+def get_editors_for_file(file_path: str, include_script: bool = True):
+    if _mode_handler and "get_editors_for_file" in _mode_handler:
+        return _mode_handler["get_editors_for_file"](file_path, include_script)
+    return [{"id": "text", "name": "テキストエディタ"}] if include_script else []
 
-def get_current_mode(file_path: str = None):
-    if _mode_handler and "get_current_mode" in _mode_handler:
-        return _mode_handler["get_current_mode"](file_path)
-    return None
-
-def switch_mode(mode_id: str, file_path: str = None) -> bool:
-    if _mode_handler and "switch_mode" in _mode_handler:
-        return bool(_mode_handler["switch_mode"](mode_id, file_path))
-    return False
-
-def refresh_modes(file_path: str = None) -> int:
-    if _mode_handler and "refresh_modes" in _mode_handler:
-        return int(_mode_handler["refresh_modes"](file_path) or 0)
-    return 0
 
 def register_active_plugin_handler(handler):
     global _active_plugin_handler

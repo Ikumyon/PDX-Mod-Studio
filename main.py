@@ -50,7 +50,7 @@ def main():
     # --- ドックの初期化 ---
     from core.project_tree_dock import ProjectTreeDock
     from core.plugin_manager import PluginManager
-    from core.mode_manager import ModeManager
+    from core.editor_registry import EditorRegistry
     from core.editor import EditorWidget
     project_tree = ProjectTreeDock(window)
     project_tree_dock = project_tree.get_widget()
@@ -137,28 +137,29 @@ def main():
 
     def on_tab_changed(index):
         project_tree.sync_selection(index)
-        update_mode_selector(index)
+        update_editor_selector(index)
 
     window.editorTabs.currentChanged.connect(on_tab_changed)
     # 初期状態のリスト更新
     project_tree.update_open_editors(window.editorTabs)
 
-    # --- モード管理の初期化 ---
-    mode_manager = ModeManager()
+    # --- エディタ管理の初期化 ---
+    editor_registry = EditorRegistry()
     
-    # モード切り替え用のボタンをUIから取得
-    mode_selector = window.findChild(QToolButton, "modeSelectorButton")
-    if mode_selector:
-        mode_selector.setVisible(False) # 初期状態は非表示
-        mode_selector.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
-        mode_selector.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
-        mode_selector.setIconSize(QSize(20, 20))
+    # ビュー切り替え用のボタンをUIから取得 (旧modeSelectorButtonを流用)
+    view_selector = window.findChild(QToolButton, "modeSelectorButton")
+    if view_selector:
+        view_selector.setVisible(False) # 初期状態は非表示
+        view_selector.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        view_selector.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        view_selector.setIconSize(QSize(20, 20))
         mode_icon_path = os.path.join(base_dir, "assets", "icons", "panel-top-open.svg")
         if os.path.exists(mode_icon_path):
             from core.utils import load_svg_icon
             icon_color = window.palette().color(window.foregroundRole()).name()
-            mode_selector.setIcon(load_svg_icon(mode_icon_path, icon_color))
-        mode_selector.setStyleSheet("QToolButton::menu-indicator { image: none; }") # 三角マークを隠す場合は設定
+            view_selector.setIcon(load_svg_icon(mode_icon_path, icon_color))
+        view_selector.setStyleSheet("QToolButton::menu-indicator { image: none; }") # 三角マークを隠す場合は設定
+
 
     def get_element_for_path(file_path):
         """ファイルパスが属するプラグイン内のエレメントを特定する"""
@@ -178,98 +179,75 @@ def main():
             pass
         return None
 
-    # --- modeSelectorButton のメニュー更新ロジック ---
-    def update_mode_selector(index):
-        if not mode_selector or not window.editorTabs or index < 0:
-            if mode_selector: mode_selector.setVisible(False)
+    # --- ビュー切り替えボタンのメニュー更新ロジック ---
+    def update_editor_selector(index):
+        if not view_selector or not window.editorTabs or index < 0:
+            if view_selector: view_selector.setVisible(False)
             return
             
         widget = window.editorTabs.widget(index)
         if not widget:
-            mode_selector.setVisible(False)
+            view_selector.setVisible(False)
             return
             
-        available_modes = getattr(widget, "available_modes", [])
-        current_mode_id = getattr(widget, "current_mode_id", "script_mode")
+        available_editors = getattr(widget, "available_editors", [])
+        current_editor_id = getattr(widget, "editor_id", "text")
+        
+        if not available_editors:
+            view_selector.setVisible(False)
+            return
         
         # メニューの構築
-        menu = QMenu(mode_selector)
-        current_mode_name = "スクリプトモード"
+        menu = QMenu(view_selector)
+        current_editor_name = "テキストエディタ"
         
-        # 1. 外部定義モード
-        for mode in available_modes:
-            action = menu.addAction(mode.name)
-            action.setData(mode.mode_id)
-            if mode.mode_id == current_mode_id:
-                current_mode_name = mode.name
+        # 1. 外部定義エディタ
+        for editor in available_editors:
+            action = menu.addAction(editor.name)
+            action.setData(editor.editor_id)
+            if editor.editor_id == current_editor_id:
+                current_editor_name = editor.name
                 action.setCheckable(True)
                 action.setChecked(True)
-            action.triggered.connect(lambda checked=False, m_id=mode.mode_id: on_mode_selected(m_id))
+            action.triggered.connect(lambda checked=False, e_id=editor.editor_id: on_editor_selected(e_id))
             
         menu.addSeparator()
         
-        # 2. 標準スクリプトモード
-        script_action = menu.addAction("スクリプトモード")
-        script_action.setData("script_mode")
-        if current_mode_id == "script_mode":
+        # 2. 標準テキストエディタ
+        script_action = menu.addAction("テキストエディタ")
+        script_action.setData("text")
+        if current_editor_id == "text":
             script_action.setCheckable(True)
             script_action.setChecked(True)
-        script_action.triggered.connect(lambda checked=False: on_mode_selected("script_mode"))
+        script_action.triggered.connect(lambda checked=False: on_editor_selected("text"))
         
-        mode_selector.setMenu(menu)
-        mode_selector.setText("")
-        mode_selector.setToolTip(current_mode_name)
-        mode_selector.setFixedSize(32, 28)
-        mode_selector.setVisible(True)
-        mode_selector.update() # 再描画を促す
+        view_selector.setMenu(menu)
+        view_selector.setText("")
+        view_selector.setToolTip(current_editor_name)
+        view_selector.setFixedSize(32, 28)
+        view_selector.setVisible(True)
+        view_selector.update() # 再描画を促す
 
-    def on_mode_selected(mode_id):
+    def on_editor_selected(editor_id):
         current_tab_idx = window.editorTabs.currentIndex()
         if current_tab_idx < 0:
             return
             
-        widget = window.editorTabs.widget(current_tab_idx)
-        if not widget or getattr(widget, "current_mode_id", "") == mode_id:
-            return
-            
-        was_dirty = getattr(widget, "is_dirty", False)
         file_path = window.editorTabs.tabToolTip(current_tab_idx)
+        open_file(file_path, editor_id)
 
-        content = ""
-        if hasattr(widget, "toPlainText"):
-            content = widget.toPlainText()
-        elif hasattr(widget, "content"):
-            content = widget.content
-            
-        new_widget = create_widget_for_mode(mode_id, file_path, content, getattr(widget, "available_modes", []))
-        if new_widget:
-            window.editorTabs.removeTab(current_tab_idx)
-            icon = project_tree.get_icon_for_path(file_path)
-            file_name = os.path.basename(file_path)
-            window.editorTabs.insertTab(current_tab_idx, new_widget, icon, file_name)
-            window.editorTabs.setTabToolTip(current_tab_idx, file_path)
-            window.editorTabs.setCurrentIndex(current_tab_idx)
-
-            if was_dirty:
-                set_tab_dirty(current_tab_idx, True)
-            core.api.notify_mode_changed(file_path, mode_id)
-            update_mode_selector(current_tab_idx)
-
-    # 初期表示の更新（定義後に実行）
-    update_mode_selector(window.editorTabs.currentIndex())
-
-    def create_widget_for_mode(mode_id, file_path, content, available_modes):
-        if mode_id == "script_mode":
+    def create_editor_widget(editor_id, file_path, content, available_editors):
+        if editor_id == "text":
             widget = EditorWidget()
             widget.setPlainText(content)
         else:
-            widget = mode_manager.create_mode_widget(mode_id, window.editorTabs, file_path, content)
+            widget = editor_registry.create_editor_widget(editor_id, window.editorTabs, file_path, content)
             if not widget:
-                # 失敗した場合はスクリプトモード
-                return create_widget_for_mode("script_mode", file_path, content, available_modes)
+                # 失敗した場合はテキストエディタ
+                return create_editor_widget("text", file_path, content, available_editors)
         
-        widget.current_mode_id = mode_id
-        widget.available_modes = available_modes
+        widget.editor_id = editor_id
+        widget.available_editors = available_editors
         widget.is_dirty = False
         element = get_element_for_path(file_path)
         if element:
@@ -279,7 +257,6 @@ def main():
         # --- 自動変更検知の仕組み（安全なタイマー監視） ---
         from PySide6.QtCore import QTimer
         def check_content_change():
-            # ウィジェットが破棄されていたら停止
             try:
                 current_content = getattr(widget, "content", None)
                 if current_content is not None and current_content != widget._last_notified_content:
@@ -288,138 +265,31 @@ def main():
                     if idx >= 0:
                         set_tab_dirty(idx, True)
             except (RuntimeError, ReferenceError):
-                # ウィジェットが既に削除されている場合
                 if hasattr(widget, "_dirty_timer"):
                     widget._dirty_timer.stop()
 
-        # 100msごとにチェック（負荷は無視できるほど低いです）
         widget._dirty_timer = QTimer(widget)
         widget._dirty_timer.timeout.connect(check_content_change)
         widget._dirty_timer.start(100)
 
-        if mode_id == "script_mode":
+        if editor_id == "text":
             widget.textChanged.connect(lambda: set_tab_dirty(window.editorTabs.indexOf(widget), True))
 
         return widget
 
-    def mode_to_info(mode):
-        return {
-            "id": mode.mode_id,
-            "name": mode.name,
-        }
-
-    def get_modes_for_path(file_path, include_script=True):
-        modes = []
-        element = get_element_for_path(file_path)
-        if element:
-            modes = mode_manager.get_modes_for_element(element)
-        result = [mode_to_info(mode) for mode in modes]
-        if include_script:
-            result.append({"id": "script_mode", "name": "スクリプトモード"})
-        return result
-
-    def find_tab_index_for_path(file_path):
-        if not window.editorTabs:
-            return -1
-        if file_path is None:
-            return window.editorTabs.currentIndex()
-        target = os.path.normpath(file_path)
-        for i in range(window.editorTabs.count()):
-            tab_path = window.editorTabs.tabToolTip(i)
-            if tab_path and os.path.normpath(tab_path) == target:
-                return i
-        return -1
-
-    def get_current_mode_for_path(file_path=None):
-        idx = find_tab_index_for_path(file_path)
-        if idx < 0:
-            return None
-        widget = window.editorTabs.widget(idx)
-        return getattr(widget, "current_mode_id", None) if widget else None
-
-    def switch_mode_for_path(mode_id, file_path=None):
-        idx = find_tab_index_for_path(file_path)
-        if idx < 0:
-            return False
-
-        old_widget = window.editorTabs.widget(idx)
-        if not old_widget:
-            return False
-
-        file_path = window.editorTabs.tabToolTip(idx)
-        if getattr(old_widget, "current_mode_id", "") == mode_id:
-            return True
-
-        available_modes = []
-        element = get_element_for_path(file_path)
-        if element:
-            available_modes = mode_manager.get_modes_for_element(element)
-        mode_ids = {mode.mode_id for mode in available_modes}
-        if mode_id != "script_mode" and mode_id not in mode_ids:
-            return False
-
-        content = ""
-        if hasattr(old_widget, "toPlainText"):
-            content = old_widget.toPlainText()
-        elif hasattr(old_widget, "content"):
-            content = old_widget.content
-
-        was_dirty = getattr(old_widget, "is_dirty", False)
-        new_widget = create_widget_for_mode(mode_id, file_path, content, available_modes)
-        if not new_widget:
-            return False
-
-        icon = project_tree.get_icon_for_path(file_path)
-        file_name = os.path.basename(file_path)
-        window.editorTabs.removeTab(idx)
-        window.editorTabs.insertTab(idx, new_widget, icon, file_name)
-        window.editorTabs.setTabToolTip(idx, file_path)
-        window.editorTabs.setCurrentIndex(idx)
-        if was_dirty:
-            set_tab_dirty(idx, True)
-        update_mode_selector(idx)
-        project_tree.update_open_editors(window.editorTabs)
-        core.api.notify_mode_changed(file_path, mode_id)
-        return True
-
-    def refresh_modes_for_path(file_path=None):
-        if not window.editorTabs:
-            return 0
-
-        refreshed = 0
-        for i in range(window.editorTabs.count()):
-            tab_path = window.editorTabs.tabToolTip(i)
-            if file_path and os.path.normpath(tab_path) != os.path.normpath(file_path):
-                continue
-
-            widget = window.editorTabs.widget(i)
-            if not widget:
-                continue
-
-            element = get_element_for_path(tab_path)
-            available_modes = mode_manager.get_modes_for_element(element) if element else []
-            widget.available_modes = available_modes
-            current_mode_id = getattr(widget, "current_mode_id", "script_mode")
-            mode_ids = {mode.mode_id for mode in available_modes}
-            if current_mode_id != "script_mode" and current_mode_id not in mode_ids:
-                switch_mode_for_path("script_mode", tab_path)
-            refreshed += 1
-
-        update_mode_selector(window.editorTabs.currentIndex())
-        return refreshed
-
-    def open_file(file_path):
+    def open_file(file_path, editor_id="text"):
         if not window.editorTabs:
             return
             
-        # 既に開いているか確認
+        # 既に開いているか確認（同じファイルかつ同じエディタ）
         for i in range(window.editorTabs.count()):
-            if window.editorTabs.tabToolTip(i) == file_path:
+            widget = window.editorTabs.widget(i)
+            if window.editorTabs.tabToolTip(i) == file_path and getattr(widget, "editor_id", "text") == editor_id:
                 window.editorTabs.setCurrentIndex(i)
-                update_mode_selector(i)
+                update_editor_selector(i)
                 return
         
-        # エレメントと利用可能なモードの特定
+        # エレメントと利用可能なエディタの特定
         element = get_element_for_path(file_path)
         encoding = "utf-8"
         if element:
@@ -429,22 +299,22 @@ def main():
             with open(file_path, 'r', encoding=encoding, errors='replace') as f:
                 content = f.read()
             
-            available_modes = []
+            available_editors = []
             if element:
-                available_modes = mode_manager.get_modes_for_element(element)
-            
-            # 初期モードの決定
-            initial_mode_id = available_modes[0].mode_id if available_modes else "script_mode"
+                available_editors = editor_registry.get_editors_for_element(element)
             
             # ウィジェットの生成
-            editor = create_widget_for_mode(initial_mode_id, file_path, content, available_modes)
+            editor = create_editor_widget(editor_id, file_path, content, available_editors)
             
             file_name = os.path.basename(file_path)
+            if editor_id != "text":
+                file_name = f"[E] {file_name}"
+
             icon = project_tree.get_icon_for_path(file_path)
             index = window.editorTabs.addTab(editor, icon, file_name)
             window.editorTabs.setTabToolTip(index, file_path)
             window.editorTabs.setCurrentIndex(index)
-            update_mode_selector(index)
+            update_editor_selector(index)
             
             # 「開いているエディター」リストの更新
             project_tree.update_open_editors(window.editorTabs)
@@ -452,6 +322,7 @@ def main():
             print(f"ファイルを開けませんでした: {e}")
 
     window.open_file = open_file
+
 
     # --- 保存機能の実実装 ---
     from PySide6.QtGui import QKeySequence, QAction
@@ -505,16 +376,62 @@ def main():
             window.statusBar().showMessage(f"保存しました: {file_path}", 3000)
             widget._last_notified_content = content
             set_tab_dirty(current_idx, False)
+            
+            core.api.notify_file_saved(file_path)
         except Exception as e:
             QMessageBox.critical(window, "保存エラー", f"ファイルを保存できませんでした: {e}")
 
-    core.api.register_mode_handler({
+    def on_file_saved(saved_file_path):
+        # 他のタブで同じファイルが開かれていればリロードする
+        for i in range(window.editorTabs.count()):
+            widget = window.editorTabs.widget(i)
+            if window.editorTabs.tabToolTip(i) == saved_file_path:
+                if getattr(widget, "is_dirty", False):
+                    # 未保存の変更がある場合は競合を避けるためスキップ (必要なら警告を出す)
+                    continue
+                
+                element = get_element_for_path(saved_file_path)
+                encoding = "utf-8"
+                if element:
+                    encoding = element.plugin.get_element_attribute(element, "encoding", file_path=saved_file_path)
+                
+                try:
+                    with open(saved_file_path, 'r', encoding=encoding, errors='replace') as f:
+                        new_content = f.read()
+                    
+                    # 現在のコンテンツと比較し、変更がなければ何もしない
+                    current_content = ""
+                    if hasattr(widget, "toPlainText"):
+                        current_content = widget.toPlainText()
+                    elif hasattr(widget, "content"):
+                        current_content = widget.content
+                        
+                    if current_content == new_content:
+                        continue
+
+                    # 更新処理
+                    if hasattr(widget, "setPlainText"):
+                        # cursor位置などを保持する工夫が必要だが、一旦シンプルに更新
+                        cursor = widget.textCursor()
+                        pos = cursor.position()
+                        widget.setPlainText(new_content)
+                        cursor.setPosition(min(pos, len(new_content)))
+                        widget.setTextCursor(cursor)
+                    elif hasattr(widget, "plugin_controller") and hasattr(widget.plugin_controller, "set_content"):
+                        widget.plugin_controller.set_content(new_content)
+                        
+                    widget._last_notified_content = new_content
+                except Exception as e:
+                    print(f"Failed to reload {saved_file_path}: {e}")
+
+    core.api.register_file_saved_handler(on_file_saved)
+
+    core.api.register_editor_handler({
         "get_element_for_file": get_element_for_path,
-        "get_modes_for_file": get_modes_for_path,
-        "get_current_mode": get_current_mode_for_path,
-        "switch_mode": switch_mode_for_path,
-        "refresh_modes": refresh_modes_for_path,
+        "get_editors_for_file": lambda file_path, inc=True: 
+            [{"id": e.editor_id, "name": e.name} for e in (editor_registry.get_editors_for_element(get_element_for_path(file_path)) or [])] + ([{"id": "text", "name": "テキストエディタ"}] if inc else [])
     })
+
     core.api.register_active_plugin_handler(lambda: project_tree.active_plugin)
 
     save_action = window.findChild(QAction, "actionSaveProject")
@@ -577,7 +494,19 @@ def main():
         window.statusBar().showMessage(f"プラグイン '{plugin.name}' が選択されました。")
         # ProjectTreeDock にプラグインを通知
         project_tree.set_active_plugin(plugin)
-        core.api.refresh_modes()
+        
+        # 全タブの利用可能なエディタを更新
+        if window.editorTabs:
+            for i in range(window.editorTabs.count()):
+                w = window.editorTabs.widget(i)
+                path = window.editorTabs.tabToolTip(i)
+                elem = get_element_for_path(path)
+                if elem:
+                    w.available_editors = editor_registry.get_editors_for_element(elem)
+                else:
+                    w.available_editors = []
+            update_editor_selector(window.editorTabs.currentIndex())
+
 
     # メニューバーにコンボボックスを配置
     menubar = window.menuBar()
@@ -670,19 +599,23 @@ def main():
         tabs = []
         if window.editorTabs:
             for i in range(window.editorTabs.count()):
+                widget = window.editorTabs.widget(i)
                 tabs.append({
                     "index": i,
                     "name": window.editorTabs.tabText(i),
                     "path": window.editorTabs.tabToolTip(i),
-                    "widget": window.editorTabs.widget(i),
-                    "is_dirty": getattr(window.editorTabs.widget(i), "is_dirty", False)
+                    "widget": widget,
+                    "is_dirty": getattr(widget, "is_dirty", False),
+                    "editor_id": getattr(widget, "editor_id", "text")
                 })
         return tabs
+
 
     core.api.register_tabs_handler({
         "get_tabs": get_open_tabs,
         "open_tab": open_file
     })
+
 
     # ウィンドウを表示
     window.show()
