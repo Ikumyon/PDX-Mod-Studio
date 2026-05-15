@@ -994,6 +994,8 @@ class DecisionEditorController:
     def update_preview(self):
         if not hasattr(self, "preview_scene"):
             return
+        if getattr(self, "updating", False):
+            return
         self.preview_scene.clear()
         self.preview_items = []
 
@@ -1401,7 +1403,6 @@ class DecisionEditorController:
             self.file_contents[path] = new_text
             
         # 整形を強制するために、一度バッファを更新してから再描画
-        self.refresh()
         self.reformat_item(item.id, path)
 
     def is_object_property(self, prop_name, item):
@@ -1529,17 +1530,25 @@ def find(widget, cls, name):
     return widget.findChild(cls, name)
 
 def set_line(control, value):
-    if control: control.setText(value)
+    if control:
+        was_blocked = control.blockSignals(True)
+        control.setText(value or "")
+        control.blockSignals(was_blocked)
 
 def set_plain(control, value):
-    if control: control.setPlainText(value or "")
+    if control:
+        was_blocked = control.blockSignals(True)
+        control.setPlainText(value or "")
+        control.blockSignals(was_blocked)
 
 def set_spin(control, value):
     if control:
+        was_blocked = control.blockSignals(True)
         try:
             control.setValue(int(value or 0))
         except Exception:
             control.setValue(0)
+        control.blockSignals(was_blocked)
 
 def set_checked(control, value):
     if control:
