@@ -19,22 +19,22 @@
                             }
                         }
                     ]
-                },
+                }
+            ]
+        },
+        {
+            "id": "events_root",
+            "label": "イベント",
+            "icon": "event.svg",
+            "items": [
                 {
-                    "id": "events_root",
-                    "label": "イベント",
-                    "icon": "event.svg",
-                    "items": [
-                        {
-                            "label": "＋ 新規イベントを作成...",
-                            "action": "open_untitled_tab",
-                            "params": {
-                                "name": "New Namespace",
-                                "editor_id": "event_editor",
-                                "content": "add_namespace = new_namespace\n\ncountry_event = {\n\tid = new_namespace.1\n\ttitle = \"Event Title\"\n\tdesc = \"Event Description\"\n\tpicture = GFX_report_event_generic_read_write\n\n\tis_triggered_only = yes\n\n\toption = {\n\t\tname = \"OK\"\n\t}\n}\n"
-                            }
-                        }
-                    ]
+                    "label": "＋ 新規イベントを作成...",
+                    "action": "open_untitled_tab",
+                    "params": {
+                        "name": "New Namespace",
+                        "editor_id": "event_editor",
+                        "content": "add_namespace = new_namespace\n\ncountry_event = {\n\tid = new_namespace.1\n\ttitle = \"Event Title\"\n\tdesc = \"Event Description\"\n\tpicture = GFX_report_event_generic_read_write\n\n\tis_triggered_only = yes\n\n\toption = {\n\t\tname = \"OK\"\n\t}\n}\n"
+                    }
                 }
             ]
         }

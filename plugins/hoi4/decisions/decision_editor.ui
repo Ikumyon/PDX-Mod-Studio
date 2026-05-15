@@ -182,7 +182,7 @@ QToolButton:checked {
        <item>
         <widget class="QStackedWidget" name="stackedEditor">
          <property name="currentIndex">
-          <number>0</number>
+          <number>1</number>
          </property>
          <widget class="QWidget" name="pageCategory">
           <layout class="QVBoxLayout" name="pageCategoryLayout">
@@ -198,8 +198,8 @@ QToolButton:checked {
               <property name="geometry">
                <rect>
                 <x>0</x>
-                <y>-113</y>
-                <width>353</width>
+                <y>0</y>
+                <width>352</width>
                 <height>1083</height>
                </rect>
               </property>
@@ -215,7 +215,7 @@ QToolButton:checked {
                     <item>
                      <widget class="QLabel" name="labelCategoryId">
                       <property name="text">
-                       <string>カテゴリID(category id)</string>
+                       <string>カテゴリID</string>
                       </property>
                      </widget>
                     </item>
@@ -307,7 +307,7 @@ QToolButton:checked {
                       </layout>
                      </item>
                      <item row="0" column="1">
-                      <widget class="QPlainTextEdit" name="editCategoryDescLocalisation"/>
+                      <widget class="QPlainTextEdit" name="textCategoryDescLocalisation"/>
                      </item>
                     </layout>
                    </widget>
@@ -424,7 +424,7 @@ QToolButton:checked {
                      </widget>
                     </item>
                     <item row="2" column="1">
-                     <widget class="QPlainTextEdit" name="ptCategoryPriority"/>
+                     <widget class="QPlainTextEdit" name="textCategoryPriority"/>
                     </item>
                    </layout>
                   </item>
@@ -574,12 +574,22 @@ QToolButton:checked {
              </widget>
             </widget>
            </item>
+           <item>
+            <widget class="QPushButton" name="btnToggleAdvancedCategory">
+             <property name="text">
+              <string>カテゴリ設定の表示を切り替え</string>
+             </property>
+            </widget>
+           </item>
           </layout>
          </widget>
          <widget class="QWidget" name="pageDecision">
           <layout class="QVBoxLayout" name="pageDecisionLayout">
            <item>
             <widget class="QScrollArea" name="scrollDecision">
+             <property name="frameShape">
+              <enum>QFrame::Shape::NoFrame</enum>
+             </property>
              <property name="widgetResizable">
               <bool>true</bool>
              </property>
@@ -646,7 +656,7 @@ QToolButton:checked {
                         <widget class="QLineEdit" name="editDecisionLocFile"/>
                        </item>
                        <item>
-                        <widget class="QPushButton" name="nameLocFileBrowseButton">
+                        <widget class="QPushButton" name="btnSelectDecisionLocFile">
                          <property name="text">
                           <string>参照</string>
                          </property>
@@ -671,7 +681,7 @@ QToolButton:checked {
                       </widget>
                      </item>
                      <item row="0" column="1">
-                      <widget class="QPlainTextEdit" name="plainTextEdit_2"/>
+                      <widget class="QPlainTextEdit" name="textDecisionDescLocalisation"/>
                      </item>
                      <item row="1" column="0">
                       <widget class="QLabel" name="labelDecisionDescLocFile">
@@ -686,7 +696,7 @@ QToolButton:checked {
                         <widget class="QLineEdit" name="editDecisionDescLocFile"/>
                        </item>
                        <item>
-                        <widget class="QPushButton" name="descLocFileBrowseButton">
+                        <widget class="QPushButton" name="btnSelectDecisionDescLocFile">
                          <property name="text">
                           <string>参照</string>
                          </property>
@@ -810,9 +820,9 @@ QToolButton:checked {
                  <property name="title">
                   <string>コスト</string>
                  </property>
-                 <layout class="QVBoxLayout" name="verticalLayout">
+                 <layout class="QVBoxLayout" name="layoutCostGroup">
                   <item>
-                   <layout class="QHBoxLayout" name="horizontalLayout">
+                   <layout class="QHBoxLayout" name="layoutCostType">
                     <item>
                      <widget class="QRadioButton" name="radioPPCost">
                       <property name="text">
@@ -837,8 +847,8 @@ QToolButton:checked {
                     <property name="currentIndex">
                      <number>1</number>
                     </property>
-                    <widget class="QWidget" name="ppPage">
-                     <layout class="QHBoxLayout" name="horizontalLayout_2">
+                    <widget class="QWidget" name="pagePpCost">
+                     <layout class="QHBoxLayout" name="layoutPpCost">
                       <item>
                        <widget class="QLabel" name="labelCost">
                         <property name="text">
@@ -858,8 +868,8 @@ QToolButton:checked {
                       </item>
                      </layout>
                     </widget>
-                    <widget class="QWidget" name="CostomCostPage">
-                     <layout class="QFormLayout" name="formLayout">
+                    <widget class="QWidget" name="pageCustomCost">
+                     <layout class="QFormLayout" name="layoutCustomCost">
                       <property name="leftMargin">
                        <number>0</number>
                       </property>
@@ -880,7 +890,7 @@ QToolButton:checked {
                        </widget>
                       </item>
                       <item row="0" column="1">
-                       <widget class="QLineEdit" name="customCostKeyEdit"/>
+                       <widget class="QLineEdit" name="editCustomCostKey"/>
                       </item>
                       <item row="1" column="0">
                        <widget class="QLabel" name="labelCustomCostText">
@@ -897,12 +907,12 @@ QToolButton:checked {
                        </widget>
                       </item>
                       <item row="2" column="1">
-                       <layout class="QHBoxLayout" name="horizontalLayout_3">
+                       <layout class="QHBoxLayout" name="layoutCustomCostLocFile">
                         <item>
-                         <widget class="QLineEdit" name="customCostLocFileEdit"/>
+                         <widget class="QLineEdit" name="editCustomCostLocFile"/>
                         </item>
                         <item>
-                         <widget class="QPushButton" name="customCostLocFileBrowseButton">
+                         <widget class="QPushButton" name="btnSelectCustomCostLocFile">
                           <property name="text">
                            <string>参照</string>
                           </property>
@@ -911,7 +921,7 @@ QToolButton:checked {
                        </layout>
                       </item>
                       <item row="1" column="1">
-                       <widget class="QPlainTextEdit" name="customCostTextEdit"/>
+                       <widget class="QPlainTextEdit" name="textCustomCostLocalisation"/>
                       </item>
                      </layout>
                     </widget>
@@ -1541,6 +1551,13 @@ QToolButton:checked {
                </item>
               </layout>
              </widget>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="btnToggleAdvancedDecision">
+             <property name="text">
+              <string>ディシジョン設定の表示を切り替え</string>
+             </property>
             </widget>
            </item>
           </layout>

@@ -6,10 +6,11 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 import core.api
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, QObject
 from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen, QPixmap, QTextOption
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QGraphicsPixmapItem,
     QGraphicsRectItem,
     QGraphicsScene,
@@ -247,8 +248,9 @@ def setup(widget, file_path, content):
     widget.setPlainText = controller.set_content
     controller.bind()
 
-class DecisionEditorController:
+class DecisionEditorController(QObject):
     def __init__(self, widget, file_path, content):
+        super().__init__()
         self.widget = widget
         self.file_path = file_path
         self.widget.content = content
@@ -337,8 +339,8 @@ class DecisionEditorController:
         
         # カテゴリ編集用
         self.edit_category_id = find(self.widget, QLineEdit, "editCategoryId")
-        self.edit_category_name_key = find(self.widget, QLineEdit, "editCategoryNameKey")
         self.edit_category_icon = find(self.widget, QLineEdit, "editCategoryIcon")
+        self.btn_select_category_icon = find(self.widget, QPushButton, "btnSelectCategoryIcon")
         self.edit_category_localisation = find(self.widget, QLineEdit, "editCategoryLocalisation")
         self.text_category_allowed = find(self.widget, QPlainTextEdit, "textCategoryAllowed")
         self.text_category_visible = find(self.widget, QPlainTextEdit, "textCategoryVisible")
@@ -351,6 +353,7 @@ class DecisionEditorController:
         self.edit_decision_id = find(self.widget, QLineEdit, "editDecisionId")
         self.edit_decision_localisation = find(self.widget, QLineEdit, "editDecisionLocalisation")
         self.edit_decision_icon = find(self.widget, QLineEdit, "editDecisionIcon")
+        self.btn_select_decision_icon = find(self.widget, QPushButton, "btnSelectDecisionIcon")
         
         # スピンボックス等
         self.spin_days_remove = find(self.widget, QSpinBox, "spinDaysRemove")
@@ -360,12 +363,43 @@ class DecisionEditorController:
         self.check_fixed_random_seed = find(self.widget, QCheckBox, "checkFixedRandomSeed")
         
         # カテゴリ追加分
-        self.text_category_priority = find(self.widget, QPlainTextEdit, "ptCategoryPriority")
+        self.text_category_priority = find(self.widget, QPlainTextEdit, "textCategoryPriority")
         self.check_category_visible_when_empty = find(self.widget, QCheckBox, "checkCategoryVisibleWhenEmpty")
         self.edit_category_scripted_gui = find(self.widget, QLineEdit, "editCategoryScriptedGui")
         self.edit_category_on_map_area = find(self.widget, QLineEdit, "editCategoryOnMapArea")
         self.edit_category_map_area = find(self.widget, QLineEdit, "editCategoryMapArea")
         self.edit_category_picture = find(self.widget, QLineEdit, "editCategoryPicture")
+        self.btn_select_category_picture = find(self.widget, QPushButton, "btnSelectCategoryPicture")
+        
+        # 新しく追加されたディシジョン用コントロール
+        self.text_custom_cost_trigger = find(self.widget, QPlainTextEdit, "textCustomCostTrigger")
+        self.text_remove_trigger = find(self.widget, QPlainTextEdit, "textRemoveTrigger")
+        self.text_cancel_trigger = find(self.widget, QPlainTextEdit, "textCancelTrigger")
+        self.text_timeout_effect = find(self.widget, QPlainTextEdit, "textTimeoutEffect")
+        self.text_remove_effect = find(self.widget, QPlainTextEdit, "textRemoveEffect")
+        self.text_cancel_effect = find(self.widget, QPlainTextEdit, "textCancelEffect")
+        self.spin_days_mission_timeout = find(self.widget, QSpinBox, "spinDaysMissionTimeout")
+        self.check_selectable_mission = find(self.widget, QCheckBox, "checkSelectableMission")
+        self.check_is_good = find(self.widget, QCheckBox, "checkIsGood")
+        self.text_activation = find(self.widget, QPlainTextEdit, "textActivation")
+        self.text_targets = find(self.widget, QPlainTextEdit, "textTargets")
+        self.edit_target_array = find(self.widget, QLineEdit, "editTargetArray")
+        self.check_targets_dynamic = find(self.widget, QCheckBox, "checkTargetsDynamic")
+        self.check_target_non_existing = find(self.widget, QCheckBox, "checkTargetNonExisting")
+        self.text_target_root_trigger = find(self.widget, QPlainTextEdit, "textTargetRootTrigger")
+        self.text_target_trigger = find(self.widget, QPlainTextEdit, "textTargetTrigger")
+        self.edit_on_map_mode = find(self.widget, QLineEdit, "editOnMapMode")
+        self.combo_state_target = find(self.widget, QComboBox, "comboStateTarget")
+        self.text_modifier = find(self.widget, QPlainTextEdit, "textModifier")
+        self.text_targeted_modifier = find(self.widget, QPlainTextEdit, "textTargetedModifier")
+        self.text_ai_will_do = find(self.widget, QPlainTextEdit, "textAiWillDo")
+        self.spin_ai_hint_pp_cost = find(self.widget, QSpinBox, "spinAiHintPpCost")
+        self.edit_war_with_on_complete = find(self.widget, QLineEdit, "editWarWithOnComplete")
+        self.edit_war_with_on_remove = find(self.widget, QLineEdit, "editWarWithOnRemove")
+        self.edit_war_with_on_timeout = find(self.widget, QLineEdit, "editWarWithOnTimeout")
+        self.edit_war_with_target_on_complete = find(self.widget, QLineEdit, "editWarWithTargetOnComplete")
+        self.edit_war_with_target_on_remove = find(self.widget, QLineEdit, "editWarWithTargetOnRemove")
+        self.edit_war_with_target_on_timeout = find(self.widget, QLineEdit, "editWarWithTargetOnTimeout")
         
         # テキストエリア
         self.text_visible = find(self.widget, QPlainTextEdit, "textVisible")
@@ -375,20 +409,20 @@ class DecisionEditorController:
         # 翻訳先ファイル
         self.edit_category_loc_file = find(self.widget, QLineEdit, "editCategoryLocFile")
         self.edit_decision_loc_file = find(self.widget, QLineEdit, "editDecisionLocFile")
-        self.edit_category_desc_localisation = find(self.widget, QPlainTextEdit, "editCategoryDescLocalisation")
+        self.text_category_desc_localisation = find(self.widget, QPlainTextEdit, "textCategoryDescLocalisation")
         self.edit_category_desc_loc_file = find(self.widget, QLineEdit, "editCategoryDescLocFile")
-        self.text_decision_desc_localisation = find(self.widget, QPlainTextEdit, "plainTextEdit_2")
+        self.text_decision_desc_localisation = find(self.widget, QPlainTextEdit, "textDecisionDescLocalisation")
         self.edit_decision_desc_loc_file = find(self.widget, QLineEdit, "editDecisionDescLocFile")
         
         # カスタムコスト
-        self.edit_custom_cost_key = find(self.widget, QLineEdit, "customCostKeyEdit")
-        self.text_custom_cost_localisation = find(self.widget, QPlainTextEdit, "customCostTextEdit")
-        self.edit_custom_cost_loc_file = find(self.widget, QLineEdit, "customCostLocFileEdit")
+        self.edit_custom_cost_key = find(self.widget, QLineEdit, "editCustomCostKey")
+        self.text_custom_cost_localisation = find(self.widget, QPlainTextEdit, "textCustomCostLocalisation")
+        self.edit_custom_cost_loc_file = find(self.widget, QLineEdit, "editCustomCostLocFile")
         self.btn_select_category_loc_file = find(self.widget, QPushButton, "btnSelectCategoryLocFile")
         self.btn_select_category_desc_loc_file = find(self.widget, QPushButton, "btnSelectCategoryDescLocFile")
-        self.btn_select_decision_loc_file = find(self.widget, QPushButton, "nameLocFileBrowseButton")
-        self.btn_select_decision_desc_loc_file = find(self.widget, QPushButton, "descLocFileBrowseButton")
-        self.btn_select_custom_cost_loc_file = find(self.widget, QPushButton, "customCostLocFileBrowseButton")
+        self.btn_select_decision_loc_file = find(self.widget, QPushButton, "btnSelectDecisionLocFile")
+        self.btn_select_decision_desc_loc_file = find(self.widget, QPushButton, "btnSelectDecisionDescLocFile")
+        self.btn_select_custom_cost_loc_file = find(self.widget, QPushButton, "btnSelectCustomCostLocFile")
         
         # ボタン
         self.btn_add_category = find(self.widget, QPushButton, "btnAddCategory")
@@ -400,13 +434,24 @@ class DecisionEditorController:
         self.radio_pp_cost = find(self.widget, QRadioButton, "radioPPCost")
         self.radio_custom_cost = find(self.widget, QRadioButton, "radioCustomCost")
         self.stacked_cost = find(self.widget, QStackedWidget, "stackedCost")
-        self.pp_page = find(self.widget, QWidget, "ppPage")
-        self.custom_cost_page = find(self.widget, QWidget, "CostomCostPage")
+        self.pp_page = find(self.widget, QWidget, "pagePpCost")
+        self.custom_cost_page = find(self.widget, QWidget, "pageCustomCost")
         self.spin_cost = find(self.widget, QSpinBox, "spinCost")
         
         # モード切替
         self.btn_standard_mode = find(self.widget, QToolButton, "decisionStandardModeButton")
         self.btn_detail_mode = find(self.widget, QToolButton, "decisionDetailModeButton")
+        self.btn_toggle_advanced_category = find(self.widget, QPushButton, "btnToggleAdvancedCategory")
+        self.btn_toggle_advanced_decision = find(self.widget, QPushButton, "btnToggleAdvancedDecision")
+        
+        from PySide6.QtWidgets import QMenu
+        if self.btn_toggle_advanced_category:
+            self.category_advanced_menu = QMenu(self.widget)
+            self.btn_toggle_advanced_category.setMenu(self.category_advanced_menu)
+        if self.btn_toggle_advanced_decision:
+            self.decision_advanced_menu = QMenu(self.widget)
+            self.btn_toggle_advanced_decision.setMenu(self.decision_advanced_menu)
+        
         self.preview_graphics = find(self.widget, QGraphicsView, "previewGraphicsView")
 
         if self.preview_graphics:
@@ -440,26 +485,29 @@ class DecisionEditorController:
             self.edit_decision_icon.textChanged.connect(lambda _text: self.update_preview())
         if self.edit_category_localisation:
             self.edit_category_localisation.textChanged.connect(lambda _text: self.update_preview())
-        if self.edit_category_desc_localisation:
-            self.edit_category_desc_localisation.textChanged.connect(self.update_preview)
+        if self.text_category_desc_localisation:
+            self.text_category_desc_localisation.textChanged.connect(self.update_preview)
 
         # ボタン接続
         if self.btn_add_category: self.btn_add_category.clicked.connect(self.add_category)
         if self.btn_add_decision: self.btn_add_decision.clicked.connect(self.add_decision)
         if self.btn_duplicate: self.btn_duplicate.clicked.connect(self.duplicate_item)
         if self.btn_delete: self.btn_delete.clicked.connect(self.delete_item)
+        # self.btn_toggle_advanced はメニュー形式になったので clicked 接続は不要
         if self.btn_select_category_loc_file: self.btn_select_category_loc_file.clicked.connect(lambda: self.browse_loc_file(self.edit_category_loc_file))
         if self.btn_select_category_desc_loc_file: self.btn_select_category_desc_loc_file.clicked.connect(lambda: self.browse_loc_file(self.edit_category_desc_loc_file))
         if self.btn_select_decision_loc_file: self.btn_select_decision_loc_file.clicked.connect(lambda: self.browse_loc_file(self.edit_decision_loc_file))
         if self.btn_select_decision_desc_loc_file: self.btn_select_decision_desc_loc_file.clicked.connect(lambda: self.browse_loc_file(self.edit_decision_desc_loc_file))
         if self.btn_select_custom_cost_loc_file: self.btn_select_custom_cost_loc_file.clicked.connect(lambda: self.browse_loc_file(self.edit_custom_cost_loc_file))
+        if self.btn_select_category_icon: self.btn_select_category_icon.clicked.connect(lambda: self.browse_icon(self.edit_category_icon))
+        if self.btn_select_category_picture: self.btn_select_category_picture.clicked.connect(lambda: self.browse_icon(self.edit_category_picture))
+        if self.btn_select_decision_icon: self.btn_select_decision_icon.clicked.connect(lambda: self.browse_icon(self.edit_decision_icon))
 
         # IDの接続
         self.connect_scalar(self.edit_category_id, "category_id")
         self.connect_scalar(self.edit_decision_id, "decision_id")
         
         # カテゴリプロパティの接続
-        self.connect_scalar(self.edit_category_name_key, "name")
         self.connect_scalar(self.edit_category_icon, "icon")
         self.connect_scalar(self.edit_category_highlight_color_before, "highlight_color_before_active")
         self.connect_scalar(self.edit_category_highlight_color_while, "highlight_color_while_active")
@@ -491,21 +539,143 @@ class DecisionEditorController:
         self.connect_text(self.text_available, "available")
         self.connect_text(self.text_complete_effect, "complete_effect")
 
+        # 新規追加コントロールの接続
+        self.connect_text(self.text_custom_cost_trigger, "custom_cost_trigger")
+        self.connect_text(self.text_remove_trigger, "remove_trigger")
+        self.connect_text(self.text_cancel_trigger, "cancel_trigger")
+        self.connect_text(self.text_timeout_effect, "timeout_effect")
+        self.connect_text(self.text_remove_effect, "remove_effect")
+        self.connect_text(self.text_cancel_effect, "cancel_effect")
+        self.connect_spin(self.spin_days_mission_timeout, "days_mission_timeout")
+        self.connect_bool(self.check_selectable_mission, "selectable_mission")
+        self.connect_bool(self.check_is_good, "is_good")
+        self.connect_text(self.text_activation, "activation")
+        self.connect_text(self.text_targets, "targets")
+        self.connect_scalar(self.edit_target_array, "target_array")
+        self.connect_bool(self.check_targets_dynamic, "targets_dynamic")
+        self.connect_bool(self.check_target_non_existing, "target_non_existing")
+        self.connect_text(self.text_target_root_trigger, "target_root_trigger")
+        self.connect_text(self.text_target_trigger, "target_trigger")
+        self.connect_scalar(self.edit_on_map_mode, "on_map_mode")
+        self.connect_combo(self.combo_state_target, "state_target")
+        self.connect_text(self.text_modifier, "modifier")
+        self.connect_text(self.text_targeted_modifier, "targeted_modifier")
+        self.connect_text(self.text_ai_will_do, "ai_will_do")
+        self.connect_spin(self.spin_ai_hint_pp_cost, "ai_hint_pp_cost")
+        self.connect_scalar(self.edit_war_with_on_complete, "war_with_on_complete")
+        self.connect_scalar(self.edit_war_with_on_remove, "war_with_on_remove")
+        self.connect_scalar(self.edit_war_with_on_timeout, "war_with_on_timeout")
+        self.connect_scalar(self.edit_war_with_target_on_complete, "war_with_target_on_complete")
+        self.connect_scalar(self.edit_war_with_target_on_remove, "war_with_target_on_remove")
+        self.connect_scalar(self.edit_war_with_target_on_timeout, "war_with_target_on_timeout")
+
         # システム項目の定義（詳細モードでのみ表示）
         self.system_widgets = [
             find(self.widget, QWidget, "labelCategoryId"), self.edit_category_id,
             find(self.widget, QWidget, "labelDecisionId"), self.edit_decision_id,
-            find(self.widget, QWidget, "labelCategoryNameKey"), self.edit_category_name_key,
             
             # 翻訳先ファイル関連
             find(self.widget, QWidget, "labelCategoryLocFile"), find(self.widget, QWidget, "editCategoryLocFile"), find(self.widget, QWidget, "btnSelectCategoryLocFile"),
             find(self.widget, QWidget, "labelCategoryDescLocFile"), find(self.widget, QWidget, "editCategoryDescLocFile"), find(self.widget, QWidget, "btnSelectCategoryDescLocFile"),
-            find(self.widget, QWidget, "labelDecisionLocFile"), find(self.widget, QWidget, "editDecisionLocFile"), find(self.widget, QWidget, "nameLocFileBrowseButton"),
-            find(self.widget, QWidget, "labelDecisionDescLocFile"), find(self.widget, QWidget, "editDecisionDescLocFile"), find(self.widget, QWidget, "descLocFileBrowseButton"),
-            find(self.widget, QWidget, "labelCustomCostKey"), find(self.widget, QWidget, "customCostKeyEdit"),
-            find(self.widget, QWidget, "labelCustomCostLocFile"), find(self.widget, QWidget, "customCostLocFileEdit"), find(self.widget, QWidget, "customCostLocFileBrowseButton"),
+            find(self.widget, QWidget, "labelDecisionLocFile"), find(self.widget, QWidget, "editDecisionLocFile"), find(self.widget, QWidget, "btnSelectDecisionLocFile"),
+            find(self.widget, QWidget, "labelDecisionDescLocFile"), find(self.widget, QWidget, "editDecisionDescLocFile"), find(self.widget, QWidget, "btnSelectDecisionDescLocFile"),
+            find(self.widget, QWidget, "labelCustomCostKey"), find(self.widget, QWidget, "editCustomCostKey"),
+            find(self.widget, QWidget, "labelCustomCostLocFile"), find(self.widget, QWidget, "editCustomCostLocFile"), find(self.widget, QWidget, "btnSelectCustomCostLocFile"),
         ]
         self.system_widgets = [w for w in self.system_widgets if w]
+
+        # 詳細設定項目の設定
+        self.advanced_config = {
+            # --- カテゴリ用 ---
+            "priority": {"label": "優先度(priority)", "widgets": ["labelCategoryPriority", "textCategoryPriority"]},
+            "visible_when_empty": {"label": "空でも表示(visible_when_empty)", "widgets": ["labelCategoryVisibleWhenEmpty", "checkCategoryVisibleWhenEmpty"]},
+            "scripted_gui": {"label": "スクリプトGUI(scripted_gui)", "widgets": ["labelCategoryScriptedGui", "editCategoryScriptedGui"]},
+            "on_map_area": {"label": "マップ領域(on_map_area)", "widgets": ["labelCategoryOnMapArea", "editCategoryOnMapArea"]},
+            "map_area": {"label": "マップ領域(map_area)", "widgets": ["labelCategoryMapArea", "editCategoryMapArea"]},
+            "highlight_states": {"label": "州強調(highlight_states)", "widgets": ["labelCategoryHighlightStates", "textCategoryHighlightStates"]},
+            "highlight_provinces": {"label": "プロヴィンス強調(highlight_provinces)", "widgets": ["labelCategoryHighlightProvinces", "textCategoryHighlightProvinces"]},
+            "highlight_color_before": {"label": "有効化前の色(highlight_color_before)", "widgets": ["labelCategoryHighlightBefore", "editHighlightColorBefore"]},
+            "highlight_color_active": {"label": "有効化中の色(highlight_color_active)", "widgets": ["labelCategoryHighlightActive", "editHighlightColorActive"]},
+            
+            # --- ディシジョン用 ---
+            "fire_only_once": {"label": "一度だけ(fire_only_once)", "widgets": ["labelFireOnlyOnce", "checkFireOnlyOnce"]},
+            "cancel_if_not_visible": {"label": "見えない時キャンセル(cancel_if_not_visible)", "widgets": ["labelCancelIfNotVisible", "checkCancelIfNotVisible"]},
+            "fixed_random_seed": {"label": "固定ランダム(fixed_random_seed)", "widgets": ["labelFixedRandomSeed", "checkFixedRandomSeed"]},
+            "custom_cost_trigger": {"label": "カスタムコスト条件(custom_cost_trigger)", "widgets": ["labelCustomCostTrigger", "textCustomCostTrigger"]},
+            "remove_trigger": {"label": "削除条件(remove_trigger)", "widgets": ["labelRemoveTrigger", "textRemoveTrigger"]},
+            "cancel_trigger": {"label": "キャンセル条件(cancel_trigger)", "widgets": ["labelCancelTrigger", "textCancelTrigger"]},
+            "timeout_effect": {"label": "時間切れ効果(timeout_effect)", "widgets": ["labelTimeoutEffect", "textTimeoutEffect"]},
+            "remove_effect": {"label": "削除時効果(remove_effect)", "widgets": ["labelRemoveEffect", "textRemoveEffect"]},
+            "cancel_effect": {"label": "キャンセル時効果(cancel_effect)", "widgets": ["labelCancelEffect", "textCancelEffect"]},
+            "cancel_effect": {"label": "キャンセル時効果(cancel_effect)", "widgets": ["labelCancelEffect", "textCancelEffect"]},
+            "mission_timeout": {"label": "期限日数(days_mission_timeout)", "widgets": ["labelDaysMissionTimeout", "spinDaysMissionTimeout"]},
+            "selectable_mission": {"label": "選択式ミッション(selectable_mission)", "widgets": ["labelSelectableMission", "checkSelectableMission"]},
+            "is_good": {"label": "良いミッション(is_good)", "widgets": ["labelIsGood", "checkIsGood"]},
+            "activation": {"label": "発動条件(activation)", "widgets": ["labelActivation", "textActivation"]},
+            "targets": {"label": "対象国一覧(targets)", "widgets": ["labelTargets", "textTargets"]},
+            "target_array": {"label": "対象配列(target_array)", "widgets": ["labelTargetArray", "editTargetArray"]},
+            "targets_dynamic": {"label": "動的対象(targets_dynamic)", "widgets": ["checkTargetsDynamic"]},
+            "target_non_existing": {"label": "存在しない国も対象(target_non_existing)", "widgets": ["checkTargetNonExisting"]},
+            "target_root_trigger": {"label": "対象元条件(target_root_trigger)", "widgets": ["labelTargetRootTrigger", "textTargetRootTrigger"]},
+            "target_trigger": {"label": "対象条件(target_trigger)", "widgets": ["labelTargetTrigger", "textTargetTrigger"]},
+            "on_map_mode": {"label": "マップモード(on_map_mode)", "widgets": ["labelOnMapMode", "editOnMapMode"]},
+            "state_target": {"label": "州対象(state_target)", "widgets": ["labelStateTarget", "comboStateTarget"]},
+            "modifier": {"label": "補正(modifier)", "widgets": ["labelModifier", "textModifier"]},
+            "targeted_modifier": {"label": "対象補正(targeted_modifier)", "widgets": ["labelTargetedModifier", "textTargetedModifier"]},
+            "ai_will_do": {"label": "AI判断(ai_will_do)", "widgets": ["labelAiWillDo", "textAiWillDo"]},
+            "ai_hint_pp_cost": {"label": "AI政治力コスト目安(ai_hint_pp_cost)", "widgets": ["labelAiHintPpCost", "spinAiHintPpCost"]},
+            "war_complete": {"label": "完了時戦争警告(war_with_on_complete)", "widgets": ["labelWarWithOnComplete", "editWarWithOnComplete"]},
+            "war_remove": {"label": "削除時戦争警告(war_with_on_remove)", "widgets": ["labelWarWithOnRemove", "editWarWithOnRemove"]},
+            "war_timeout": {"label": "時間切れ戦争警告(war_with_on_timeout)", "widgets": ["labelWarWithOnTimeout", "editWarWithOnTimeout"]},
+            "war_target_complete": {"label": "対象完了時戦争警告(war_with_target_on_complete)", "widgets": ["labelWarWithTargetOnComplete", "editWarWithTargetOnComplete"]},
+            "war_target_remove": {"label": "対象削除時戦争警告(war_with_target_on_remove)", "widgets": ["labelWarWithTargetOnRemove", "editWarWithTargetOnRemove"]},
+            "war_target_timeout": {"label": "対象時間切れ戦争警告(war_with_target_on_timeout)", "widgets": ["labelWarWithTargetOnTimeout", "editWarWithTargetOnTimeout"]},
+        }
+        
+        self.advanced_actions = {}
+        self.advanced_submenus = []
+        from PySide6.QtGui import QAction
+        
+        # カテゴリ用メニューの構成
+        if self.btn_toggle_advanced_category:
+            cat_menu_structure = [
+                ("カテゴリ基本設定", ["priority", "visible_when_empty", "scripted_gui"]),
+                ("カテゴリマップ設定", ["on_map_area", "map_area"]),
+                ("カテゴリ強調設定", ["highlight_states", "highlight_provinces", "highlight_color_before", "highlight_color_active"]),
+            ]
+            for group_title, keys in cat_menu_structure:
+                submenu = self.category_advanced_menu.addMenu(group_title)
+                self.advanced_submenus.append(submenu)
+                for key in keys:
+                    self._add_advanced_action(key, submenu)
+            
+            self.category_advanced_menu.installEventFilter(self)
+            for m in self.advanced_submenus: m.installEventFilter(self)
+
+        # ディシジョン用メニューの構成
+        if self.btn_toggle_advanced_decision:
+            dec_menu_structure = [
+                ("ディシジョン基本設定", ["fire_only_once", "cancel_if_not_visible", "fixed_random_seed"]),
+                ("本体条件", ["custom_cost_trigger", "remove_trigger", "cancel_trigger"]),
+                ("本体効果", ["timeout_effect", "remove_effect", "cancel_effect"]),
+                ("ミッション設定", ["mission_timeout", "selectable_mission", "is_good", "activation"]),
+                ("対象設定", ["targets", "target_array", "targets_dynamic", "target_non_existing", "target_root_trigger", "target_trigger", "on_map_mode", "state_target"]),
+                ("補正・AI設定", ["modifier", "targeted_modifier", "ai_will_do", "ai_hint_pp_cost"]),
+                ("戦争警告設定", ["war_complete", "war_remove", "war_timeout", "war_target_complete", "war_target_remove", "war_target_timeout"]),
+            ]
+            for group_title, keys in dec_menu_structure:
+                submenu = self.decision_advanced_menu.addMenu(group_title)
+                self.advanced_submenus.append(submenu)
+                for key in keys:
+                    self._add_advanced_action(key, submenu)
+            
+            self.decision_advanced_menu.installEventFilter(self)
+            for m in self.advanced_submenus: m.installEventFilter(self)
+
+        # 初期表示の更新
+        for key in self.advanced_config:
+            is_visible = self.advanced_actions[key].isChecked() if key in self.advanced_actions else False
+            self.update_advanced_visibility(key, is_visible)
 
         self.refresh()
         self.set_detailed_mode(False)
@@ -714,7 +884,8 @@ class DecisionEditorController:
             if self.label_editor_title: self.label_editor_title.setText("編集")
             return
         
-        self.stacked_editor.setVisible(True)
+        if self.stacked_editor:
+            self.stacked_editor.setVisible(True)
         
         # アイテムが定義されているファイルのコンテンツを取得
         source_path = data.source_path or self.file_path
@@ -753,7 +924,7 @@ class DecisionEditorController:
             # 説明のローカライズ表示 (常に ID_desc)
             desc_key = data.id + "_desc"
             status, entry = registry.search_key_status(desc_key) if registry else ("not_found", None)
-            set_plain(self.edit_category_desc_localisation, entry.get("value") if entry else "")
+            set_plain(self.text_category_desc_localisation, entry.get("value") if entry else "")
             if entry and self.edit_category_desc_loc_file:
                 source_file = entry.get("file", "")
                 self.edit_category_desc_loc_file.setText(os.path.basename(source_file))
@@ -816,6 +987,42 @@ class DecisionEditorController:
             set_plain(self.text_available, block_text(content, data.node, "available"))
             set_plain(self.text_complete_effect, block_text(content, data.node, "complete_effect"))
             
+            # 新規追加ディシジョン項目の読み込み
+            set_plain(self.text_custom_cost_trigger, block_text(content, data.node, "custom_cost_trigger"))
+            set_plain(self.text_remove_trigger, block_text(content, data.node, "remove_trigger"))
+            set_plain(self.text_cancel_trigger, block_text(content, data.node, "cancel_trigger"))
+            set_plain(self.text_timeout_effect, block_text(content, data.node, "timeout_effect"))
+            set_plain(self.text_remove_effect, block_text(content, data.node, "remove_effect"))
+            set_plain(self.text_cancel_effect, block_text(content, data.node, "cancel_effect"))
+            set_spin(self.spin_days_mission_timeout, prop_text(data, "days_mission_timeout"))
+            set_checked(self.check_selectable_mission, prop_bool(data, "selectable_mission"))
+            set_checked(self.check_is_good, prop_bool(data, "is_good"))
+            set_plain(self.text_activation, block_text(content, data.node, "activation"))
+            set_plain(self.text_targets, block_text(content, data.node, "targets"))
+            set_line(self.edit_target_array, prop_text(data, "target_array"))
+            set_checked(self.check_targets_dynamic, prop_bool(data, "targets_dynamic"))
+            set_checked(self.check_target_non_existing, prop_bool(data, "target_non_existing"))
+            set_plain(self.text_target_root_trigger, block_text(content, data.node, "target_root_trigger"))
+            set_plain(self.text_target_trigger, block_text(content, data.node, "target_trigger"))
+            set_line(self.edit_on_map_mode, prop_text(data, "on_map_mode"))
+            
+            # comboStateTarget のセット
+            if self.combo_state_target:
+                val = prop_text(data, "state_target")
+                idx = self.combo_state_target.findText(val)
+                self.combo_state_target.setCurrentIndex(idx if idx >= 0 else 0)
+
+            set_plain(self.text_modifier, block_text(content, data.node, "modifier"))
+            set_plain(self.text_targeted_modifier, block_text(content, data.node, "targeted_modifier"))
+            set_plain(self.text_ai_will_do, block_text(content, data.node, "ai_will_do"))
+            set_spin(self.spin_ai_hint_pp_cost, prop_text(data, "ai_hint_pp_cost"))
+            set_line(self.edit_war_with_on_complete, prop_text(data, "war_with_on_complete"))
+            set_line(self.edit_war_with_on_remove, prop_text(data, "war_with_on_remove"))
+            set_line(self.edit_war_with_on_timeout, prop_text(data, "war_with_on_timeout"))
+            set_line(self.edit_war_with_target_on_complete, prop_text(data, "war_with_target_on_complete"))
+            set_line(self.edit_war_with_target_on_remove, prop_text(data, "war_with_target_on_remove"))
+            set_line(self.edit_war_with_target_on_timeout, prop_text(data, "war_with_target_on_timeout"))
+            
             # コストの表示切替
             has_custom = data.first("custom_cost_trigger") is not None
             if has_custom:
@@ -872,7 +1079,7 @@ class DecisionEditorController:
     def category_desc_for_preview(self, category):
         data = self.get_current_data()
         if isinstance(data, ParsedDecisionCategory) and data.id == category.id:
-            text = self._get_loc_text(self.edit_category_desc_localisation).strip()
+            text = self._get_loc_text(self.text_category_desc_localisation).strip()
             if text:
                 return text
         desc_key = f"{category.id}_desc"
@@ -1173,6 +1380,14 @@ class DecisionEditorController:
             target_edit.setText(file)
             # 必要に応じてここで保存ロジック（registryへの登録等）を呼ぶ
 
+    def browse_icon(self, target_edit):
+        if not target_edit: return
+        # 現時点では単純な入力ダイアログを表示
+        from PySide6.QtWidgets import QInputDialog
+        val, ok = QInputDialog.getText(self.widget, "アイコン選択", "アイコンまたはスプライトIDを入力してください:", text=target_edit.text())
+        if ok:
+            target_edit.setText(val)
+
     def get_mod_root(self):
         return core.api.get_project_path() or os.path.dirname(self.file_path)
 
@@ -1294,7 +1509,7 @@ class DecisionEditorController:
         data = self.get_current_data()
         if isinstance(data, ParsedDecisionCategory):
             self.save_localisation(data.id, self._get_loc_text(self.edit_category_localisation), self.edit_category_loc_file)
-            self.save_localisation(f"{data.id}_desc", self._get_loc_text(self.edit_category_desc_localisation), self.edit_category_desc_loc_file)
+            self.save_localisation(f"{data.id}_desc", self._get_loc_text(self.text_category_desc_localisation), self.edit_category_desc_loc_file)
         elif isinstance(data, ParsedDecision):
             self.save_localisation(data.id, self._get_loc_text(self.edit_decision_localisation), self.edit_decision_loc_file)
             self.save_localisation(f"{data.id}_desc", self._get_loc_text(self.text_decision_desc_localisation), self.edit_decision_desc_loc_file)
@@ -1309,6 +1524,59 @@ class DecisionEditorController:
         
         if self.btn_standard_mode: self.btn_standard_mode.setChecked(not enabled)
         if self.btn_detail_mode: self.btn_detail_mode.setChecked(enabled)
+
+    def update_advanced_visibility(self, key, visible):
+        config = self.advanced_config.get(key)
+        if not config: return
+        for widget_name in config["widgets"]:
+            w = find(self.widget, QWidget, widget_name)
+            if w:
+                w.setVisible(visible)
+        # グループの囲いの表示状態を再計算
+        self.refresh_group_visibility()
+
+    def refresh_group_visibility(self):
+        # 中身が空になったQGroupBoxを隠す
+        from PySide6.QtWidgets import QGroupBox
+        for group in self.widget.findChildren(QGroupBox):
+            # ページ自体や、常に表示すべきものは除外したければここで判定
+            layout = group.layout()
+            if not layout: continue
+            
+            has_visible_child = False
+            for i in range(layout.count()):
+                item = layout.itemAt(i)
+                w = item.widget()
+                # 親が非表示でも、ウィジェット自体が明示的に隠されていなければ「中身あり」とみなす
+                if w and not w.isHidden():
+                    has_visible_child = True
+                    break
+            
+            group.setVisible(has_visible_child)
+
+    def _add_advanced_action(self, key, menu):
+        from PySide6.QtGui import QAction
+        config = self.advanced_config.get(key)
+        if not config: return
+        action = QAction(config["label"], menu)
+        action.setCheckable(True)
+        # 初期状態はすべてOFF
+        action.setChecked(False)
+        action.triggered.connect(lambda checked, k=key: self.update_advanced_visibility(k, checked))
+        menu.addAction(action)
+        self.advanced_actions[key] = action
+
+    def eventFilter(self, obj, event):
+        # メニューのアイテムをクリックしたときに閉じないようにする処理
+        from PySide6.QtCore import QEvent
+        from PySide6.QtWidgets import QMenu
+        if (isinstance(obj, QMenu) and event.type() == QEvent.Type.MouseButtonRelease):
+            menu = obj
+            action = menu.actionAt(event.pos())
+            if action and action.isCheckable():
+                action.trigger()
+                return True
+        return super().eventFilter(obj, event)
 
     def on_text_focus_out(self, key, edit, event):
         QPlainTextEdit.focusOutEvent(edit, event)
@@ -1338,6 +1606,10 @@ class DecisionEditorController:
                 val = "yes" if checked else ("no" if settings.get("explicit_no_export", False) else "")
                 self.replace_property(name, val)
             control.toggled.connect(on_toggled)
+
+    def connect_combo(self, control, property_name):
+        if control:
+            control.currentIndexChanged.connect(lambda: self.replace_property(property_name, control.currentText()))
 
     def replace_item_id(self, new_id):
         if self.updating or not new_id: return
@@ -1415,7 +1687,9 @@ class DecisionEditorController:
         # 基本的なフォールバック
         defaults = {"allowed", "visible", "available", "complete_effect", "modifier", 
                     "highlight_states", "highlight_provinces", "custom_cost_trigger",
-                    "on_map_area", "map_area"}
+                    "on_map_area", "map_area", "remove_trigger", "cancel_trigger",
+                    "timeout_effect", "remove_effect", "cancel_effect", "activation",
+                    "target_root_trigger", "target_trigger", "targeted_modifier", "ai_will_do"}
         if prop_name in defaults:
             return True
             
