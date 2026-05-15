@@ -7,10 +7,10 @@
                 {
                     "id": "decisions",
                     "label": "ディシジョン",
-                    "icon": "generic_decision.png",
+                    "icon": "mail_checkmark.png",
                     "items": [
                         {
-                            "label": "＋ 新規カテゴリ作成...",
+                            "label": "＋ 新規ディシジョンを作成...",
                             "action": "open_untitled_tab",
                             "params": {
                                 "name": "New Category",
@@ -32,7 +32,7 @@
                     "icon": "mail_checkmark.png",
                     "items": [
                         {
-                            "label": "＋ 新規ネームスペース作成...",
+                            "label": "＋ 新規イベントを作成...",
                             "action": "open_untitled_tab",
                             "params": {
                                 "name": "New Namespace",

@@ -61,7 +61,11 @@ class EditorRegistry:
         if not os.path.exists(ui_path) or not os.path.exists(py_path):
             return None
 
-        editor_id = self.normalize_editor_id(element.raw.get("editor_id") or f"{element.id}:{element.document_type or element.path}:form")
+        editor_id = element.raw.get("editor_id")
+        if not editor_id:
+            return None
+
+        editor_id = self.normalize_editor_id(editor_id)
         if editor_id not in self.editors:
             editor_name = self._extract_editor_name(py_path) or element.name
             self.editors[editor_id] = EditorDefinition(editor_id, editor_name, py_path, ui_path)

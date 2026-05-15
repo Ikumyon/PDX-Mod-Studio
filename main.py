@@ -374,7 +374,7 @@ def main():
         element = get_element_for_path(file_path)
         available_editors = editor_registry.get_editors_for_element(element) if element else []
         if editor_id is None:
-            editor_id = available_editors[0].editor_id if available_editors else TEXT_EDITOR_ID
+            editor_id = TEXT_EDITOR_ID
         else:
             editor_id = editor_registry.normalize_editor_id(editor_id)
 
