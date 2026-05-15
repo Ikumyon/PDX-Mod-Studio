@@ -9,6 +9,11 @@
     "role": "event_id"
   },
   "unknown_keys": "warn",
+  "document_properties": {
+    "add_namespace": {
+      "ui_widget": "namespaceEdit"
+    }
+  },
   "fields": {
     "id": {
         "type": "identifier",

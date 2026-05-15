@@ -630,35 +630,41 @@ class DecisionEditorController:
             registry = getattr(plugin, "localisation_registry", None) if plugin else None
             
             if self.tree_decisions:
-                # 選択状態を保持
-                selected_item_data = self.get_current_data()
-                
-                self.tree_decisions.clear()
-                for cat in self.categories:
-                    # registry.get ではなく search_key_status を使用
-                    status, entry = registry.search_key_status(cat.id) if registry else ("not_found", None)
-                    cat_name = entry.get("value") if entry else None
-                    cat_label = cat_name if cat_name else cat.id
+                was_blocked = self.tree_decisions.blockSignals(True)
+                self.tree_decisions.setUpdatesEnabled(False)
+                try:
+                    # 選択状態を保持
+                    selected_item_data = self.get_current_data()
                     
-                    cat_item = QTreeWidgetItem(self.tree_decisions)
-                    cat_item.setText(0, cat_label)
-                    cat_item.setData(0, Qt.ItemDataRole.UserRole, cat)
-                    
-                    for dec in cat.decisions:
+                    self.tree_decisions.clear()
+                    for cat in self.categories:
                         # registry.get ではなく search_key_status を使用
-                        status, entry = registry.search_key_status(dec.id) if registry else ("not_found", None)
-                        dec_name = entry.get("value") if entry else None
-                        dec_label = dec_name if dec_name else dec.id
+                        status, entry = registry.search_key_status(cat.id) if registry else ("not_found", None)
+                        cat_name = entry.get("value") if entry else None
+                        cat_label = cat_name if cat_name else cat.id
                         
-                        dec_item = QTreeWidgetItem(cat_item)
-                        dec_item.setText(0, dec_label)
-                        dec_item.setData(0, Qt.ItemDataRole.UserRole, dec)
-                
-                self.tree_decisions.expandAll()
-                
-                # 選択を復元
-                if selected_item_data:
-                    self.restore_selection(selected_item_data)
+                        cat_item = QTreeWidgetItem(self.tree_decisions)
+                        cat_item.setText(0, cat_label)
+                        cat_item.setData(0, Qt.ItemDataRole.UserRole, cat)
+                        
+                        for dec in cat.decisions:
+                            # registry.get ではなく search_key_status を使用
+                            status, entry = registry.search_key_status(dec.id) if registry else ("not_found", None)
+                            dec_name = entry.get("value") if entry else None
+                            dec_label = dec_name if dec_name else dec.id
+                            
+                            dec_item = QTreeWidgetItem(cat_item)
+                            dec_item.setText(0, dec_label)
+                            dec_item.setData(0, Qt.ItemDataRole.UserRole, dec)
+                    
+                    self.tree_decisions.expandAll()
+                    
+                    # 選択を復元
+                    if selected_item_data:
+                        self.restore_selection(selected_item_data)
+                finally:
+                    self.tree_decisions.setUpdatesEnabled(True)
+                    self.tree_decisions.blockSignals(was_blocked)
             
             self.load_selected_item()
         finally:
@@ -992,9 +998,9 @@ class DecisionEditorController:
         self.add_preview_pixmap(row, self.asset_path("mail_checkmark.png"), 462, 4, 34, 30)
 
     def update_preview(self):
-        if not hasattr(self, "preview_scene"):
+        if self.updating:
             return
-        if getattr(self, "updating", False):
+        if not hasattr(self, "preview_scene"):
             return
         self.preview_scene.clear()
         self.preview_items = []

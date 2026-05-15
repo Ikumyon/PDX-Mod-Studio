@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Any, Optional
 
 import core.api
 from PySide6.QtCore import QFile, Qt, QTimer
@@ -27,6 +27,8 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSpinBox,
     QSplitter,
+    QTreeWidget,
+    QTreeWidgetItem,
 )
 
 from plugins.hoi4.script_parser import (
@@ -56,6 +58,7 @@ class ParsedEvent:
 class Document:
     events: list[ParsedEvent] = field(default_factory=list)
     properties: dict = field(default_factory=dict)
+    ast: Any = None
 
 class EventParser:
     def __init__(self, plugin=None):
@@ -71,6 +74,7 @@ class EventParser:
         ast, _, _ = parser.parse()
         
         doc = Document()
+        doc.ast = ast
         
         for item in getattr(ast, "items", []):
             if isinstance(item, AssignmentNode) and item.key == "add_namespace":
@@ -89,7 +93,8 @@ class EventParser:
         return doc
 
 
-MODE_NAME = "Event Editor"
+MODE_NAME = "イベントエディタ"
+EDITOR_ID = "event_editor"
 
 class DeleteOptionButtonItem(QGraphicsEllipseItem):
     def __init__(self, option_index, controller, parent=None):
@@ -340,7 +345,7 @@ class EventEditorController:
         }
 
     def bind(self):
-        self.event_list = find(self.widget, QListWidget, "eventListWidget")
+        self.event_list = find(self.widget, QTreeWidget, "eventTreeWidget")
         self.event_id = find(self.widget, QLineEdit, "eventIdEdit")
         self.event_type = find(self.widget, QComboBox, "eventTypeCombo")
         self.title_key = find(self.widget, QLineEdit, "titleKeyEdit")
@@ -419,7 +424,7 @@ class EventEditorController:
                         widget.editingFinished.connect(lambda k=prop_key: self.on_doc_prop_edited(k))
 
         if self.event_list:
-            self.event_list.currentRowChanged.connect(self.on_event_selected)
+            self.event_list.currentItemChanged.connect(self.on_event_selected)
 
         # イベント操作ボタンの接続
         self.new_event_btn = find(self.widget, QPushButton, "newEventButton")
@@ -522,13 +527,28 @@ class EventEditorController:
         self.updating = True
         try:
             if self.event_list:
-                self.event_list.clear()
-                for event in self.events:
-                    label = event.event_id or f"{event.key}@{event.node.range.start.line}"
-                    self.event_list.addItem(label)
-                row = self.index_for_event_id(selected)
-                self.event_list.setCurrentRow(row if row >= 0 else (0 if self.events else -1))
-                self.load_event(self.current_event())
+                was_blocked = self.event_list.blockSignals(True)
+                self.event_list.setUpdatesEnabled(False)
+                try:
+                    self.event_list.clear()
+                    target_item = None
+                    for event in self.events:
+                        label = event.event_id or f"{event.key}@{event.node.range.start.line}"
+                        item = QTreeWidgetItem(self.event_list)
+                        item.setText(0, label)
+                        item.setData(0, Qt.ItemDataRole.UserRole, event)
+                        if event.event_id == selected:
+                            target_item = item
+                    
+                    if target_item:
+                        self.event_list.setCurrentItem(target_item)
+                    elif self.event_list.topLevelItemCount() > 0:
+                        self.event_list.setCurrentItem(self.event_list.topLevelItem(0))
+                        
+                    self.load_event(self.current_event())
+                finally:
+                    self.event_list.setUpdatesEnabled(True)
+                    self.event_list.blockSignals(was_blocked)
             
             for prop_key, widget in self.doc_prop_widgets.items():
                 val = getattr(doc, "properties", {}).get(prop_key, "")
@@ -583,7 +603,7 @@ class EventEditorController:
         finally:
             self.updating = False
 
-    def on_event_selected(self, _row):
+    def on_event_selected(self, current, previous):
         if self.updating:
             return
         self.updating = True
@@ -595,10 +615,10 @@ class EventEditorController:
     def current_event(self) -> Optional[ParsedEvent]:
         if not self.event_list:
             return self.events[0] if self.events else None
-        row = self.event_list.currentRow()
-        if row < 0 or row >= len(self.events):
+        item = self.event_list.currentItem()
+        if not item:
             return None
-        return self.events[row]
+        return item.data(0, Qt.ItemDataRole.UserRole)
 
     def load_event(self, event: Optional[ParsedEvent]):
         self.selected_event_id = event.event_id if event else ""
@@ -614,8 +634,7 @@ class EventEditorController:
         set_checked(self.hidden, prop_bool(event, "hidden"))
         set_checked(self.major, prop_bool(event, "major"))
         set_checked(self.fire_for_sender, prop_bool(event, "fire_for_sender"))
-        if self.timeout_days:
-            self.timeout_days.setValue(int(prop_text(event, "timeout_days") or 0))
+        set_spin(self.timeout_days, prop_text(event, "timeout_days"))
         triggered = prop_bool(event, "is_triggered_only")
         set_checked(self.triggered_only, triggered)
         set_checked(self.standard_trigger, not triggered)
@@ -626,9 +645,11 @@ class EventEditorController:
 
         self.update_trigger_ui()
         self.refresh_options(event)
+        self.update_localisation_ui()
         self.update_preview()
 
     def update_preview(self):
+        if self.updating: return
         if not hasattr(self, 'scene'): return
         self.scene.clear()
         
@@ -1079,9 +1100,9 @@ class EventEditorController:
     def on_search_text_changed(self, text):
         if not self.event_list: return
         search_term = text.lower()
-        for i in range(self.event_list.count()):
-            item = self.event_list.item(i)
-            item.setHidden(search_term not in item.text().lower())
+        for i in range(self.event_list.topLevelItemCount()):
+            item = self.event_list.topLevelItem(i)
+            item.setHidden(search_term not in item.text(0).lower())
 
     def update_option_property(self, option_index, key, value):
         if self.updating:
@@ -1309,7 +1330,6 @@ class EventEditorController:
         if property_name == "id":
             self.selected_event_id = replacement
             
-        self.refresh()
         self.reformat_event(self.selected_event_id)
 
     def reformat_event(self, event_id):
@@ -1471,9 +1491,9 @@ class EventEditorController:
 
     def _set_loc_text(self, widget, text):
         if hasattr(widget, "setPlainText"):
-            widget.setPlainText(text)
+            set_plain(widget, text)
         elif hasattr(widget, "setText"):
-            widget.setText(text)
+            set_line(widget, text)
 
     def _get_loc_text(self, widget):
         if not widget:
@@ -1703,22 +1723,40 @@ def block_text(content: str, node: Optional[AssignmentNode], name: str) -> str:
 
 def set_line(control, value):
     if control:
-        control.setText(value)
+        was_blocked = control.blockSignals(True)
+        control.setText(value or "")
+        control.blockSignals(was_blocked)
 
 
 def set_plain(control, value):
     if control:
-        control.setPlainText(value)
+        was_blocked = control.blockSignals(True)
+        control.setPlainText(value or "")
+        control.blockSignals(was_blocked)
+
+
+def set_spin(control, value):
+    if control:
+        was_blocked = control.blockSignals(True)
+        try:
+            control.setValue(int(value or 0))
+        except Exception:
+            control.setValue(0)
+        control.blockSignals(was_blocked)
 
 
 def set_checked(control, value):
     if control:
+        was_blocked = control.blockSignals(True)
         control.setChecked(bool(value))
+        control.blockSignals(was_blocked)
 
 
 def set_combo(control, value):
     if not control:
         return
+    was_blocked = control.blockSignals(True)
     index = control.findText(value, Qt.MatchFlag.MatchExactly)
     if index >= 0:
         control.setCurrentIndex(index)
+    control.blockSignals(was_blocked)
