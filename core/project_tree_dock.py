@@ -68,6 +68,7 @@ class ProjectTreeDock:
         self.parent_window = parent_window
         self.base_dir = os.path.dirname(os.path.dirname(__file__))
         self.show_editors_requested = True
+        self.show_plugin_section_requested = True
         
         # UIのロード
         loader = QUiLoader()
@@ -252,6 +253,15 @@ class ProjectTreeDock:
         self.action_show_editors.setChecked(True)
         self.action_show_editors.triggered.connect(self.on_show_editors_toggled)
         self.more_menu.addAction(self.action_show_editors)
+
+        # 2. プラグイン固有の追加セクション (プラグイン提供のメタデータで名称を動的に決定)
+        self.action_show_plugin_section = QAction("", self.more_menu)
+        self.action_show_plugin_section.setCheckable(True)
+        self.action_show_plugin_section.setChecked(True)
+        self.action_show_plugin_section.setVisible(False) # 初期状態では非表示
+        self.action_show_plugin_section.triggered.connect(self.on_plugin_section_toggled)
+
+        self.more_menu.addAction(self.action_show_plugin_section)
         self.more_menu.addSeparator()
         self.action_open_other = QAction("別のプロジェクトを選択...", self.more_menu)
         self.action_open_other.triggered.connect(self.on_open_folder_clicked)
@@ -283,6 +293,12 @@ class ProjectTreeDock:
         if hasattr(self.parent_window, "editorTabs") and self.parent_window.editorTabs:
             count = self.parent_window.editorTabs.count()
         self._update_editors_visibility(count)
+
+    def on_plugin_section_toggled(self, checked):
+        self.show_plugin_section_requested = checked
+        if self.pluginSectionContainer:
+            has_widget = self.pluginSectionLayout.count() > 0
+            self.pluginSectionContainer.setVisible(checked and has_widget)
         
     def _update_editors_visibility(self, count):
         visible = self.show_editors_requested and count > 0
@@ -499,7 +515,7 @@ class ProjectTreeDock:
         self.update_assistant_widget()
 
     def update_assistant_widget(self):
-        """プラグインからアシスタントウィジェットを取得し、セクションを更新する"""
+        """プラグインから追加セクションのメタデータを取得し、UIを更新する"""
         if not self.pluginSectionContainer or not self.pluginSectionLayout:
             return
             
@@ -511,12 +527,23 @@ class ProjectTreeDock:
                 widget.setParent(None)
                 widget.deleteLater()
         
-        # アクティブなプラグインから新しいウィジェットを取得して追加
-        widget = core.api.get_assistant_widget(self.pluginSectionContainer)
-        if widget:
-            self.pluginSectionLayout.addWidget(widget)
-            self.pluginSectionContainer.setVisible(True)
+        # アクティブなプラグインから新しいセクションの情報を取得
+        res = core.api.get_assistant_widget(self.pluginSectionContainer)
+        if res and isinstance(res, dict):
+            widget = res.get("widget")
+            name = res.get("name", "追加セクション")
+            collapsible = res.get("collapsible", True)
+            
+            if widget:
+                self.pluginSectionLayout.addWidget(widget)
+                if hasattr(self, "action_show_plugin_section"):
+                    self.action_show_plugin_section.setText(name)
+                    self.action_show_plugin_section.setEnabled(collapsible)
+                    self.action_show_plugin_section.setVisible(True)
+                self.pluginSectionContainer.setVisible(self.show_plugin_section_requested)
         else:
+            if hasattr(self, "action_show_plugin_section"):
+                self.action_show_plugin_section.setVisible(False)
             self.pluginSectionContainer.setVisible(False)
 
     def on_new_file_clicked(self):

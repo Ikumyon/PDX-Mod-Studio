@@ -3,8 +3,9 @@ import json
 from PySide6.QtWidgets import QWidget, QPushButton, QVBoxLayout, QTreeView
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtCore import QFile, Qt
-from PySide6.QtGui import QStandardItemModel, QStandardItem, QIcon
+from PySide6.QtGui import QStandardItemModel, QStandardItem, QIcon, QPixmap
 import core.api
+from core.utils import load_svg_icon
 
 # 各種パーサーをインポート（失敗した場合は None）
 try:
@@ -149,8 +150,10 @@ class AssistantWidget(QWidget):
                         if cat.id in added_ids: continue
                         cat_item = QStandardItem(cat.id)
                         cat_item.setEditable(False)
-                        icon_path = os.path.join(self.base_dir, "asset", "icons", "generic_decision.png")
-                        if os.path.exists(icon_path): cat_item.setIcon(QIcon(icon_path))
+                        icon_path = os.path.join(self.base_dir, "asset", "icons", "mail-checkmark-24-regular.svg")
+                        if os.path.exists(icon_path):
+                            text_color = self.palette().color(self.foregroundRole()).name()
+                            cat_item.setIcon(load_svg_icon(icon_path, text_color))
                         cat_item.setData({"id": cat.id, "action": "open_tab", "params": {"path": cat.source_path}}, Qt.UserRole)
                         
                         self.decision_item.insertRow(0, cat_item)
@@ -197,8 +200,10 @@ class AssistantWidget(QWidget):
         for ns, ns_data in reversed(ns_list):
             ns_item = QStandardItem(ns)
             ns_item.setEditable(False)
-            icon_path = os.path.join(self.base_dir, "asset", "icons", "mail_checkmark.png")
-            if os.path.exists(icon_path): ns_item.setIcon(QIcon(icon_path))
+            icon_path = os.path.join(self.base_dir, "asset", "icons", "event.svg")
+            if os.path.exists(icon_path):
+                text_color = self.palette().color(self.foregroundRole()).name()
+                ns_item.setIcon(load_svg_icon(icon_path, text_color))
             ns_item.setData({"id": ns, "action": "open_tab", "params": {"path": ns_data["path"]}}, Qt.UserRole)
             self.event_item.insertRow(0, ns_item)
             
@@ -222,7 +227,11 @@ class AssistantWidget(QWidget):
         if icon_name:
             icon_path = os.path.join(self.base_dir, "asset", "icons", icon_name)
             if os.path.exists(icon_path):
-                item.setIcon(QIcon(icon_path))
+                if icon_path.lower().endswith(".svg"):
+                    text_color = self.palette().color(self.foregroundRole()).name()
+                    item.setIcon(load_svg_icon(icon_path, text_color))
+                else:
+                    item.setIcon(QIcon(icon_path))
         
         return item
 

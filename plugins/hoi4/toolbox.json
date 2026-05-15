@@ -7,7 +7,7 @@
                 {
                     "id": "decisions",
                     "label": "ディシジョン",
-                    "icon": "mail_checkmark.png",
+                    "icon": "mail-checkmark-24-regular.svg",
                     "items": [
                         {
                             "label": "＋ 新規ディシジョンを作成...",
@@ -15,21 +15,15 @@
                             "params": {
                                 "name": "New Category",
                                 "editor_id": "decision_editor",
-                                "content": "category_id = {\n\t# カテゴリの定義\n}\n"
+                                "content": "\nnew_category_id = {\n\t# ここに処理を記述\n}\n"
                             }
                         }
                     ]
-                }
-            ]
-        },
-        {
-            "id": "events",
-            "label": "イベント",
-            "items": [
+                },
                 {
                     "id": "events_root",
                     "label": "イベント",
-                    "icon": "mail_checkmark.png",
+                    "icon": "event.svg",
                     "items": [
                         {
                             "label": "＋ 新規イベントを作成...",

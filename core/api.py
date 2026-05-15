@@ -133,7 +133,8 @@ def register_assistant_widget_handler(handler):
 
 def get_assistant_widget(parent):
     """
-    ツリードッグがアクティブなプラグインからアシスタントウィジェットを取得するために使用する。
+    ツリードッグがアクティブなプラグインからアシスタントセクション用のメタデータを取得するために使用する。
+    戻り値: { "widget": QWidget, "name": str, "collapsible": bool } または None
     """
     if _assistant_widget_handler:
         return _assistant_widget_handler(parent)

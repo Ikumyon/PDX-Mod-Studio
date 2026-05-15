@@ -299,7 +299,11 @@ def initialize(plugin):
     
     # アシスタントウィジェットの登録
     from plugins.hoi4.assistant import AssistantWidget
-    core.api.register_assistant_widget_handler(lambda parent: AssistantWidget(parent))
+    core.api.register_assistant_widget_handler(lambda parent: {
+        "widget": AssistantWidget(parent),
+        "name": "ツールボックス",
+        "collapsible": True
+    })
     
     global _registry, _watcher
     _registry = LocalisationRegistry()
