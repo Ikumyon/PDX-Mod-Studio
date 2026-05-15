@@ -6,23 +6,47 @@ from PySide6.QtUiTools import QUiLoader
 
 
 class EditorDefinition:
-    def __init__(self, editor_id, name, py_path, ui_path):
+    def __init__(self, editor_id, name, py_path=None, ui_path=None, is_builtin=False):
         self.editor_id = editor_id
         self.name = name
         self.py_path = py_path
         self.ui_path = ui_path
+        self.is_builtin = is_builtin
 
 
 
 class EditorRegistry:
+    BUILTIN_TEXT_EDITOR_ID = "core.plain_text"
+
     def __init__(self):
-        self.editors = {}
-        self.text_editor_id = "text"
+        self.text_editor_id = self.BUILTIN_TEXT_EDITOR_ID
+        self.editors = {
+            self.text_editor_id: EditorDefinition(
+                self.text_editor_id,
+                "テキストエディタ",
+                is_builtin=True,
+            )
+        }
+
+    def normalize_editor_id(self, editor_id):
+        if not editor_id:
+            return self.text_editor_id
+        return editor_id
+
+    def is_text_editor(self, editor_id):
+        return self.normalize_editor_id(editor_id) == self.text_editor_id
 
     def get_editors_for_element(self, element):
         editor = self.register_element(element)
         return [editor] if editor else []
 
+    def register_plugin(self, plugin):
+        for element in getattr(plugin, "elements", []):
+            self.register_element(element)
+
+    def get_editor(self, editor_id):
+        editor_id = self.normalize_editor_id(editor_id)
+        return self.editors.get(editor_id)
 
     def register_element(self, element):
         if not getattr(element, "form", None) or not getattr(element, "logic", None):
@@ -37,7 +61,7 @@ class EditorRegistry:
         if not os.path.exists(ui_path) or not os.path.exists(py_path):
             return None
 
-        editor_id = f"{element.id}:{element.document_type or element.path}:form"
+        editor_id = self.normalize_editor_id(element.raw.get("editor_id") or f"{element.id}:{element.document_type or element.path}:form")
         if editor_id not in self.editors:
             editor_name = self._extract_editor_name(py_path) or element.name
             self.editors[editor_id] = EditorDefinition(editor_id, editor_name, py_path, ui_path)
@@ -62,10 +86,13 @@ class EditorRegistry:
         return None
 
     def create_editor_widget(self, editor_id, parent, file_path, content):
+        editor_id = self.normalize_editor_id(editor_id)
         if editor_id not in self.editors:
             return None
 
         editor = self.editors[editor_id]
+        if editor.is_builtin:
+            return None
         loader = QUiLoader()
         ui_file = QFile(editor.ui_path)
 
@@ -103,4 +130,3 @@ class EditorRegistry:
             print(f"Error binding logic for editor {editor_id}: {error}")
 
         return widget
-

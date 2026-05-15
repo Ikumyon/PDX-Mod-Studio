@@ -1,0 +1,48 @@
+{
+    "navigation": [
+        {
+            "id": "common",
+            "label": "共通",
+            "items": [
+                {
+                    "id": "decisions",
+                    "label": "ディシジョン",
+                    "icon": "generic_decision.png",
+                    "items": [
+                        {
+                            "label": "＋ 新規カテゴリ作成...",
+                            "action": "open_untitled_tab",
+                            "params": {
+                                "name": "New Category",
+                                "editor_id": "decision_editor",
+                                "content": "category_id = {\n\t# カテゴリの定義\n}\n"
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "id": "events",
+            "label": "イベント",
+            "items": [
+                {
+                    "id": "events_root",
+                    "label": "イベント",
+                    "icon": "mail_checkmark.png",
+                    "items": [
+                        {
+                            "label": "＋ 新規ネームスペース作成...",
+                            "action": "open_untitled_tab",
+                            "params": {
+                                "name": "New Namespace",
+                                "editor_id": "event_editor",
+                                "content": "add_namespace = new_namespace\n\ncountry_event = {\n\tid = new_namespace.1\n\ttitle = \"Event Title\"\n\tdesc = \"Event Description\"\n\tpicture = GFX_report_event_generic_read_write\n\n\tis_triggered_only = yes\n\n\toption = {\n\t\tname = \"OK\"\n\t}\n}\n"
+                            }
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}

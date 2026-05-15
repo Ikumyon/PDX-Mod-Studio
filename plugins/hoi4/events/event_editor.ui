@@ -126,14 +126,17 @@
             <item>
              <widget class="QLineEdit" name="namespaceEdit"/>
             </item>
+            <item>
+             <widget class="QToolButton" name="btnAddNamespace">
+              <property name="text">
+               <string>追加</string>
+              </property>
+             </widget>
+            </item>
            </layout>
           </item>
           <item>
-           <widget class="QListWidget" name="eventListWidget">
-            <property name="frameShape">
-             <enum>QFrame::Shape::NoFrame</enum>
-            </property>
-           </widget>
+           <widget class="QTreeWidget" name="eventTreeWidget"/>
           </item>
          </layout>
         </widget>
@@ -154,8 +157,8 @@
        <property name="geometry">
         <rect>
          <x>0</x>
-         <y>-250</y>
-         <width>470</width>
+         <y>0</y>
+         <width>440</width>
          <height>968</height>
         </rect>
        </property>
@@ -667,7 +670,7 @@ Immediate</string>
  <resources/>
  <connections/>
  <buttongroups>
-  <buttongroup name="modeButtonGroup"/>
   <buttongroup name="buttonGroup"/>
+  <buttongroup name="modeButtonGroup"/>
  </buttongroups>
 </ui>

@@ -1,6 +1,6 @@
 import sys
 import os
-from PySide6.QtWidgets import QApplication, QMenu, QVBoxLayout, QToolButton, QWidget, QTabBar
+from PySide6.QtWidgets import QApplication, QMenu, QVBoxLayout, QToolButton, QWidget, QTabBar, QFileDialog
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtCore import QFile, Qt, QSize
 import core.api
@@ -145,6 +145,7 @@ def main():
 
     # --- エディタ管理の初期化 ---
     editor_registry = EditorRegistry()
+    TEXT_EDITOR_ID = editor_registry.text_editor_id
     
     # ビュー切り替え用のボタンをUIから取得 (旧modeSelectorButtonを流用)
     view_selector = window.findChild(QToolButton, "modeSelectorButton")
@@ -163,6 +164,9 @@ def main():
 
     def get_element_for_path(file_path):
         """ファイルパスが属するプラグイン内のエレメントを特定する"""
+        if not file_path or file_path.startswith("untitled:"):
+            return None
+            
         plugin = project_tree.active_plugin
         if not plugin or not hasattr(project_tree, "current_project_path"):
             return None
@@ -191,7 +195,7 @@ def main():
             return
             
         available_editors = getattr(widget, "available_editors", [])
-        current_editor_id = getattr(widget, "editor_id", "text")
+        current_editor_id = editor_registry.normalize_editor_id(getattr(widget, "editor_id", TEXT_EDITOR_ID))
         
         if not available_editors:
             view_selector.setVisible(False)
@@ -215,11 +219,11 @@ def main():
         
         # 2. 標準テキストエディタ
         script_action = menu.addAction("テキストエディタ")
-        script_action.setData("text")
-        if current_editor_id == "text":
+        script_action.setData(TEXT_EDITOR_ID)
+        if current_editor_id == TEXT_EDITOR_ID:
             script_action.setCheckable(True)
             script_action.setChecked(True)
-        script_action.triggered.connect(lambda checked=False: on_editor_selected("text"))
+        script_action.triggered.connect(lambda checked=False: on_editor_selected(TEXT_EDITOR_ID))
         
         view_selector.setMenu(menu)
         view_selector.setText("")
@@ -229,6 +233,7 @@ def main():
         view_selector.update() # 再描画を促す
 
     def on_editor_selected(editor_id):
+        editor_id = editor_registry.normalize_editor_id(editor_id)
         current_tab_idx = window.editorTabs.currentIndex()
         if current_tab_idx < 0:
             return
@@ -237,14 +242,15 @@ def main():
         open_file(file_path, editor_id)
 
     def create_editor_widget(editor_id, file_path, content, available_editors):
-        if editor_id == "text":
+        editor_id = editor_registry.normalize_editor_id(editor_id)
+        if editor_id == TEXT_EDITOR_ID:
             widget = EditorWidget()
             widget.setPlainText(content)
         else:
             widget = editor_registry.create_editor_widget(editor_id, window.editorTabs, file_path, content)
             if not widget:
                 # 失敗した場合はテキストエディタ
-                return create_editor_widget("text", file_path, content, available_editors)
+                return create_editor_widget(TEXT_EDITOR_ID, file_path, content, available_editors)
         
         widget.editor_id = editor_id
         widget.available_editors = available_editors
@@ -272,19 +278,19 @@ def main():
         widget._dirty_timer.timeout.connect(check_content_change)
         widget._dirty_timer.start(100)
 
-        if editor_id == "text":
+        if editor_id == TEXT_EDITOR_ID:
             widget.textChanged.connect(lambda: set_tab_dirty(window.editorTabs.indexOf(widget), True))
 
         return widget
 
-    def open_file(file_path, editor_id="text"):
+    def _open_file_legacy_unused(file_path, editor_id=None):
         if not window.editorTabs:
             return
             
         # 既に開いているか確認（同じファイルかつ同じエディタ）
         for i in range(window.editorTabs.count()):
             widget = window.editorTabs.widget(i)
-            if window.editorTabs.tabToolTip(i) == file_path and getattr(widget, "editor_id", "text") == editor_id:
+            if window.editorTabs.tabToolTip(i) == file_path and editor_registry.normalize_editor_id(getattr(widget, "editor_id", TEXT_EDITOR_ID)) == editor_id:
                 window.editorTabs.setCurrentIndex(i)
                 update_editor_selector(i)
                 return
@@ -307,7 +313,7 @@ def main():
             editor = create_editor_widget(editor_id, file_path, content, available_editors)
             
             file_name = os.path.basename(file_path)
-            if editor_id != "text":
+            if editor_id != TEXT_EDITOR_ID:
                 file_name = f"[E] {file_name}"
 
             icon = project_tree.get_icon_for_path(file_path)
@@ -321,7 +327,89 @@ def main():
         except Exception as e:
             print(f"ファイルを開けませんでした: {e}")
 
+    # 無題タブのID管理
+    untitled_id_counter = [0]
+
+    def open_untitled_tab(name, content="", editor_id=TEXT_EDITOR_ID):
+        editor_id = editor_registry.normalize_editor_id(editor_id)
+        if not window.editorTabs:
+            return
+            
+        untitled_id_counter[0] += 1
+        virtual_path = f"untitled:{untitled_id_counter[0]}"
+        
+        # 利用可能なエディタを判定（もしあれば）
+        # ※無題タブの場合はパスがないため、デフォルトのままにするか、IDから類推する
+        available_editors = []
+        if editor_id != TEXT_EDITOR_ID:
+            editor_definition = editor_registry.get_editor(editor_id)
+            if editor_definition:
+                available_editors = [editor_definition]
+        
+        editor = create_editor_widget(editor_id, virtual_path, content, available_editors)
+        
+        from PySide6.QtGui import QIcon
+        icon = QIcon() # デフォルト
+        # アイコンディレクトリがあればデフォルトファイルアイコンを設定
+        icons_dir = os.path.join(base_dir, "assets", "icons")
+        if os.path.exists(icons_dir):
+            from core.utils import load_svg_icon
+            text_color = window.palette().color(window.foregroundRole()).name()
+            icon = load_svg_icon(os.path.join(icons_dir, "file.svg"), text_color)
+
+        tab_name = f"[E] {name}" if editor_id != TEXT_EDITOR_ID else name
+        index = window.editorTabs.addTab(editor, icon, tab_name)
+        window.editorTabs.setTabToolTip(index, virtual_path)
+        window.editorTabs.setCurrentIndex(index)
+        update_editor_selector(index)
+        
+        # 変更あり状態にする
+        set_tab_dirty(index, True)
+        project_tree.update_open_editors(window.editorTabs)
+
+    def open_file(file_path, editor_id=None):
+        if not window.editorTabs:
+            return
+
+        element = get_element_for_path(file_path)
+        available_editors = editor_registry.get_editors_for_element(element) if element else []
+        if editor_id is None:
+            editor_id = available_editors[0].editor_id if available_editors else TEXT_EDITOR_ID
+        else:
+            editor_id = editor_registry.normalize_editor_id(editor_id)
+
+        for i in range(window.editorTabs.count()):
+            widget = window.editorTabs.widget(i)
+            current_editor_id = editor_registry.normalize_editor_id(getattr(widget, "editor_id", TEXT_EDITOR_ID))
+            if window.editorTabs.tabToolTip(i) == file_path and current_editor_id == editor_id:
+                window.editorTabs.setCurrentIndex(i)
+                update_editor_selector(i)
+                return
+
+        encoding = "utf-8"
+        if element:
+            encoding = element.plugin.get_element_attribute(element, "encoding", file_path=file_path)
+
+        try:
+            with open(file_path, 'r', encoding=encoding, errors='replace') as f:
+                content = f.read()
+
+            editor = create_editor_widget(editor_id, file_path, content, available_editors)
+            file_name = os.path.basename(file_path)
+            if editor_id != TEXT_EDITOR_ID:
+                file_name = f"[E] {file_name}"
+
+            icon = project_tree.get_icon_for_path(file_path)
+            index = window.editorTabs.addTab(editor, icon, file_name)
+            window.editorTabs.setTabToolTip(index, file_path)
+            window.editorTabs.setCurrentIndex(index)
+            update_editor_selector(index)
+            project_tree.update_open_editors(window.editorTabs)
+        except Exception as e:
+            print(f"ファイルを開けませんでした: {e}")
+
     window.open_file = open_file
+    window.open_untitled_tab = open_untitled_tab
 
 
     # --- 保存機能の実実装 ---
@@ -361,6 +449,17 @@ def main():
         elif hasattr(widget, "content"):
             content = widget.content
             
+        # 「無題」の場合は保存ダイアログを出す
+        if file_path.startswith("untitled:"):
+            project_path = core.api.get_project_path() or os.path.expanduser("~")
+            save_path, _ = QFileDialog.getSaveFileName(
+                window, "名前を付けて保存", 
+                project_path, "Text Files (*.txt);;All Files (*)"
+            )
+            if not save_path:
+                return
+            file_path = save_path
+
         # エレメントからエンコーディングを取得
         element = get_element_for_path(file_path)
         encoding = "utf-8"
@@ -370,6 +469,18 @@ def main():
         try:
             with open(file_path, 'w', encoding=encoding) as f:
                 f.write(content)
+            
+            # 保存成功後のタブ更新
+            window.editorTabs.setTabToolTip(current_idx, file_path)
+            new_name = os.path.basename(file_path)
+            if editor_registry.normalize_editor_id(getattr(widget, "editor_id", TEXT_EDITOR_ID)) != TEXT_EDITOR_ID:
+                new_name = f"[E] {new_name}"
+            window.editorTabs.setTabText(current_idx, new_name)
+            
+            # アイコンも更新
+            new_icon = project_tree.get_icon_for_path(file_path)
+            window.editorTabs.setTabIcon(current_idx, new_icon)
+
             controller = getattr(widget, "plugin_controller", None)
             if controller and hasattr(controller, "on_save_triggered"):
                 controller.on_save_triggered()
@@ -378,6 +489,8 @@ def main():
             set_tab_dirty(current_idx, False)
             
             core.api.notify_file_saved(file_path)
+            # エクスプローラーの同期など
+            project_tree.update_open_editors(window.editorTabs)
         except Exception as e:
             QMessageBox.critical(window, "保存エラー", f"ファイルを保存できませんでした: {e}")
 
@@ -429,7 +542,7 @@ def main():
     core.api.register_editor_handler({
         "get_element_for_file": get_element_for_path,
         "get_editors_for_file": lambda file_path, inc=True: 
-            [{"id": e.editor_id, "name": e.name} for e in (editor_registry.get_editors_for_element(get_element_for_path(file_path)) or [])] + ([{"id": "text", "name": "テキストエディタ"}] if inc else [])
+            [{"id": e.editor_id, "name": e.name} for e in (editor_registry.get_editors_for_element(get_element_for_path(file_path)) or [])] + ([{"id": TEXT_EDITOR_ID, "name": editor_registry.get_editor(TEXT_EDITOR_ID).name}] if inc else [])
     })
 
     core.api.register_active_plugin_handler(lambda: project_tree.active_plugin)
@@ -494,6 +607,7 @@ def main():
         window.statusBar().showMessage(f"プラグイン '{plugin.name}' が選択されました。")
         # ProjectTreeDock にプラグインを通知
         project_tree.set_active_plugin(plugin)
+        editor_registry.register_plugin(plugin)
         
         # 全タブの利用可能なエディタを更新
         if window.editorTabs:
@@ -606,14 +720,15 @@ def main():
                     "path": window.editorTabs.tabToolTip(i),
                     "widget": widget,
                     "is_dirty": getattr(widget, "is_dirty", False),
-                    "editor_id": getattr(widget, "editor_id", "text")
+                    "editor_id": editor_registry.normalize_editor_id(getattr(widget, "editor_id", TEXT_EDITOR_ID))
                 })
         return tabs
 
 
     core.api.register_tabs_handler({
         "get_tabs": get_open_tabs,
-        "open_tab": open_file
+        "open_tab": open_file,
+        "open_untitled_tab": open_untitled_tab
     })
 
 

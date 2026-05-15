@@ -1,5 +1,6 @@
 {
     "name": "イベント",
+    "editor_id": "event_editor",
     "path": "events",
     "extension": ".txt",
     "icon": "event.svg",

@@ -237,7 +237,8 @@ class DecisionParser:
                             
         return list(categories.values())
 
-MODE_NAME = "Decision Editor"
+MODE_NAME = "ディシジョンエディタ"
+EDITOR_ID = "decision_editor"
 
 def setup(widget, file_path, content):
     controller = DecisionEditorController(widget, file_path, content)
@@ -964,7 +965,7 @@ class DecisionEditorController:
         overlay.setBrush(QBrush(QColor(0, 0, 0, 160)))
         overlay.setPen(QPen(QColor("#5f5646"), 1))
         self.preview_items.append(overlay)
-        self.add_preview_text(frame, "Select a category or decision", 54, 145, width - 108, 12, "#f0e9d8", True)
+        self.add_preview_text(frame, "ディシジョン新規作成か、既存のディシジョンを選択してください。", 54, 145, width - 108, 12, "#f0e9d8", True)
         self.preview_scene.setSceneRect(0, 0, width, height)
 
     def draw_decision_row(self, parent, decision, y, selected=False):
@@ -1052,7 +1053,7 @@ class DecisionEditorController:
             empty.setBrush(QBrush(QColor("#1c2421")))
             empty.setPen(QPen(QColor("#303833"), 1))
             self.preview_items.append(empty)
-            self.add_preview_text(empty, "No decisions in this category", 60, 6, 340, 9, "#b8b8ad", True)
+            self.add_preview_text(empty, "このカテゴリにディシジョンはありません", 60, 6, 340, 9, "#b8b8ad", True)
 
         self.preview_scene.setSceneRect(0, 0, width, height)
 

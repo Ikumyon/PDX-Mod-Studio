@@ -94,6 +94,12 @@ class ProjectTreeDock:
         self.noFolderHeader = self.dock_widget.findChild(object, "noFolderHeader")
         self.noFolderMessageLabel = self.dock_widget.findChild(object, "noFolderMessageLabel")
         
+        # プラグインセクションの取得
+        self.pluginSectionContainer = self.dock_widget.findChild(QWidget, "pluginSectionContainer")
+        self.pluginSectionLayout = self.dock_widget.findChild(object, "pluginSectionLayout")
+        if self.pluginSectionContainer:
+            self.pluginSectionContainer.setVisible(False) # 初期状態は非表示
+        
         # 操作ボタンの取得
         self.newFileButton = self.dock_widget.findChild(QToolButton, "newFileButton")
         self.newFolderButton = self.dock_widget.findChild(QToolButton, "newFolderButton")
@@ -171,7 +177,7 @@ class ProjectTreeDock:
         file_path = item.data(0, Qt.ItemDataRole.UserRole)
         if file_path and os.path.isfile(file_path):
             if hasattr(self.parent_window, "open_file"):
-                self.parent_window.open_file(file_path, "text")
+                self.parent_window.open_file(file_path)
 
     def on_tree_context_menu(self, pos):
         if not self.modElementsTree:
@@ -199,7 +205,7 @@ class ProjectTreeDock:
 
         # 2. デフォルトのテキストエディタ
         text_action = menu.addAction("テキストエディタで開く")
-        text_action.triggered.connect(lambda: self.parent_window.open_file(file_path, "text"))
+        text_action.triggered.connect(lambda: self.parent_window.open_file(file_path, core.api.BUILTIN_TEXT_EDITOR_ID))
             
         menu.exec(self.modElementsTree.mapToGlobal(pos))
 
@@ -488,6 +494,30 @@ class ProjectTreeDock:
         # プロジェクトが開かれている場合は再読み込みしてアイコンを反映
         if hasattr(self, "current_project_path") and self.current_project_path:
             self.load_project(self.current_project_path)
+        
+        # アシスタントセクションの更新
+        self.update_assistant_widget()
+
+    def update_assistant_widget(self):
+        """プラグインからアシスタントウィジェットを取得し、セクションを更新する"""
+        if not self.pluginSectionContainer or not self.pluginSectionLayout:
+            return
+            
+        # 既存のウィジェットを削除
+        while self.pluginSectionLayout.count():
+            item = self.pluginSectionLayout.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.setParent(None)
+                widget.deleteLater()
+        
+        # アクティブなプラグインから新しいウィジェットを取得して追加
+        widget = core.api.get_assistant_widget(self.pluginSectionContainer)
+        if widget:
+            self.pluginSectionLayout.addWidget(widget)
+            self.pluginSectionContainer.setVisible(True)
+        else:
+            self.pluginSectionContainer.setVisible(False)
 
     def on_new_file_clicked(self):
         if not hasattr(self, "current_project_path") or not self.current_project_path:

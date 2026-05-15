@@ -9,6 +9,7 @@ _progress_handler = None
 _tabs_handler = None
 _mode_handler = None
 _active_plugin_handler = None
+BUILTIN_TEXT_EDITOR_ID = "core.plain_text"
 
 def set_project_path(path: str):
     global _current_project_path
@@ -89,6 +90,11 @@ def open_tab(file_path: str, editor_id: str = None):
     if _tabs_handler and "open_tab" in _tabs_handler:
         _tabs_handler["open_tab"](file_path, editor_id)
 
+def open_untitled_tab(name: str, content: str = "", editor_id: str = BUILTIN_TEXT_EDITOR_ID):
+    """メモリ上でのみ存在する新規タブを開く（保存時にファイル名指定）"""
+    if _tabs_handler and "open_untitled_tab" in _tabs_handler:
+        _tabs_handler["open_untitled_tab"](name, content, editor_id)
+
 
 def register_editor_handler(handler_dict):
     global _mode_handler
@@ -102,7 +108,7 @@ def get_element_for_file(file_path: str):
 def get_editors_for_file(file_path: str, include_script: bool = True):
     if _mode_handler and "get_editors_for_file" in _mode_handler:
         return _mode_handler["get_editors_for_file"](file_path, include_script)
-    return [{"id": "text", "name": "テキストエディタ"}] if include_script else []
+    return [{"id": BUILTIN_TEXT_EDITOR_ID, "name": "テキストエディタ"}] if include_script else []
 
 
 def register_active_plugin_handler(handler):
@@ -112,4 +118,23 @@ def register_active_plugin_handler(handler):
 def get_active_plugin():
     if _active_plugin_handler:
         return _active_plugin_handler()
+    return None
+
+# --- アシスタントウィジェット API ---
+_assistant_widget_handler = None
+
+def register_assistant_widget_handler(handler):
+    """
+    プラグインがアシスタントセクション用のウィジェット生成関数を登録するために使用する。
+    handler: (parent: QWidget) -> QWidget を返す関数。
+    """
+    global _assistant_widget_handler
+    _assistant_widget_handler = handler
+
+def get_assistant_widget(parent):
+    """
+    ツリードッグがアクティブなプラグインからアシスタントウィジェットを取得するために使用する。
+    """
+    if _assistant_widget_handler:
+        return _assistant_widget_handler(parent)
     return None

@@ -1,5 +1,6 @@
 {
     "name": "ディシジョン",
+    "editor_id": "decision_editor",
     "path": "common/decisions",
     "extension": ".txt",
     "icon": "mail-checkmark-24-regular.svg",

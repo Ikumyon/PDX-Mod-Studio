@@ -297,6 +297,10 @@ def initialize(plugin):
     print(f"Initializing HoI4 Plugin: {plugin.name}")
     load_plugin_elements(plugin)
     
+    # アシスタントウィジェットの登録
+    from plugins.hoi4.assistant import AssistantWidget
+    core.api.register_assistant_widget_handler(lambda parent: AssistantWidget(parent))
+    
     global _registry, _watcher
     _registry = LocalisationRegistry()
     _watcher = QFileSystemWatcher()
