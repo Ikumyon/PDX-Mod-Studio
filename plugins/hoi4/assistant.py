@@ -128,6 +128,8 @@ class AssistantWidget(QWidget):
                 self.add_tree_items_recursive(root_item, nav_item.get("items", []))
 
             self.add_dynamic_decision_items()
+            self.add_dynamic_achievement_items()
+            self.add_dynamic_event_items()
             
             if self.navigationTree:
                 self.navigationTree.expandAll()
@@ -176,11 +178,9 @@ class AssistantWidget(QWidget):
 
     def _should_show_tree_star_placeholder(self, item_id, item_data=None):
         return item_id in self.pinned_ids or self._is_pinnable_item(item_id, item_data)
-
     def _is_pinnable_item(self, item_id, item_data=None):
         data = item_data or self.all_toolbox_items.get(item_id, {})
-        action = data.get("action")
-        return not (not item_id or not action)
+        return data.get("pinnable", False)
 
     def _update_tree_star_button_visibility(self):
         for item_id, btn in self._tree_star_buttons.items():
@@ -216,6 +216,78 @@ class AssistantWidget(QWidget):
                 if "decisions" in plugin.project_cache:
                     del plugin.project_cache["decisions"]
             self.load_toolbox()
+        
+        achievements_root = os.path.normpath("common/achievements")
+        if norm_rel_path == achievements_root or norm_rel_path.startswith(achievements_root + os.sep):
+            # 実績ファイルの保存時もキャッシュを破棄
+            plugin = core.api.get_active_plugin()
+            if plugin and hasattr(plugin, "project_cache"):
+                if "achievements" in plugin.project_cache:
+                    del plugin.project_cache["achievements"]
+            self.load_toolbox()
+        
+        events_root = os.path.normpath("events")
+        if norm_rel_path == events_root or norm_rel_path.startswith(events_root + os.sep):
+            # イベントファイルの保存時もキャッシュを破棄
+            plugin = core.api.get_active_plugin()
+            if plugin and hasattr(plugin, "project_cache"):
+                if "events" in plugin.project_cache:
+                    del plugin.project_cache["events"]
+            self.load_toolbox()
+
+    def add_dynamic_event_items(self):
+        """MOD内のイベントをナビゲーションへ追加する"""
+        events_item = self.find_tree_item_by_id("events_root")
+        project_path = core.api.get_project_path()
+        if not events_item or not project_path:
+            return
+
+        try:
+            from plugins.hoi4.events.event_editor import EventParser
+            parser = EventParser()
+            plugin = core.api.get_active_plugin()
+            
+            events = []
+            if plugin and hasattr(plugin, "project_cache") and "events" in plugin.project_cache:
+                events = parser.deserialize_events(plugin.project_cache["events"])
+            else:
+                events = parser.parse_project(project_path)
+            
+            registry = getattr(plugin, "localisation_registry", None) if plugin else None
+                
+        except Exception as e:
+            print(f"Failed to load event navigation: {e}")
+            return
+
+        seen_events = set()
+        for evt in sorted(events, key=lambda a: (a.event_id.lower(), a.source_path or "")):
+            evt_key = (evt.event_id, os.path.normcase(os.path.abspath(evt.source_path or "")))
+            if evt_key in seen_events:
+                continue
+            seen_events.add(evt_key)
+
+            # イベントの翻訳
+            entry = None
+            if registry:
+                _, entry = registry.search_key_status(f"{evt.event_id}.t")
+                if not entry:
+                    _, entry = registry.search_key_status(evt.event_id)
+            
+            evt_label = entry.get("value") if entry else evt.event_id
+
+            evt_data = {
+                "id": f"event:{evt.event_id}:{evt.source_path or ''}",
+                "label": evt_label,
+                "icon": "event.svg",
+                "action": "open_tab",
+                "params": {"path": evt.source_path, "editor_id": "event_editor", "target_id": evt.event_id},
+            }
+
+            evt_tree_item = self.create_tree_item(evt_data)
+            pin_item = QStandardItem()
+            events_item.appendRow([evt_tree_item, pin_item])
+            self.add_pin_button_to_tree(pin_item, evt_data["id"], evt_data)
+            self.all_toolbox_items[evt_data["id"]] = evt_data
 
     def add_dynamic_decision_items(self):
         """MOD内のディシジョンをカテゴリ別にナビゲーションへ追加する"""
@@ -292,6 +364,59 @@ class AssistantWidget(QWidget):
                 category_item.appendRow([decision_item, pin_item])
                 self.add_pin_button_to_tree(pin_item, decision_data["id"], decision_data)
                 self.all_toolbox_items[decision_data["id"]] = decision_data
+
+    def add_dynamic_achievement_items(self):
+        """MOD内の実績をナビゲーションへ追加する"""
+        achievements_item = self.find_tree_item_by_id("achievements")
+        project_path = core.api.get_project_path()
+        if not achievements_item or not project_path:
+            return
+
+        try:
+            from plugins.hoi4.achievement.achievement_editor import AchievementParser
+            parser = AchievementParser()
+            plugin = core.api.get_active_plugin()
+            
+            achievements = []
+            if plugin and hasattr(plugin, "project_cache") and "achievements" in plugin.project_cache:
+                achievements = parser.deserialize_achievements(plugin.project_cache["achievements"])
+            else:
+                achievements = parser.parse_project(project_path)
+            
+            registry = getattr(plugin, "localisation_registry", None) if plugin else None
+                
+        except Exception as e:
+            print(f"Failed to load achievement navigation: {e}")
+            return
+
+        seen_achievements = set()
+        for ach in sorted(achievements, key=lambda a: (a.id.lower(), a.source_path or "")):
+            ach_key = (ach.id, os.path.normcase(os.path.abspath(ach.source_path or "")))
+            if ach_key in seen_achievements:
+                continue
+            seen_achievements.add(ach_key)
+
+            # 実績の翻訳: ID_NAME を優先
+            entry = None
+            if registry:
+                _, entry = registry.search_key_status(f"{ach.id}_NAME")
+                if not entry:
+                    _, entry = registry.search_key_status(ach.id)
+            
+            ach_label = entry.get("value") if entry else ach.id
+
+            ach_data = {
+                "id": f"achievement:{ach.id}:{ach.source_path or ''}",
+                "label": ach_label,
+                "icon": "trophy-32.svg",
+                "action": "open_tab",
+                "params": {"path": ach.source_path, "editor_id": "achievement_editor", "target_id": ach.id},
+            }
+            ach_item = self.create_tree_item(ach_data)
+            pin_item = QStandardItem()
+            achievements_item.appendRow([ach_item, pin_item])
+            self.add_pin_button_to_tree(pin_item, ach_data["id"], ach_data)
+            self.all_toolbox_items[ach_data["id"]] = ach_data
 
     def _category_navigation_path(self, category):
         if category.source_path:
@@ -446,8 +571,8 @@ class AssistantWidget(QWidget):
         item_id = data.get("id")
         action = data.get("action")
         
-        # IDがあり、かつアクションを持つ項目（末端の作成項目など）のみピン留め可能
-        if not item_id or not action: return
+        # pinnable プロパティを持つ項目のみピン留め可能
+        if not self._is_pinnable_item(item_id, data): return
         
         menu = QMenu(self)
         if item_id in self.pinned_ids:

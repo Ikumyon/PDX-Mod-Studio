@@ -13,6 +13,7 @@
                             "id": "create_decision",
                             "label": "＋ 新規ディシジョンを作成...",
                             "action": "open_untitled_tab",
+                            "pinnable": true,
                             "params": {
                                 "name": "New Category",
                                 "editor_id": "decision_editor",
@@ -30,6 +31,7 @@
                             "id": "create_achievement",
                             "label": "＋ 新規実績を作成...",
                             "action": "open_untitled_tab",
+                            "pinnable": true,
                             "params": {
                                 "name": "New Achievements",
                                 "editor_id": "achievement_editor",
@@ -49,6 +51,7 @@
                     "id": "create_event",
                     "label": "＋ 新規イベントを作成...",
                     "action": "open_untitled_tab",
+                    "pinnable": true,
                     "params": {
                         "name": "New Namespace",
                         "editor_id": "event_editor",

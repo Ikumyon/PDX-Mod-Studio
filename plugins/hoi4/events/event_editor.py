@@ -92,6 +92,36 @@ class EventParser:
             
         return doc
 
+    def parse_project(self, project_path: str) -> list[ParsedEvent]:
+        events = []
+        events_dir = os.path.join(project_path, "events")
+        if not os.path.exists(events_dir):
+            return events
+
+        for root, _, files in os.walk(events_dir):
+            for file in files:
+                if file.endswith(".txt"):
+                    file_path = os.path.join(root, file)
+                    try:
+                        with open(file_path, "r", encoding="utf-8") as f:
+                            content = f.read()
+                        doc = self.parse_document(file_path, content)
+                        events.extend(getattr(doc, "events", []))
+                    except Exception as e:
+                        print(f"Failed to parse event file {file_path}: {e}")
+        return events
+
+    def serialize_events(self, events: list[ParsedEvent]) -> list[dict]:
+        return [{"id": e.event_id, "source_path": e.source_path, "key": getattr(e, "key", "country_event")} for e in events]
+
+    def deserialize_events(self, data: list[dict]) -> list[ParsedEvent]:
+        events = []
+        for item in data:
+            entity = ParsedEntity(item["id"], None, item["source_path"])
+            pe = ParsedEvent(entity)
+            pe.key = item.get("key", "country_event")
+            events.append(pe)
+        return events
 
 MODE_NAME = "イベントエディタ"
 EDITOR_ID = "event_editor"
@@ -234,7 +264,11 @@ def setup(widget, file_path, content):
     widget.plugin_controller = controller
     widget.toPlainText = lambda: widget.content
     widget.setPlainText = controller.set_content
+    widget.setParams = controller.set_params
     controller.bind()
+    
+    # エディタの準備が完了したことを本体に通知
+    core.api.notify_editor_ready(widget)
 
 
 class EventEditorController:
@@ -517,6 +551,21 @@ class EventEditorController:
     def set_content(self, content):
         self.widget.content = content
         self.refresh()
+
+    def set_params(self, params):
+        """外部から渡されたパラメータ（target_id等）を処理する"""
+        if not params:
+            return
+            
+        target_id = params.get("target_id")
+        if target_id and self.event_list:
+            # リスト内を検索して選択を切り替える
+            for i in range(self.event_list.topLevelItemCount()):
+                item = self.event_list.topLevelItem(i)
+                event = item.data(0, Qt.ItemDataRole.UserRole)
+                if event and event.event_id == target_id:
+                    self.event_list.setCurrentItem(item)
+                    break
 
     def refresh(self):
         # EventParser に解析を依頼
