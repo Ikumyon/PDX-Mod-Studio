@@ -212,31 +212,86 @@ class DecisionParser:
 
     def parse_project(self, project_path: str) -> list[ParsedDecisionCategory]:
         categories = {}
-
+        all_files = []
         for rule in self.schema_rules:
             scan_dir = os.path.join(project_path, rule["path"])
             if not os.path.exists(scan_dir):
                 continue
             for root, _, files in os.walk(scan_dir):
                 for file in files:
-                    if not file.endswith(".txt"):
-                        continue
-                    path = os.path.join(root, file)
-                    if self.get_schema_role(path) != rule.get("role"):
-                        continue
-                    try:
-                        with open(path, "r", encoding="utf-8", errors="replace") as f:
-                            doc = self.parse_document(path, f.read())
-                    except Exception:
-                        continue
+                    if file.endswith(".txt"):
+                        path = os.path.join(root, file)
+                        if self.get_schema_role(path) == rule.get("role"):
+                            all_files.append((path, rule))
 
-                    for cat in doc.categories:
-                        if cat.id in categories:
-                            categories[cat.id].decisions.extend(cat.decisions)
-                        else:
-                            categories[cat.id] = cat
-                            
-        return list(categories.values())
+        total_files = len(all_files)
+        for i, (path, rule) in enumerate(all_files):
+            # 進捗表示
+            progress = int((i / total_files) * 100)
+            core.api.set_progress(progress, f"Parsing decisions: {os.path.basename(path)}")
+
+            try:
+                with open(path, "r", encoding="utf-8", errors="replace") as f:
+                    doc = self.parse_document(path, f.read())
+            except Exception:
+                continue
+
+            for cat in doc.categories:
+                if cat.id in categories:
+                    categories[cat.id].decisions.extend(cat.decisions)
+                else:
+                    categories[cat.id] = cat
+
+        core.api.set_progress(100, "") # 完了
+
+        result = list(categories.values())
+        
+        # キャッシュへの保存
+        plugin = core.api.get_active_plugin()
+        if plugin:
+            if not hasattr(plugin, "project_cache"):
+                plugin.project_cache = {}
+            plugin.project_cache["decisions"] = self.serialize_categories(result)
+
+        return result
+
+    def serialize_categories(self, categories: list[ParsedDecisionCategory]) -> list[dict]:
+        serialized = []
+        for cat in categories:
+            cat_data = {
+                "id": cat.id,
+                "source_path": cat.source_path,
+                "decisions": [
+                    {
+                        "id": dec.id,
+                        "source_path": dec.source_path
+                    } for dec in cat.decisions
+                ]
+            }
+            serialized.append(cat_data)
+        return serialized
+
+    def deserialize_categories(self, data: list[dict]) -> list[ParsedDecisionCategory]:
+        from plugins.hoi4.script_parser import ParsedEntity
+        categories = []
+        for cat_data in data:
+            entity = ParsedEntity(
+                schema_name="hoi4_decision_category_container",
+                id=cat_data["id"],
+                parent_id=None,
+                source_path=cat_data["source_path"]
+            )
+            cat = ParsedDecisionCategory(entity)
+            for dec_data in cat_data["decisions"]:
+                dec_entity = ParsedEntity(
+                    schema_name="hoi4_decision",
+                    id=dec_data["id"],
+                    parent_id=cat.id,
+                    source_path=dec_data["source_path"]
+                )
+                cat.decisions.append(ParsedDecision(dec_entity))
+            categories.append(cat)
+        return categories
 
 MODE_NAME = "ディシジョンエディタ"
 EDITOR_ID = "decision_editor"
@@ -246,6 +301,7 @@ def setup(widget, file_path, content):
     widget.plugin_controller = controller
     widget.toPlainText = lambda: widget.content
     widget.setPlainText = controller.set_content
+    widget.set_params = controller.set_params
     controller.bind()
 
 class DecisionEditorController(QObject):
@@ -260,6 +316,8 @@ class DecisionEditorController(QObject):
         self.updating = False
         self.parser = DecisionParser(self.get_hoi4_plugin() or object())
         
+        self.pending_target_id = ""
+        self.project_categories_cache = None
         self.is_detailed_mode = False
         self.system_widgets = []
         self.format_config = {}
@@ -476,17 +534,17 @@ class DecisionEditorController(QObject):
         if self.radio_custom_cost:
             self.radio_custom_cost.toggled.connect(self.on_cost_type_changed)
         if self.spin_cost:
-            self.spin_cost.valueChanged.connect(lambda _value: self.update_preview())
+            self.spin_cost.valueChanged.connect(lambda _value: self.update_preview_delayed())
         if self.edit_decision_localisation:
-            self.edit_decision_localisation.textChanged.connect(lambda _text: self.update_preview())
+            self.edit_decision_localisation.textChanged.connect(lambda _text: self.update_preview_delayed())
         if self.text_decision_desc_localisation:
-            self.text_decision_desc_localisation.textChanged.connect(self.update_preview)
+            self.text_decision_desc_localisation.textChanged.connect(lambda: self.update_preview_delayed())
         if self.edit_decision_icon:
-            self.edit_decision_icon.textChanged.connect(lambda _text: self.update_preview())
+            self.edit_decision_icon.textChanged.connect(lambda _text: self.update_preview_delayed())
         if self.edit_category_localisation:
-            self.edit_category_localisation.textChanged.connect(lambda _text: self.update_preview())
+            self.edit_category_localisation.textChanged.connect(lambda _text: self.update_preview_delayed())
         if self.text_category_desc_localisation:
-            self.text_category_desc_localisation.textChanged.connect(self.update_preview)
+            self.text_category_desc_localisation.textChanged.connect(lambda: self.update_preview_delayed())
 
         # ボタン接続
         if self.btn_add_category: self.btn_add_category.clicked.connect(self.add_category)
@@ -677,8 +735,14 @@ class DecisionEditorController(QObject):
             is_visible = self.advanced_actions[key].isChecked() if key in self.advanced_actions else False
             self.update_advanced_visibility(key, is_visible)
 
-        self.refresh()
+        # 初期ロードを遅延実行（タブを先に表示させるため）
+        QTimer.singleShot(0, self.refresh)
         self.set_detailed_mode(False)
+        
+        # 初期パラメータがあれば処理
+        params = getattr(self.widget, "params", None)
+        if params:
+            self.set_params(params)
 
     def set_content(self, content):
         self.widget.content = content
@@ -777,7 +841,20 @@ class DecisionEditorController(QObject):
                 self.categories = doc.categories
             else:
                 # 全データを読み込み
-                all_categories = self.parser.parse_project(project_path)
+                plugin = self.get_hoi4_plugin()
+                raw_cache = plugin.project_cache.get("decisions") if plugin and hasattr(plugin, "project_cache") else None
+                
+                if raw_cache:
+                    # プロジェクト全体のパース結果をキャッシュして使い回す
+                    # 外部でキャッシュが差し替えられた場合は再デシリアライズする
+                    if self.project_categories_cache is None or getattr(self, "_last_raw_cache", None) is not raw_cache:
+                        self.project_categories_cache = self.parser.deserialize_categories(raw_cache)
+                        self._last_raw_cache = raw_cache
+                    all_categories = self.project_categories_cache
+                else:
+                    self.project_categories_cache = None
+                    self._last_raw_cache = None
+                    all_categories = self.parser.parse_project(project_path)
 
                 # 現在のファイルのカテゴリプロパティを優先する。
                 # このエディタはカテゴリとディシジョンを同じ画面で編集するため、
@@ -840,6 +917,11 @@ class DecisionEditorController(QObject):
         finally:
             self.updating = False
             self.update_preview()
+            
+            if self.pending_target_id:
+                tid = self.pending_target_id
+                self.pending_target_id = ""
+                self.jump_to_id(tid)
 
     def merge_decisions(self, primary: list[ParsedDecision], secondary: list[ParsedDecision]) -> list[ParsedDecision]:
         merged = list(primary)
@@ -853,6 +935,32 @@ class DecisionEditorController(QObject):
 
     def decision_identity(self, decision: ParsedDecision):
         return (decision.id, os.path.normcase(os.path.abspath(decision.source_path or "")))
+
+    def set_params(self, params):
+        target_id = params.get("target_id")
+        if target_id:
+            if self.categories:
+                self.jump_to_id(target_id)
+            else:
+                self.pending_target_id = target_id
+
+    def jump_to_id(self, item_id):
+        if not self.tree_decisions: return
+        for i in range(self.tree_decisions.topLevelItemCount()):
+            cat_item = self.tree_decisions.topLevelItem(i)
+            cat_data = cat_item.data(0, Qt.ItemDataRole.UserRole)
+            if cat_data and cat_data.id == item_id:
+                self.tree_decisions.setCurrentItem(cat_item)
+                self.tree_decisions.scrollToItem(cat_item)
+                return
+            
+            for j in range(cat_item.childCount()):
+                dec_item = cat_item.child(j)
+                dec_data = dec_item.data(0, Qt.ItemDataRole.UserRole)
+                if dec_data and dec_data.id == item_id:
+                    self.tree_decisions.setCurrentItem(dec_item)
+                    self.tree_decisions.scrollToItem(dec_item)
+                    return
 
     def restore_selection(self, data):
         for i in range(self.tree_decisions.topLevelItemCount()):
@@ -872,7 +980,7 @@ class DecisionEditorController(QObject):
     def on_tree_selection_changed(self, current, previous):
         if self.updating: return
         self.load_selected_item()
-        self.update_preview()
+        self.update_preview_delayed()
 
     def load_selected_item(self):
         if not self.tree_decisions: return
@@ -1204,6 +1312,13 @@ class DecisionEditorController(QObject):
 
         self.add_preview_pixmap(row, self.asset_path("mail_checkmark.png"), 462, 4, 34, 30)
 
+    def update_preview_delayed(self):
+        if not hasattr(self, "preview_timer"):
+            self.preview_timer = QTimer()
+            self.preview_timer.setSingleShot(True)
+            self.preview_timer.timeout.connect(self.update_preview)
+        self.preview_timer.start(200) # 200ms 待機
+
     def update_preview(self):
         if self.updating:
             return
@@ -1280,7 +1395,7 @@ class DecisionEditorController(QObject):
             self.stacked_cost.setCurrentWidget(self.pp_page)
         elif self.radio_custom_cost and self.radio_custom_cost.isChecked():
             self.stacked_cost.setCurrentWidget(self.custom_cost_page)
-        self.update_preview()
+        self.update_preview_delayed()
 
     def add_category(self):
         text = self.widget.content

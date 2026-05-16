@@ -367,7 +367,7 @@ def main():
                 ok = save_tab(widget, False) and ok
         return ok
 
-    def create_editor_widget(editor_id, file_path, content, available_editors):
+    def create_editor_widget(editor_id, file_path, content, available_editors, params=None):
         editor_id = editor_registry.normalize_editor_id(editor_id)
         if editor_id == TEXT_EDITOR_ID:
             widget = EditorWidget()
@@ -379,13 +379,15 @@ def main():
             widget = editor_registry.create_editor_widget(editor_id, window.editorTabs, file_path, content)
             if not widget:
                 # 失敗した場合はテキストエディタ
-                return create_editor_widget(TEXT_EDITOR_ID, file_path, content, available_editors)
+                return create_editor_widget(TEXT_EDITOR_ID, file_path, content, available_editors, params)
         
         widget.editor_id = editor_id
         widget.file_path = file_path
         widget.content = content
         widget.available_editors = available_editors
         widget.is_dirty = False
+        if params:
+            widget.params = params
         element = get_element_for_path(file_path)
         if element:
             widget.active_plugin = element.plugin
@@ -500,7 +502,7 @@ def main():
         
         project_tree.update_open_editors(window.editorTabs)
 
-    def open_file(file_path, editor_id=None):
+    def open_file(file_path, editor_id=None, params=None):
         if not window.editorTabs:
             return
 
@@ -516,6 +518,10 @@ def main():
             current_editor_id = editor_registry.normalize_editor_id(getattr(widget, "editor_id", TEXT_EDITOR_ID))
             if window.editorTabs.tabToolTip(i) == file_path and current_editor_id == editor_id:
                 window.editorTabs.setCurrentIndex(i)
+                if params and hasattr(widget, "set_params"):
+                    widget.set_params(params)
+                elif params:
+                    widget.params = params
                 update_editor_selector(i)
                 return
 
@@ -527,7 +533,7 @@ def main():
             with open(file_path, 'r', encoding=encoding, errors='replace') as f:
                 content = f.read()
 
-            editor = create_editor_widget(editor_id, file_path, content, available_editors)
+            editor = create_editor_widget(editor_id, file_path, content, available_editors, params)
             file_name = os.path.basename(file_path)
             if editor_id != TEXT_EDITOR_ID:
                 file_name = f"[E] {file_name}"

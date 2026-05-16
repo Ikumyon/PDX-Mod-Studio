@@ -135,6 +135,11 @@ class AssistantWidget(QWidget):
         decisions_root = os.path.normpath("common/decisions")
         norm_rel_path = os.path.normpath(rel_path)
         if norm_rel_path == decisions_root or norm_rel_path.startswith(decisions_root + os.sep):
+            # 保存時はキャッシュを破棄して再走査を促す
+            plugin = core.api.get_active_plugin()
+            if plugin and hasattr(plugin, "project_cache"):
+                if "decisions" in plugin.project_cache:
+                    del plugin.project_cache["decisions"]
             self.load_toolbox()
 
     def add_dynamic_decision_items(self):
@@ -150,7 +155,16 @@ class AssistantWidget(QWidget):
 
         try:
             from plugins.hoi4.decisions.decision_editor import DecisionParser
-            categories = DecisionParser().parse_project(project_path)
+            parser = DecisionParser()
+            plugin = core.api.get_active_plugin()
+            
+            categories = []
+            # キャッシュがあればそれを利用、なければパース
+            if plugin and hasattr(plugin, "project_cache") and "decisions" in plugin.project_cache:
+                categories = parser.deserialize_categories(plugin.project_cache["decisions"])
+            else:
+                categories = parser.parse_project(project_path)
+                
         except Exception as e:
             print(f"Failed to load decision navigation: {e}")
             return
@@ -180,7 +194,7 @@ class AssistantWidget(QWidget):
                     "label": decision.id,
                     "icon": "generic_decision.png",
                     "action": "open_tab",
-                    "params": {"path": decision.source_path, "editor_id": "decision_editor"},
+                    "params": {"path": decision.source_path, "editor_id": "decision_editor", "target_id": decision.id},
                 }
                 decision_item = self.create_tree_item(decision_data)
                 category_item.appendRow(decision_item)
@@ -286,7 +300,7 @@ class AssistantWidget(QWidget):
                 if project_path:
                     file_path = os.path.join(project_path, file_path)
             if file_path and os.path.exists(file_path):
-                core.api.open_tab(file_path, editor_id)
+                core.api.open_tab(file_path, editor_id, params)
         elif action == "open_untitled_tab":
             name = params.get("name", "Untitled")
             content = params.get("content", "")

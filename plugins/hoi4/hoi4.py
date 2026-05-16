@@ -495,7 +495,8 @@ def export_project_data(plugin, context):
                 _path_to_project(path, mod_root): errors
                 for path, errors in registry.file_errors.items()
             },
-        }
+        },
+        "project_cache": getattr(plugin, "project_cache", {})
     }
 
 def import_project_data(plugin, context, data):
@@ -528,6 +529,10 @@ def import_project_data(plugin, context, data):
             _path_from_project(path, mod_root): errors
             for path, errors in loc_data.get("file_errors", {}).items()
         }
+        
+        # プロジェクトキャッシュの復元
+        plugin.project_cache = data.get("project_cache", {})
+        
     except Exception as error:
         print(f"Failed to restore localisation registry cache: {error}")
         if hasattr(plugin, "refresh_localisation"):

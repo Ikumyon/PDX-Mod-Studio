@@ -86,10 +86,10 @@ def get_open_tabs() -> list:
         return _tabs_handler["get_tabs"]()
     return []
 
-def open_tab(file_path: str, editor_id: str = None):
+def open_tab(file_path: str, editor_id: str = None, params: dict = None):
     """指定したファイルをタブで開く（既に開いていれば切り替える）"""
     if _tabs_handler and "open_tab" in _tabs_handler:
-        _tabs_handler["open_tab"](file_path, editor_id)
+        _tabs_handler["open_tab"](file_path, editor_id, params)
 
 def open_untitled_tab(name: str, content: str = "", editor_id: str = BUILTIN_TEXT_EDITOR_ID):
     """メモリ上でのみ存在する新規タブを開く（保存時にファイル名指定）"""
