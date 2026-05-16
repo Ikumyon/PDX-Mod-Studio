@@ -101,6 +101,19 @@ def register_editor_handler(handler_dict):
     global _mode_handler
     _mode_handler = handler_dict
 
+# --- エディタ準備完了通知 API ---
+_editor_ready_handler = None
+
+def register_editor_ready_handler(handler):
+    """本体がエディタからの準備完了通知を受け取るためのハンドラを登録する"""
+    global _editor_ready_handler
+    _editor_ready_handler = handler
+
+def notify_editor_ready(widget):
+    """エディタウィジェットが自身の初期化（パース等）が完了したことを通知する"""
+    if _editor_ready_handler:
+        _editor_ready_handler(widget)
+
 def get_element_for_file(file_path: str):
     if _mode_handler and "get_element_for_file" in _mode_handler:
         return _mode_handler["get_element_for_file"](file_path)

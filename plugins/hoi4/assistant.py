@@ -1,8 +1,8 @@
 import os
 import json
-from PySide6.QtWidgets import QWidget, QPushButton, QVBoxLayout, QTreeView, QListView, QMenu
+from PySide6.QtWidgets import QWidget, QPushButton, QVBoxLayout, QTreeView, QListView, QMenu, QToolButton, QHBoxLayout, QLabel, QHeaderView
 from PySide6.QtUiTools import QUiLoader
-from PySide6.QtCore import QFile, Qt, QPoint
+from PySide6.QtCore import QFile, Qt, QPoint, QEvent
 from PySide6.QtGui import QStandardItemModel, QStandardItem, QIcon, QAction
 import core.api
 from core.utils import load_svg_icon
@@ -13,6 +13,8 @@ class AssistantWidget(QWidget):
         self.base_dir = os.path.dirname(__file__)
         self.pinned_ids = []
         self.all_toolbox_items = {} # IDからアイテムデータを逆引きするためのキャッシュ
+        self._hovered_nav_item_id = None
+        self._tree_star_buttons = {}
         
         # UIのロード
         loader = QUiLoader()
@@ -32,13 +34,22 @@ class AssistantWidget(QWidget):
             self.header = self.container.findChild(QPushButton, "toolboxHeader")
             self.content = self.container.findChild(QWidget, "assistantContent")
             self.navigationTree = self.container.findChild(QTreeView, "navigationTree")
+            self.quickAccessLabel = self.container.findChild(QWidget, "quickAccessLabel")
             self.quickAccessList = self.container.findChild(QListView, "quickAccessList")
             
             # モデルの設定
             self.model = QStandardItemModel()
             if self.navigationTree:
                 self.navigationTree.setModel(self.model)
+                self.model.setColumnCount(2)
                 self.navigationTree.setHeaderHidden(True)
+                # カラム幅の調整（1列目を広げ、2列目を固定幅にする）
+                self.navigationTree.setColumnWidth(1, 30)
+                self._configure_navigation_tree_columns()
+                self.navigationTree.setMouseTracking(True)
+                self.navigationTree.viewport().setMouseTracking(True)
+                self.navigationTree.viewport().installEventFilter(self)
+                
                 self.navigationTree.clicked.connect(self.on_item_clicked)
                 # コンテキストメニューの設定
                 self.navigationTree.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -64,6 +75,7 @@ class AssistantWidget(QWidget):
             
             core.api.register_project_path_handler(lambda _: self.load_toolbox())
             core.api.register_file_saved_handler(self.on_file_saved)
+            core.api.register_loc_changed_handler(self.load_toolbox)
 
     def load_settings(self):
         """settings.json からピン留め情報を読み込む"""
@@ -103,23 +115,86 @@ class AssistantWidget(QWidget):
                 data = json.load(f)
             
             self.model.clear()
+            self.model.setColumnCount(2)
+            self._configure_navigation_tree_columns()
+            self._tree_star_buttons = {}
             self.all_toolbox_items = {}
             
             for nav_item in data.get("navigation", []):
                 root_item = self.create_tree_item(nav_item)
-                self.model.appendRow(root_item)
+                pin_item = QStandardItem()
+                self.model.appendRow([root_item, pin_item])
+                self.add_pin_button_to_tree(pin_item, nav_item.get("id"), nav_item)
                 self.add_tree_items_recursive(root_item, nav_item.get("items", []))
 
             self.add_dynamic_decision_items()
             
             if self.navigationTree:
                 self.navigationTree.expandAll()
+                self._configure_navigation_tree_columns()
             
             # クイックアクセスの更新
             self.update_quick_access_display()
                 
         except Exception as e:
             print(f"Failed to load toolbox.json: {e}")
+
+    def _configure_navigation_tree_columns(self):
+        if not self.navigationTree:
+            return
+
+        header = self.navigationTree.header()
+        header.setStretchLastSection(False)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
+        self.navigationTree.setColumnWidth(1, 24)
+
+    def eventFilter(self, watched, event):
+        if self.navigationTree and watched == self.navigationTree.viewport():
+            if event.type() == QEvent.Type.MouseMove:
+                index = self.navigationTree.indexAt(event.pos())
+                if index.isValid() and index.column() == 1:
+                    index = index.siblingAtColumn(0)
+                item = self.model.itemFromIndex(index) if index.isValid() else None
+                data = item.data(Qt.UserRole) if item else None
+                hovered_id = data.get("id") if data else None
+                if hovered_id != self._hovered_nav_item_id:
+                    self._hovered_nav_item_id = hovered_id
+                    self._update_tree_star_button_visibility()
+            elif event.type() == QEvent.Type.Leave:
+                if self._hovered_nav_item_id is not None:
+                    self._hovered_nav_item_id = None
+                    self._update_tree_star_button_visibility()
+        elif isinstance(watched, QToolButton) and watched.property("navItemId"):
+            if event.type() in (QEvent.Type.Enter, QEvent.Type.MouseMove):
+                hovered_id = watched.property("navItemId")
+                if hovered_id != self._hovered_nav_item_id:
+                    self._hovered_nav_item_id = hovered_id
+                    self._update_tree_star_button_visibility()
+
+        return super().eventFilter(watched, event)
+
+    def _should_show_tree_star_placeholder(self, item_id, item_data=None):
+        return item_id in self.pinned_ids or self._is_pinnable_item(item_id, item_data)
+
+    def _is_pinnable_item(self, item_id, item_data=None):
+        data = item_data or self.all_toolbox_items.get(item_id, {})
+        action = data.get("action")
+        return not (not item_id or not action)
+
+    def _update_tree_star_button_visibility(self):
+        for item_id, btn in self._tree_star_buttons.items():
+            btn.setVisible(item_id in self.pinned_ids or item_id == self._hovered_nav_item_id)
+
+    def _sync_star_button(self, btn, item_id, tree_item=False):
+        is_pinned = item_id in self.pinned_ids
+        icon_name = "star.svg" if is_pinned else "star-outline.svg"
+        icon_path = os.path.join(self.base_dir, "asset", "icons", icon_name)
+        if os.path.exists(icon_path):
+            btn.setIcon(load_svg_icon(icon_path, "#FFD700" if is_pinned else "#888888"))
+        btn.setToolTip("ピン留めを解除" if is_pinned else "クイックアクセスに登録")
+        if tree_item:
+            btn.setVisible(is_pinned or item_id == self._hovered_nav_item_id)
 
     def on_file_saved(self, file_path):
         """ディシジョン関連ファイルの保存時にナビゲーションを読み直す"""
@@ -164,22 +239,34 @@ class AssistantWidget(QWidget):
                 categories = parser.deserialize_categories(plugin.project_cache["decisions"])
             else:
                 categories = parser.parse_project(project_path)
+            
+            # ローカライズレジストリの取得
+            registry = getattr(plugin, "localisation_registry", None) if plugin else None
                 
         except Exception as e:
-            print(f"Failed to load decision navigation: {e}")
+            import traceback
+            err = traceback.format_exc()
+            print(f"Failed to load decision navigation: {e}\n{err}")
+            core.api.show_message(f"ナビゲーション読み込みエラー: {e}", 10000)
             return
 
         for category in sorted(categories, key=lambda cat: cat.id.lower()):
             category_path = self._category_navigation_path(category)
+            # カテゴリの翻訳
+            status, entry = registry.search_key_status(category.id) if registry else ("not_found", None)
+            category_label = entry.get("value") if entry else category.id
+            
             category_data = {
                 "id": f"decision_category:{category.id}",
-                "label": category.id,
+                "label": category_label,
                 "icon": "mail-checkmark-24-regular.svg",
                 "action": "open_tab" if category_path else "",
-                "params": {"path": category_path, "editor_id": "decision_editor"} if category_path else {},
+                "params": {"path": category_path, "editor_id": "decision_editor", "target_id": category.id} if category_path else {},
             }
             category_item = self.create_tree_item(category_data)
-            decisions_item.appendRow(category_item)
+            pin_item = QStandardItem()
+            decisions_item.appendRow([category_item, pin_item])
+            self.add_pin_button_to_tree(pin_item, category_data["id"], category_data)
             self.all_toolbox_items[category_data["id"]] = category_data
 
             seen_decisions = set()
@@ -189,15 +276,21 @@ class AssistantWidget(QWidget):
                     continue
                 seen_decisions.add(decision_key)
 
+                # ディシジョンの翻訳
+                status, entry = registry.search_key_status(decision.id) if registry else ("not_found", None)
+                decision_label = entry.get("value") if entry else decision.id
+
                 decision_data = {
                     "id": f"decision:{category.id}:{decision.id}:{decision.source_path or ''}",
-                    "label": decision.id,
+                    "label": decision_label,
                     "icon": "generic_decision.png",
                     "action": "open_tab",
                     "params": {"path": decision.source_path, "editor_id": "decision_editor", "target_id": decision.id},
                 }
                 decision_item = self.create_tree_item(decision_data)
-                category_item.appendRow(decision_item)
+                pin_item = QStandardItem()
+                category_item.appendRow([decision_item, pin_item])
+                self.add_pin_button_to_tree(pin_item, decision_data["id"], decision_data)
                 self.all_toolbox_items[decision_data["id"]] = decision_data
 
     def _category_navigation_path(self, category):
@@ -233,14 +326,43 @@ class AssistantWidget(QWidget):
         for item_id in self.pinned_ids:
             item_data = self.all_toolbox_items.get(item_id)
             if item_data:
-                q_item = self.create_tree_item(item_data)
+                q_item = QStandardItem() # ラベルはカスタムウィジェット側で表示
                 self.quickModel.appendRow(q_item)
+                self.add_item_widget_to_list(q_item, item_data)
+        
+        # 高さを項目数に合わせて調整
+        if self.quickAccessList:
+            count = self.quickModel.rowCount()
+            if count == 0:
+                self.quickAccessList.setFixedHeight(0)
+                self.quickAccessList.setVisible(False)
+                if hasattr(self, "quickAccessLabel") and self.quickAccessLabel:
+                    self.quickAccessLabel.setVisible(False)
+            else:
+                self.quickAccessList.setVisible(True)
+                if hasattr(self, "quickAccessLabel") and self.quickAccessLabel:
+                    self.quickAccessLabel.setVisible(True)
+                
+                # 項目の高さから合計を計算
+                total_height = 0
+                for i in range(count):
+                    # sizeHintForRow が -1 を返す場合があるため、デフォルト値を考慮
+                    h = self.quickAccessList.sizeHintForRow(i)
+                    if h <= 0:
+                        h = 24 # デフォルトの高さ
+                    total_height += h
+                
+                # 枠線分を追加
+                total_height += self.quickAccessList.frameWidth() * 2
+                self.quickAccessList.setFixedHeight(total_height)
 
     def add_tree_items_recursive(self, parent_item, items_data):
         """再帰的に項目を追加し、IDを持つ項目をキャッシュする"""
         for item_data in items_data:
             child_item = self.create_tree_item(item_data)
-            parent_item.appendRow(child_item)
+            pin_item = QStandardItem()
+            parent_item.appendRow([child_item, pin_item])
+            self.add_pin_button_to_tree(pin_item, item_data.get("id"), item_data)
             
             item_id = item_data.get("id")
             if item_id:
@@ -268,6 +390,8 @@ class AssistantWidget(QWidget):
         return item
 
     def on_item_clicked(self, index):
+        if index.column() == 1:
+            index = index.siblingAtColumn(0)
         item = self.model.itemFromIndex(index)
         self.execute_item_action(item)
 
@@ -314,6 +438,9 @@ class AssistantWidget(QWidget):
         index = self.navigationTree.indexAt(pos)
         if not index.isValid(): return
         
+        if index.column() == 1:
+            index = index.siblingAtColumn(0)
+            
         item = self.model.itemFromIndex(index)
         data = item.data(Qt.UserRole)
         item_id = data.get("id")
@@ -357,6 +484,21 @@ class AssistantWidget(QWidget):
         
         self.save_settings()
         self.update_quick_access_display()
+        self.refresh_all_pin_buttons()
+
+    def _refresh_tree_pin_buttons_recursive(self, parent_item):
+        """再帰的にツリーのピン留めボタンの状態を更新する"""
+        for row in range(parent_item.rowCount()):
+            label_item = parent_item.child(row, 0)
+            pin_item = parent_item.child(row, 1)
+            if label_item and pin_item:
+                data = label_item.data(Qt.UserRole)
+                item_id = data.get("id") if data else None
+                if item_id:
+                    self.add_pin_button_to_tree(pin_item, item_id, data)
+                
+                # 子階層も更新
+                self._refresh_tree_pin_buttons_recursive(label_item)
 
     def update_header_icon(self):
         """ヘッダーのアイコンをコンテンツの表示状態に合わせて更新する"""
@@ -378,3 +520,73 @@ class AssistantWidget(QWidget):
             is_visible = not self.content.isHidden()
             self.content.setVisible(not is_visible)
             self.update_header_icon()
+
+    def add_pin_button_to_tree(self, item, item_id, item_data=None):
+        """ツリーの特定の項目にピン留めボタンを配置する"""
+        if not item_id or not self.navigationTree: return
+
+        if not self._should_show_tree_star_placeholder(item_id, item_data):
+            self.navigationTree.setIndexWidget(item.index(), None)
+            self._tree_star_buttons.pop(item_id, None)
+            return
+
+        existing_btn = self._tree_star_buttons.get(item_id)
+        if existing_btn:
+            self._sync_star_button(existing_btn, item_id, tree_item=True)
+            return
+        
+        btn = self._create_star_button(item_id, tree_item=True)
+        btn.setProperty("navItemId", item_id)
+        btn.setMouseTracking(True)
+        btn.installEventFilter(self)
+        self._tree_star_buttons[item_id] = btn
+        self.navigationTree.setIndexWidget(item.index(), btn)
+
+    def add_item_widget_to_list(self, item, item_data):
+        """リストの項目にカスタムウィジェット（ラベル＋ボタン）を配置する"""
+        if not self.quickAccessList: return
+        
+        widget = QWidget()
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(4, 2, 4, 2)
+        layout.setSpacing(4)
+        
+        # アイコン
+        icon_label = QLabel()
+        icon_name = item_data.get("icon")
+        if icon_name:
+            icon_path = os.path.join(self.base_dir, "asset", "icons", icon_name)
+            if os.path.exists(icon_path):
+                text_color = self.palette().color(self.foregroundRole()).name()
+                icon_label.setPixmap(load_svg_icon(icon_path, text_color).pixmap(16, 16))
+        layout.addWidget(icon_label)
+        
+        # ラベル
+        label = QLabel(item_data.get("label", "Unknown"))
+        layout.addWidget(label)
+        layout.addStretch()
+        
+        # ピン留めボタン
+        btn = self._create_star_button(item_data["id"])
+        layout.addWidget(btn)
+        
+        item.setSizeHint(widget.sizeHint())
+        self.quickAccessList.setIndexWidget(item.index(), widget)
+
+    def _create_star_button(self, item_id, tree_item=False):
+        """共通のスターボタンを作成する"""
+        btn = QToolButton()
+        btn.setFixedSize(20, 20)
+        btn.setAutoRaise(True)
+        btn.setCursor(Qt.PointingHandCursor)
+
+        btn.clicked.connect(lambda: self.toggle_pin(item_id))
+        self._sync_star_button(btn, item_id, tree_item)
+        return btn
+
+    def refresh_all_pin_buttons(self):
+        """ツリー全体とリストのピン留めボタンの状態を更新する"""
+        # ツリーの更新
+        self._refresh_tree_pin_buttons_recursive(self.model.invisibleRootItem())
+        self._update_tree_star_button_visibility()
+        # リストは update_quick_access_display で再構築されるため不要

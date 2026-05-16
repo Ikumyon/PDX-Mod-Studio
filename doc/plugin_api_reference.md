@@ -35,17 +35,27 @@
 - `is_dirty`
 - `editor_id`
 
-### `open_tab(file_path: str, editor_id: str = None)`
+### `open_tab(file_path: str, editor_id: str = None, params: dict = None)`
 
 指定したファイルをタブで開きます。
 
 既に同じ `file_path` と `editor_id` の組み合わせで開いている場合は、そのタブへ切り替えます。
+
+- `params`: エディタに渡す任意のパラメータ（例：`{"target_id": "my_id"}`）。新しくタブを開く場合、エディタの初期化（`notify_editor_ready`）を待ってから適用されます。
 
 ### `open_untitled_tab(name: str, content: str = "", editor_id: str = "core.plain_text")`
 
 メモリ上にだけ存在する新規タブを開きます。
 
 未保存タブは `untitled:` から始まる仮想パスを持ちます。初回保存時に保存先が確定します。
+
+## エディタ状態通知
+
+### `notify_editor_ready(widget)`
+
+カスタムエディタが自身の初期化（パースや重いUI構築など）を完了したことを本体に通知します。
+
+この通知を送ることで、`open_tab` 時の `params` が安全に `set_params()` へ流し込まれるようになります。非同期で初期化を行うエディタでは必須の処理です。
 
 ## カスタムエディタタブ契約
 
@@ -92,6 +102,12 @@ class MyEditorController:
 任意の保存入口です。
 
 本体メニューバーの `File > Save As` は、このメソッドが存在する場合に呼びます。
+
+### `widget.set_params(params: dict)`
+
+外部（ナビゲーション等）から送られたパラメータを処理するための入口です。
+
+`open_tab` 時に渡された `params` は、エディタが `notify_editor_ready()` を呼んだ後にこのメソッドを通じて渡されます。特定の項目へのスクロールや強調表示などに利用します。
 
 ## プロジェクト保存フック
 

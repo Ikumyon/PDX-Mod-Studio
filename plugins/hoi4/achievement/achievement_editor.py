@@ -129,6 +129,22 @@ class AchievementEditorController:
 
         # 初期リフレッシュ
         self.refresh()
+        
+        # ローカリゼーション更新の監視
+        core.api.register_loc_changed_handler(self.refresh)
+
+    def get_hoi4_plugin(self):
+        """Find the active HOI4 plugin instance."""
+        plugin = getattr(self.widget, "active_plugin", None)
+        if plugin:
+            return plugin
+        plugin = core.api.get_active_plugin()
+        if plugin:
+            return plugin
+        try:
+            return self.widget.parent().parent().active_plugin
+        except Exception:
+            return None
 
     def set_content(self, content):
         self.widget.content = content
@@ -140,10 +156,17 @@ class AchievementEditorController:
             doc = self.parser.parse_document(self.file_path, self.widget.content)
             self.achievements = doc.achievements
             
+            # ローカライズレジストリの取得
+            plugin = self.get_hoi4_plugin()
+            registry = getattr(plugin, "localisation_registry", None) if plugin else None
+            
             if self.achievement_list:
                 self.achievement_list.clear()
                 for ach in self.achievements:
-                    self.achievement_list.addItem(ach.id)
+                    # IDをキーとして翻訳を検索
+                    status, entry = registry.search_key_status(ach.id) if registry else ("not_found", None)
+                    label = entry.get("value") if entry else ach.id
+                    self.achievement_list.addItem(label)
                 
                 if self.achievement_list.count() > 0:
                     self.achievement_list.setCurrentRow(0)

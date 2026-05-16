@@ -738,11 +738,6 @@ class DecisionEditorController(QObject):
         # 初期ロードを遅延実行（タブを先に表示させるため）
         QTimer.singleShot(0, self.refresh)
         self.set_detailed_mode(False)
-        
-        # 初期パラメータがあれば処理
-        params = getattr(self.widget, "params", None)
-        if params:
-            self.set_params(params)
 
     def set_content(self, content):
         self.widget.content = content
@@ -883,28 +878,15 @@ class DecisionEditorController(QObject):
                     # 選択状態を保持
                     selected_item_data = self.get_current_data()
                     
-                    self.tree_decisions.clear()
-                    for cat in self.categories:
-                        # registry.get ではなく search_key_status を使用
-                        status, entry = registry.search_key_status(cat.id) if registry else ("not_found", None)
-                        cat_name = entry.get("value") if entry else None
-                        cat_label = cat_name if cat_name else cat.id
-                        
-                        cat_item = QTreeWidgetItem(self.tree_decisions)
-                        cat_item.setText(0, cat_label)
-                        cat_item.setData(0, Qt.ItemDataRole.UserRole, cat)
-                        
-                        for dec in cat.decisions:
-                            # registry.get ではなく search_key_status を使用
-                            status, entry = registry.search_key_status(dec.id) if registry else ("not_found", None)
-                            dec_name = entry.get("value") if entry else None
-                            dec_label = dec_name if dec_name else dec.id
-                            
-                            dec_item = QTreeWidgetItem(cat_item)
-                            dec_item.setText(0, dec_label)
-                            dec_item.setData(0, Qt.ItemDataRole.UserRole, dec)
+                    old_structure = self._get_tree_structure()
+                    new_structure = self._get_categories_structure()
                     
-                    self.tree_decisions.expandAll()
+                    if old_structure == new_structure and self.tree_decisions.topLevelItemCount() > 0:
+                        # 構造が同じならデータだけ更新（差分更新）
+                        self._update_tree_data(registry)
+                    else:
+                        # 構造が変わった場合は再構築しつつ展開状態を維持
+                        self._rebuild_tree(registry)
                     
                     # 選択を復元
                     if selected_item_data:
@@ -918,10 +900,87 @@ class DecisionEditorController(QObject):
             self.updating = False
             self.update_preview()
             
-            if self.pending_target_id:
-                tid = self.pending_target_id
-                self.pending_target_id = ""
-                self.jump_to_id(tid)
+            # 初期化完了を通知（main.py 側で予約されたパラメータがあれば適用される）
+            core.api.notify_editor_ready(self.widget)
+
+    def _get_tree_structure(self):
+        structure = []
+        if not self.tree_decisions: return tuple(structure)
+        for i in range(self.tree_decisions.topLevelItemCount()):
+            cat_item = self.tree_decisions.topLevelItem(i)
+            cat_data = cat_item.data(0, Qt.ItemDataRole.UserRole)
+            if not cat_data: continue
+            
+            dec_ids = []
+            for j in range(cat_item.childCount()):
+                dec_item = cat_item.child(j)
+                dec_data = dec_item.data(0, Qt.ItemDataRole.UserRole)
+                if dec_data:
+                    dec_ids.append(dec_data.id)
+            structure.append((cat_data.id, tuple(dec_ids)))
+        return tuple(structure)
+
+    def _get_categories_structure(self):
+        structure = []
+        for cat in self.categories:
+            dec_ids = tuple(dec.id for dec in cat.decisions)
+            structure.append((cat.id, dec_ids))
+        return tuple(structure)
+
+    def _update_tree_data(self, registry):
+        for i in range(self.tree_decisions.topLevelItemCount()):
+            cat_item = self.tree_decisions.topLevelItem(i)
+            cat = self.categories[i]
+            cat_item.setData(0, Qt.ItemDataRole.UserRole, cat)
+            
+            status, entry = registry.search_key_status(cat.id) if registry else ("not_found", None)
+            cat_name = entry.get("value") if entry else None
+            cat_item.setText(0, cat_name if cat_name else cat.id)
+            
+            for j in range(cat_item.childCount()):
+                dec_item = cat_item.child(j)
+                dec = cat.decisions[j]
+                dec_item.setData(0, Qt.ItemDataRole.UserRole, dec)
+                
+                status, entry = registry.search_key_status(dec.id) if registry else ("not_found", None)
+                dec_name = entry.get("value") if entry else None
+                dec_item.setText(0, dec_name if dec_name else dec.id)
+
+    def _rebuild_tree(self, registry):
+        expanded_cat_ids = set()
+        for i in range(self.tree_decisions.topLevelItemCount()):
+            cat_item = self.tree_decisions.topLevelItem(i)
+            if cat_item.isExpanded():
+                cat_data = cat_item.data(0, Qt.ItemDataRole.UserRole)
+                if cat_data:
+                    expanded_cat_ids.add(cat_data.id)
+                    
+        is_first_load = self.tree_decisions.topLevelItemCount() == 0
+        self.tree_decisions.clear()
+        
+        for cat in self.categories:
+            status, entry = registry.search_key_status(cat.id) if registry else ("not_found", None)
+            cat_name = entry.get("value") if entry else None
+            cat_label = cat_name if cat_name else cat.id
+            
+            cat_item = QTreeWidgetItem(self.tree_decisions)
+            cat_item.setText(0, cat_label)
+            cat_item.setData(0, Qt.ItemDataRole.UserRole, cat)
+            
+            if cat.id in expanded_cat_ids:
+                cat_item.setExpanded(True)
+            
+            for dec in cat.decisions:
+                status, entry = registry.search_key_status(dec.id) if registry else ("not_found", None)
+                dec_name = entry.get("value") if entry else None
+                dec_label = dec_name if dec_name else dec.id
+                
+                dec_item = QTreeWidgetItem(cat_item)
+                dec_item.setText(0, dec_label)
+                dec_item.setData(0, Qt.ItemDataRole.UserRole, dec)
+        
+        if is_first_load and self.categories:
+            self.tree_decisions.expandAll()
 
     def merge_decisions(self, primary: list[ParsedDecision], secondary: list[ParsedDecision]) -> list[ParsedDecision]:
         merged = list(primary)
@@ -939,10 +998,7 @@ class DecisionEditorController(QObject):
     def set_params(self, params):
         target_id = params.get("target_id")
         if target_id:
-            if self.categories:
-                self.jump_to_id(target_id)
-            else:
-                self.pending_target_id = target_id
+            self.jump_to_id(target_id)
 
     def jump_to_id(self, item_id):
         if not self.tree_decisions: return
@@ -951,6 +1007,7 @@ class DecisionEditorController(QObject):
             cat_data = cat_item.data(0, Qt.ItemDataRole.UserRole)
             if cat_data and cat_data.id == item_id:
                 self.tree_decisions.setCurrentItem(cat_item)
+                cat_item.setSelected(True)
                 self.tree_decisions.scrollToItem(cat_item)
                 return
             
@@ -959,6 +1016,7 @@ class DecisionEditorController(QObject):
                 dec_data = dec_item.data(0, Qt.ItemDataRole.UserRole)
                 if dec_data and dec_data.id == item_id:
                     self.tree_decisions.setCurrentItem(dec_item)
+                    dec_item.setSelected(True)
                     self.tree_decisions.scrollToItem(dec_item)
                     return
 

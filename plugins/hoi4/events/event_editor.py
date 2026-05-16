@@ -250,7 +250,7 @@ class EventEditorController:
         self.loc_timer = QTimer()
         self.loc_timer.setSingleShot(True)
         self.loc_timer.timeout.connect(self.update_localisation_ui)
-        core.api.register_loc_changed_handler(self.update_localisation_ui)
+        core.api.register_loc_changed_handler(self.refresh)
         
         self.is_detailed_mode = False
         self.system_widgets = []
@@ -530,10 +530,21 @@ class EventEditorController:
                 was_blocked = self.event_list.blockSignals(True)
                 self.event_list.setUpdatesEnabled(False)
                 try:
+                    # ローカライズレジストリの取得
+                    plugin = self.get_hoi4_plugin()
+                    registry = getattr(plugin, "localisation_registry", None) if plugin else None
+                    
                     self.event_list.clear()
                     target_item = None
                     for event in self.events:
-                        label = event.event_id or f"{event.key}@{event.node.range.start.line}"
+                        # title プロパティの値をキーとして翻訳を検索
+                        title_assign = event.first("title")
+                        title_key = scalar_text(title_assign)
+                        status, entry = registry.search_key_status(title_key) if registry and title_key else ("not_found", None)
+                        event_name = entry.get("value") if entry else None
+                        
+                        label = event_name if event_name else (event.event_id or f"{event.key}@{event.node.range.start.line}")
+                        
                         item = QTreeWidgetItem(self.event_list)
                         item.setText(0, label)
                         item.setData(0, Qt.ItemDataRole.UserRole, event)

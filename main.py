@@ -59,6 +59,9 @@ def main():
         # タスクバー用のアイコン設定 (Windows)
         app.setWindowIcon(QIcon(icon_path))
 
+    # --- エディタパラメータ管理 ---
+    window.pending_params = {} # {widget: params}
+
     # --- ドックの初期化 ---
     from core.project_tree_dock import ProjectTreeDock
     from core.plugin_manager import PluginManager
@@ -142,10 +145,14 @@ def main():
     editor_tab_bar.currentChanged.connect(editor_stacked.setCurrentIndex)
 
     # シグナルの接続
-    window.editorTabs.tabCloseRequested.connect(lambda index: (
-        window.editorTabs.removeTab(index),
+    def close_editor_tab(index):
+        widget = window.editorTabs.widget(index)
+        if widget in window.pending_params:
+            del window.pending_params[widget]
+        window.editorTabs.removeTab(index)
         project_tree.update_open_editors(window.editorTabs)
-    ))
+
+    window.editorTabs.tabCloseRequested.connect(close_editor_tab)
 
     def on_tab_changed(index):
         project_tree.sync_selection(index)
@@ -518,6 +525,7 @@ def main():
             current_editor_id = editor_registry.normalize_editor_id(getattr(widget, "editor_id", TEXT_EDITOR_ID))
             if window.editorTabs.tabToolTip(i) == file_path and current_editor_id == editor_id:
                 window.editorTabs.setCurrentIndex(i)
+                # 既に開いている場合は即座に適用
                 if params and hasattr(widget, "set_params"):
                     widget.set_params(params)
                 elif params:
@@ -533,7 +541,12 @@ def main():
             with open(file_path, 'r', encoding=encoding, errors='replace') as f:
                 content = f.read()
 
-            editor = create_editor_widget(editor_id, file_path, content, available_editors, params)
+            # 新しく開く場合は、まずウィジェットを生成
+            editor = create_editor_widget(editor_id, file_path, content, available_editors)
+            
+            # パラメータがあれば「準備完了後」に適用されるように予約
+            if params:
+                window.pending_params[editor] = params
             file_name = os.path.basename(file_path)
             if editor_id != TEXT_EDITOR_ID:
                 file_name = f"[E] {file_name}"
@@ -1017,6 +1030,17 @@ def main():
         "open_tab": open_file,
         "open_untitled_tab": open_untitled_tab
     })
+
+    # 4. エディタ準備完了通知のハンドリング
+    def on_editor_ready(widget):
+        if widget in window.pending_params:
+            params = window.pending_params.pop(widget)
+            if hasattr(widget, "set_params"):
+                widget.set_params(params)
+            else:
+                widget.params = params
+
+    core.api.register_editor_ready_handler(on_editor_ready)
 
 
     # ウィンドウを表示
