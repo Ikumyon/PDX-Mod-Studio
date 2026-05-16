@@ -429,6 +429,110 @@ def initialize(plugin):
 
     plugin.localisation_registry = _registry
 
+def _path_to_project(path, mod_root):
+    if not path:
+        return path
+    norm_path = os.path.normpath(path)
+    norm_root = os.path.normpath(mod_root) if mod_root else ""
+    if norm_root:
+        try:
+            rel_path = os.path.relpath(norm_path, norm_root)
+            if not rel_path.startswith("..") and not os.path.isabs(rel_path):
+                return rel_path.replace("\\", "/")
+        except ValueError:
+            pass
+    return norm_path
+
+def _path_from_project(path, mod_root):
+    if not path:
+        return path
+    if os.path.isabs(path):
+        return os.path.normpath(path)
+    return os.path.normpath(os.path.join(mod_root, path))
+
+def _serialise_loc_entry(entry, mod_root):
+    data = dict(entry)
+    data["file"] = _path_to_project(data.get("file"), mod_root)
+    for key in ("candidates", "mod_candidates", "hoi4_candidates"):
+        if key in data:
+            data[key] = [_serialise_loc_entry(item, mod_root) for item in data[key]]
+    return data
+
+def _restore_loc_entry(entry, mod_root):
+    data = dict(entry)
+    data["file"] = _path_from_project(data.get("file"), mod_root)
+    for key in ("candidates", "mod_candidates", "hoi4_candidates"):
+        if key in data:
+            data[key] = [_restore_loc_entry(item, mod_root) for item in data[key]]
+    return data
+
+def export_project_data(plugin, context):
+    registry = getattr(plugin, "localisation_registry", None)
+    mod_root = context.get("mod_root")
+    if not registry:
+        return {}
+
+    return {
+        "localisation_registry": {
+            "schema_version": 1,
+            "language_id": registry.language_id,
+            "key_registry": {
+                key: [_serialise_loc_entry(entry, mod_root) for entry in entries]
+                for key, entries in registry.key_registry.items()
+            },
+            "file_registry": [
+                {
+                    **file_info,
+                    "path": _path_to_project(file_info.get("path"), mod_root),
+                }
+                for file_info in registry.file_registry
+            ],
+            "file_key_index": {
+                _path_to_project(path, mod_root): sorted(keys)
+                for path, keys in registry.file_key_index.items()
+            },
+            "file_errors": {
+                _path_to_project(path, mod_root): errors
+                for path, errors in registry.file_errors.items()
+            },
+        }
+    }
+
+def import_project_data(plugin, context, data):
+    registry = getattr(plugin, "localisation_registry", None)
+    loc_data = (data or {}).get("localisation_registry")
+    mod_root = context.get("mod_root")
+    if not registry or not loc_data or not mod_root:
+        if hasattr(plugin, "refresh_localisation"):
+            plugin.refresh_localisation()
+        return
+
+    try:
+        registry.language_id = loc_data.get("language_id")
+        registry.key_registry = {
+            key: [_restore_loc_entry(entry, mod_root) for entry in entries]
+            for key, entries in loc_data.get("key_registry", {}).items()
+        }
+        registry.file_registry = [
+            {
+                **file_info,
+                "path": _path_from_project(file_info.get("path"), mod_root),
+            }
+            for file_info in loc_data.get("file_registry", [])
+        ]
+        registry.file_key_index = {
+            _path_from_project(path, mod_root): set(keys)
+            for path, keys in loc_data.get("file_key_index", {}).items()
+        }
+        registry.file_errors = {
+            _path_from_project(path, mod_root): errors
+            for path, errors in loc_data.get("file_errors", {}).items()
+        }
+    except Exception as error:
+        print(f"Failed to restore localisation registry cache: {error}")
+        if hasattr(plugin, "refresh_localisation"):
+            plugin.refresh_localisation()
+
 def get_extension(element):
     """要素の拡張子を返す"""
     return element.raw.get("extension", ".txt")

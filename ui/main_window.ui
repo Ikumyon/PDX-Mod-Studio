@@ -121,6 +121,16 @@
     <property name="title">
      <string>ファイル</string>
     </property>
+    <addaction name="actionNewProject"/>
+    <addaction name="actionOpenProject"/>
+    <addaction name="actionSaveProject"/>
+    <addaction name="actionSaveProjectAs"/>
+    <addaction name="separator"/>
+    <addaction name="actionNewFile"/>
+    <addaction name="actionOpenFile"/>
+    <addaction name="actionSave"/>
+    <addaction name="actionSaveAs"/>
+    <addaction name="actionSaveAll"/>
     <addaction name="separator"/>
     <addaction name="actionExit"/>
    </widget>
@@ -168,17 +178,17 @@
   </widget>
   <action name="actionNewProject">
    <property name="text">
-    <string>新規</string>
+    <string>新規プロジェクト</string>
    </property>
   </action>
   <action name="actionOpenProject">
    <property name="text">
-    <string>開く</string>
+    <string>プロジェクトを開く</string>
    </property>
   </action>
   <action name="actionSaveProject">
    <property name="text">
-    <string>保存</string>
+    <string>プロジェクトを保存</string>
    </property>
   </action>
   <action name="actionValidate">
@@ -214,6 +224,36 @@
   <action name="actionAbout">
    <property name="text">
     <string>このアプリについて</string>
+   </property>
+  </action>
+  <action name="actionSave">
+   <property name="text">
+    <string>ファイルを保存</string>
+   </property>
+  </action>
+  <action name="actionSaveAll">
+   <property name="text">
+    <string>全てのファイルを保存</string>
+   </property>
+  </action>
+  <action name="actionNewFile">
+   <property name="text">
+    <string>ファイルを新規作成</string>
+   </property>
+  </action>
+  <action name="actionOpenFile">
+   <property name="text">
+    <string>ファイルを開く</string>
+   </property>
+  </action>
+  <action name="actionSaveAs">
+   <property name="text">
+    <string>ファイルを別名で保存...</string>
+   </property>
+  </action>
+  <action name="actionSaveProjectAs">
+   <property name="text">
+    <string>プロジェクトを別名で保存...</string>
    </property>
   </action>
  </widget>

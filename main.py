@@ -1,5 +1,8 @@
 import sys
 import os
+import json
+import tempfile
+import zipfile
 from PySide6.QtWidgets import QApplication, QMenu, QVBoxLayout, QToolButton, QWidget, QTabBar, QFileDialog
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtCore import QFile, Qt, QSize, QCoreApplication
@@ -35,7 +38,7 @@ def main():
     if not ui_file.open(QFile.OpenModeFlag.ReadOnly):
         print(tr("Main", "UIファイルを開けませんでした: {path}").format(path=ui_file_path))
         sys.exit(-1)
-        
+
     loader = QUiLoader()
     window = loader.load(ui_file)
     ui_file.close()
@@ -45,6 +48,10 @@ def main():
         sys.exit(-1)
 
     # --- アプリケーションアイコンの設定 ---
+    window.current_project_file = None
+    window.current_project_type = "reference"
+    window.embedded_project_workspace = None
+
     from PySide6.QtGui import QIcon
     icon_path = os.path.join(base_dir, "assets", "app_icon.ico")
     if os.path.exists(icon_path):
@@ -246,11 +253,128 @@ def main():
         file_path = window.editorTabs.tabToolTip(current_tab_idx)
         open_file(file_path, editor_id)
 
+    def _tab_text_without_dirty_marker(text):
+        return text[1:] if text.startswith("*") else text
+
+    def mark_tab_dirty(widget):
+        if getattr(widget, "is_dirty", False):
+            return
+        widget.is_dirty = True
+        index = window.editorTabs.indexOf(widget)
+        if index >= 0:
+            text = window.editorTabs.tabText(index)
+            if not text.startswith("*"):
+                window.editorTabs.setTabText(index, f"*{text}")
+            project_tree.update_open_editors(window.editorTabs)
+
+    def mark_tab_clean(widget):
+        widget.is_dirty = False
+        index = window.editorTabs.indexOf(widget)
+        if index >= 0:
+            text = window.editorTabs.tabText(index)
+            clean_text = _tab_text_without_dirty_marker(text)
+            if clean_text != text:
+                window.editorTabs.setTabText(index, clean_text)
+            project_tree.update_open_editors(window.editorTabs)
+
+    def _path_for_save_dialog(widget):
+        file_path = getattr(widget, "file_path", "")
+        if file_path and not file_path.startswith("untitled:"):
+            return file_path
+        project_path = getattr(project_tree, "current_project_path", "")
+        if project_path:
+            return project_path
+        return base_dir
+
+    def save_text_widget(widget, save_as=False):
+        file_path = getattr(widget, "file_path", "")
+        if save_as or not file_path or file_path.startswith("untitled:"):
+            file_path, _ = QFileDialog.getSaveFileName(window, "Save File", _path_for_save_dialog(widget))
+            if not file_path:
+                return False
+
+        element = get_element_for_path(file_path)
+        encoding = "utf-8"
+        if element:
+            encoding = element.plugin.get_element_attribute(element, "encoding", file_path=file_path)
+
+        try:
+            with open(file_path, "w", encoding=encoding) as handle:
+                handle.write(widget.toPlainText())
+        except Exception as error:
+            window.statusBar().showMessage(f"Failed to save file: {error}", 5000)
+            return False
+
+        widget.file_path = file_path
+        widget.content = widget.toPlainText()
+        widget._last_notified_content = widget.content
+        index = window.editorTabs.indexOf(widget)
+        if index >= 0:
+            window.editorTabs.setTabToolTip(index, file_path)
+            window.editorTabs.setTabText(index, os.path.basename(file_path))
+            window.editorTabs.setTabIcon(index, project_tree.get_icon_for_path(file_path))
+
+        mark_tab_clean(widget)
+        window.statusBar().showMessage(f"Saved: {file_path}", 3000)
+        return True
+
+    def save_tab(widget, save_as=False):
+        if not widget:
+            return False
+
+        method_name = "on_save_as_triggered" if save_as else "on_save_triggered"
+        save = getattr(widget, method_name, None)
+        if not callable(save):
+            return False
+
+        try:
+            result = save()
+        except Exception as error:
+            window.statusBar().showMessage(f"Failed to save tab: {error}", 5000)
+            return False
+
+        success = result is not False
+        if success:
+            mark_tab_clean(widget)
+            file_path = getattr(widget, "file_path", None)
+            if file_path and not str(file_path).startswith("untitled:"):
+                core.api.notify_file_saved(file_path)
+        return success
+
+    def save_current_tab():
+        if not window.editorTabs:
+            return False
+        index = window.editorTabs.currentIndex()
+        if index < 0:
+            return False
+        return save_tab(window.editorTabs.widget(index), False)
+
+    def save_current_tab_as():
+        if not window.editorTabs:
+            return False
+        index = window.editorTabs.currentIndex()
+        if index < 0:
+            return False
+        return save_tab(window.editorTabs.widget(index), True)
+
+    def save_all_tabs():
+        if not window.editorTabs:
+            return False
+        ok = True
+        for index in range(window.editorTabs.count()):
+            widget = window.editorTabs.widget(index)
+            if getattr(widget, "is_dirty", True):
+                ok = save_tab(widget, False) and ok
+        return ok
+
     def create_editor_widget(editor_id, file_path, content, available_editors):
         editor_id = editor_registry.normalize_editor_id(editor_id)
         if editor_id == TEXT_EDITOR_ID:
             widget = EditorWidget()
             widget.setPlainText(content)
+            widget.on_save_triggered = lambda w=widget: save_text_widget(w, False)
+            widget.on_save_as_triggered = lambda w=widget: save_text_widget(w, True)
+            widget.textChanged.connect(lambda w=widget: mark_tab_dirty(w))
         else:
             widget = editor_registry.create_editor_widget(editor_id, window.editorTabs, file_path, content)
             if not widget:
@@ -258,6 +382,8 @@ def main():
                 return create_editor_widget(TEXT_EDITOR_ID, file_path, content, available_editors)
         
         widget.editor_id = editor_id
+        widget.file_path = file_path
+        widget.content = content
         widget.available_editors = available_editors
         widget.is_dirty = False
         element = get_element_for_path(file_path)
@@ -265,26 +391,30 @@ def main():
             widget.active_plugin = element.plugin
         widget._last_notified_content = content # 最後に通知したときの内容
 
-        # --- 自動変更検知の仕組み（安全なタイマー監視） ---
-        from PySide6.QtCore import QTimer
-        def check_content_change():
-            try:
-                current_content = getattr(widget, "content", None)
-                if current_content is not None and current_content != widget._last_notified_content:
-                    widget._last_notified_content = current_content
-                    idx = window.editorTabs.indexOf(widget)
-                    if idx >= 0:
-                        set_tab_dirty(idx, True)
-            except (RuntimeError, ReferenceError):
-                if hasattr(widget, "_dirty_timer"):
-                    widget._dirty_timer.stop()
 
-        widget._dirty_timer = QTimer(widget)
-        widget._dirty_timer.timeout.connect(check_content_change)
-        widget._dirty_timer.start(100)
+        controller = getattr(widget, "plugin_controller", None)
+        if controller:
+            if not callable(getattr(widget, "on_save_triggered", None)) and callable(getattr(controller, "on_save_triggered", None)):
+                widget.on_save_triggered = controller.on_save_triggered
+            if not callable(getattr(widget, "on_save_as_triggered", None)) and callable(getattr(controller, "on_save_as_triggered", None)):
+                widget.on_save_as_triggered = controller.on_save_as_triggered
 
-        if editor_id == TEXT_EDITOR_ID:
-            widget.textChanged.connect(lambda: set_tab_dirty(window.editorTabs.indexOf(widget), True))
+        if editor_id != TEXT_EDITOR_ID:
+            from PySide6.QtCore import QTimer
+
+            def check_content_change(w=widget):
+                try:
+                    current_content = getattr(w, "content", None)
+                    if current_content is not None and current_content != w._last_notified_content:
+                        w._last_notified_content = current_content
+                        mark_tab_dirty(w)
+                except (RuntimeError, ReferenceError):
+                    if hasattr(w, "_dirty_timer"):
+                        w._dirty_timer.stop()
+
+            widget._dirty_timer = QTimer(widget)
+            widget._dirty_timer.timeout.connect(check_content_change)
+            widget._dirty_timer.start(100)
 
         return widget
 
@@ -368,8 +498,6 @@ def main():
         window.editorTabs.setCurrentIndex(index)
         update_editor_selector(index)
         
-        # 変更あり状態にする
-        set_tab_dirty(index, True)
         project_tree.update_open_editors(window.editorTabs)
 
     def open_file(file_path, editor_id=None):
@@ -416,133 +544,19 @@ def main():
     window.open_file = open_file
     window.open_untitled_tab = open_untitled_tab
 
+    action_save = window.findChild(object, "actionSave")
+    if action_save:
+        action_save.triggered.connect(save_current_tab)
 
-    # --- 保存機能の実実装 ---
-    from PySide6.QtGui import QKeySequence, QAction
-    from PySide6.QtWidgets import QMessageBox
-    from core.utils import load_svg_icon
+    action_save_as = window.findChild(object, "actionSaveAs")
+    if action_save_as:
+        action_save_as.triggered.connect(save_current_tab_as)
 
-    # アイコンのロード
-    text_color = window.palette().color(window.foregroundRole()).name()
-    icon_dirty = load_svg_icon(os.path.join(base_dir, "assets/icons/save.svg"), "#ffcc00") # 目立つ色にする
+    action_save_all = window.findChild(object, "actionSaveAll")
+    if action_save_all:
+        action_save_all.triggered.connect(save_all_tabs)
 
-    def set_tab_dirty(index, dirty):
-        if index < 0 or index >= window.editorTabs.count():
-            return
-        widget = window.editorTabs.widget(index)
-        widget.is_dirty = dirty
-        
-        file_path = window.editorTabs.tabToolTip(index)
-        if dirty:
-            window.editorTabs.setTabIcon(index, icon_dirty)
-        else:
-            # 元のアイコンに戻す
-            icon = project_tree.get_icon_for_path(file_path)
-            window.editorTabs.setTabIcon(index, icon)
 
-    def save_current_file():
-        current_idx = window.editorTabs.currentIndex()
-        if current_idx < 0:
-            return
-            
-        file_path = window.editorTabs.tabToolTip(current_idx)
-        widget = window.editorTabs.widget(current_idx)
-        
-        content = ""
-        if hasattr(widget, "toPlainText"):
-            content = widget.toPlainText()
-        elif hasattr(widget, "content"):
-            content = widget.content
-            
-        # 「無題」の場合は保存ダイアログを出す
-        if file_path.startswith("untitled:"):
-            project_path = core.api.get_project_path() or os.path.expanduser("~")
-            save_path, _ = QFileDialog.getSaveFileName(
-                window, tr("MainWindow", "名前を付けて保存"), 
-                project_path, tr("MainWindow", "Text Files (*.txt);;All Files (*)")
-            )
-            if not save_path:
-                return
-            file_path = save_path
-
-        # エレメントからエンコーディングを取得
-        element = get_element_for_path(file_path)
-        encoding = "utf-8"
-        if element:
-            encoding = element.plugin.get_element_attribute(element, "encoding", file_path=file_path)
-            
-        try:
-            with open(file_path, 'w', encoding=encoding) as f:
-                f.write(content)
-            
-            # 保存成功後のタブ更新
-            window.editorTabs.setTabToolTip(current_idx, file_path)
-            new_name = os.path.basename(file_path)
-            if editor_registry.normalize_editor_id(getattr(widget, "editor_id", TEXT_EDITOR_ID)) != TEXT_EDITOR_ID:
-                new_name = f"[E] {new_name}"
-            window.editorTabs.setTabText(current_idx, new_name)
-            
-            # アイコンも更新
-            new_icon = project_tree.get_icon_for_path(file_path)
-            window.editorTabs.setTabIcon(current_idx, new_icon)
-
-            controller = getattr(widget, "plugin_controller", None)
-            if controller and hasattr(controller, "on_save_triggered"):
-                controller.on_save_triggered()
-            window.statusBar().showMessage(tr("MainWindow", "保存しました: {path}").format(path=file_path), 3000)
-            widget._last_notified_content = content
-            set_tab_dirty(current_idx, False)
-            
-            core.api.notify_file_saved(file_path)
-            # エクスプローラーの同期など
-            project_tree.update_open_editors(window.editorTabs)
-        except Exception as e:
-            QMessageBox.critical(window, tr("MainWindow", "保存エラー"), tr("MainWindow", "ファイルを保存できませんでした: {error}").format(error=e))
-
-    def on_file_saved(saved_file_path):
-        # 他のタブで同じファイルが開かれていればリロードする
-        for i in range(window.editorTabs.count()):
-            widget = window.editorTabs.widget(i)
-            if window.editorTabs.tabToolTip(i) == saved_file_path:
-                if getattr(widget, "is_dirty", False):
-                    # 未保存の変更がある場合は競合を避けるためスキップ (必要なら警告を出す)
-                    continue
-                
-                element = get_element_for_path(saved_file_path)
-                encoding = "utf-8"
-                if element:
-                    encoding = element.plugin.get_element_attribute(element, "encoding", file_path=saved_file_path)
-                
-                try:
-                    with open(saved_file_path, 'r', encoding=encoding, errors='replace') as f:
-                        new_content = f.read()
-                    
-                    # 現在のコンテンツと比較し、変更がなければ何もしない
-                    current_content = ""
-                    if hasattr(widget, "toPlainText"):
-                        current_content = widget.toPlainText()
-                    elif hasattr(widget, "content"):
-                        current_content = widget.content
-                        
-                    if current_content == new_content:
-                        continue
-
-                    # 更新処理
-                    if hasattr(widget, "setPlainText"):
-                        # cursor位置などを保持する工夫が必要だが、一旦シンプルに更新
-                        cursor = widget.textCursor()
-                        pos = cursor.position()
-                        widget.setPlainText(new_content)
-                        cursor.setPosition(min(pos, len(new_content)))
-                        widget.setTextCursor(cursor)
-                    elif hasattr(widget, "plugin_controller") and hasattr(widget.plugin_controller, "set_content"):
-                        widget.plugin_controller.set_content(new_content)
-                        
-                    widget._last_notified_content = new_content
-                except Exception as e:
-                    print(f"Failed to reload {saved_file_path}: {e}")
-
-    core.api.register_file_saved_handler(on_file_saved)
 
     core.api.register_editor_handler({
         "get_element_for_file": get_element_for_path,
@@ -552,22 +566,6 @@ def main():
 
     core.api.register_active_plugin_handler(lambda: project_tree.active_plugin)
 
-    save_action = window.findChild(QAction, "actionSaveProject")
-    if save_action:
-        save_action.setShortcut(QKeySequence.StandardKey.Save)
-        save_action.triggered.connect(save_current_file)
-        # メニューに追加
-        file_menu = window.findChild(QMenu, "menuFile")
-        if file_menu:
-            exit_action = window.findChild(QAction, "actionExit")
-            file_menu.insertAction(exit_action, save_action)
-            file_menu.insertSeparator(exit_action)
-    else:
-        # アクションが見つからない場合のフォールバック
-        save_action = QAction(tr("MainWindow", "保存"), window)
-        save_action.setShortcut(QKeySequence.StandardKey.Save)
-        save_action.triggered.connect(save_current_file)
-        window.addAction(save_action)
 
     # --- アクティビティバーの設定 ---
     activity_bar = window.findChild(QWidget, "TLeftActivityBar")
@@ -691,6 +689,284 @@ def main():
 
     # --- core.api のハンドラ登録 ---
     # 1. メッセージ (ステータスバー)
+    def get_plugin_by_id(plugin_id):
+        for plugin in plugins:
+            if plugin.id == plugin_id:
+                return plugin
+        return None
+
+    def select_plugin(plugin):
+        if not plugin:
+            return False
+        try:
+            index = plugin_combo.findData(plugin)
+            if index >= 0:
+                plugin_combo.setCurrentIndex(index)
+        except NameError:
+            pass
+        on_plugin_selected(plugin)
+        return True
+
+    def plugin_export_project_data(plugin, context):
+        if not plugin or not plugin.module:
+            return {}
+        export = getattr(plugin.module, "export_project_data", None)
+        if not callable(export):
+            return {}
+        return export(plugin, context) or {}
+
+    def plugin_import_project_data(plugin, context, data):
+        if not plugin or not plugin.module:
+            return
+        import_data = getattr(plugin.module, "import_project_data", None)
+        if callable(import_data):
+            import_data(plugin, context, data or {})
+
+    def active_required_plugins():
+        plugin = getattr(project_tree, "active_plugin", None)
+        return [plugin.id] if plugin else []
+
+    def export_all_plugin_data(context):
+        result = {}
+        for plugin_id in context["required_plugins"]:
+            plugin = get_plugin_by_id(plugin_id)
+            result[plugin_id] = plugin_export_project_data(plugin, context)
+        return result
+
+    PROJECT_TYPE_REFERENCE = "reference"
+    PROJECT_TYPE_EMBEDDED = "embedded"
+
+    def normalise_project_type(project_type):
+        if project_type == PROJECT_TYPE_REFERENCE:
+            return PROJECT_TYPE_REFERENCE
+        if project_type == PROJECT_TYPE_EMBEDDED:
+            return PROJECT_TYPE_EMBEDDED
+        return PROJECT_TYPE_REFERENCE
+
+    def current_project_metadata(project_type):
+        project_type = normalise_project_type(project_type)
+        project_path = getattr(project_tree, "current_project_path", None)
+        display_name = os.path.basename(os.path.normpath(project_path)) if project_path else "Untitled Project"
+        metadata = {
+            "schema_version": 1,
+            "project_type": project_type,
+            "required_plugins": active_required_plugins(),
+            "display_name": display_name,
+            "mod_root": "mod" if project_type == PROJECT_TYPE_EMBEDDED else project_path,
+        }
+        if project_type == PROJECT_TYPE_EMBEDDED:
+            metadata["source_mod_root"] = getattr(window, "source_mod_root", None) or project_path
+        return metadata
+
+    def project_context(metadata, project_file, mod_root):
+        return {
+            "project_file": project_file,
+            "project_type": normalise_project_type(metadata.get("project_type")),
+            "mod_root": mod_root,
+            "required_plugins": metadata.get("required_plugins", []),
+            "metadata": metadata,
+        }
+
+    def write_json_file(path, data):
+        parent = os.path.dirname(path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(data, handle, indent=4, ensure_ascii=False)
+
+    def read_json_file(path):
+        with open(path, "r", encoding="utf-8") as handle:
+            return json.load(handle)
+
+    def ensure_project_path():
+        project_path = getattr(project_tree, "current_project_path", None)
+        if project_path and os.path.isdir(project_path):
+            return project_path
+        window.statusBar().showMessage("No project folder is open.", 5000)
+        return None
+
+    def project_save_path_dialog():
+        start_dir = getattr(project_tree, "current_project_path", None) or base_dir
+        path, selected_filter = QFileDialog.getSaveFileName(
+            window,
+            "プロジェクトを保存",
+            start_dir,
+            "参照型プロジェクト (*.pdxproj);;内包型プロジェクト (*.pdxpkg)",
+        )
+        if not path:
+            return None
+        if not path.lower().endswith((".pdxproj", ".pdxpkg")):
+            path += ".pdxpkg" if "内包型" in selected_filter else ".pdxproj"
+        return path
+
+    def project_type_for_path(path):
+        return PROJECT_TYPE_EMBEDDED if path.lower().endswith(".pdxpkg") else PROJECT_TYPE_REFERENCE
+
+    def save_reference_project(path):
+        mod_root = ensure_project_path()
+        if not mod_root:
+            return False
+        metadata = current_project_metadata(PROJECT_TYPE_REFERENCE)
+        context = project_context(metadata, path, mod_root)
+        metadata["plugin_data"] = export_all_plugin_data(context)
+        write_json_file(path, metadata)
+        window.current_project_file = path
+        window.current_project_type = PROJECT_TYPE_REFERENCE
+        window.statusBar().showMessage(f"Project saved: {path}", 3000)
+        return True
+
+    def add_directory_to_zip(archive, source_dir, archive_root):
+        for root, _, files in os.walk(source_dir):
+            for filename in files:
+                full_path = os.path.join(root, filename)
+                rel_path = os.path.relpath(full_path, source_dir)
+                archive_path = os.path.join(archive_root, rel_path).replace("\\", "/")
+                archive.write(full_path, archive_path)
+
+    def save_embedded_project(path):
+        mod_root = ensure_project_path()
+        if not mod_root:
+            return False
+        metadata = current_project_metadata(PROJECT_TYPE_EMBEDDED)
+        context = project_context(metadata, path, mod_root)
+        plugin_data = export_all_plugin_data(context)
+        temp_fd, temp_path = tempfile.mkstemp(suffix=".pdxpkg")
+        os.close(temp_fd)
+        with zipfile.ZipFile(temp_path, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("project.json", json.dumps(metadata, indent=4, ensure_ascii=False))
+            add_directory_to_zip(archive, mod_root, "mod")
+            for plugin_id, data in plugin_data.items():
+                for data_key, payload in (data or {}).items():
+                    archive.writestr(
+                        f"plugin_data/{plugin_id}/{data_key}.json",
+                        json.dumps(payload, indent=4, ensure_ascii=False),
+                    )
+        os.replace(temp_path, path)
+        window.current_project_file = path
+        window.current_project_type = PROJECT_TYPE_EMBEDDED
+        window.statusBar().showMessage(f"Project package saved: {path}", 3000)
+        return True
+
+    def save_project_to(path):
+        if not save_all_tabs():
+            window.statusBar().showMessage("Project save cancelled because a tab could not be saved.", 5000)
+            return False
+        try:
+            if project_type_for_path(path) == PROJECT_TYPE_EMBEDDED:
+                return save_embedded_project(path)
+            return save_reference_project(path)
+        except Exception as error:
+            window.statusBar().showMessage(f"Failed to save project: {error}", 5000)
+            return False
+
+    def save_project():
+        path = getattr(window, "current_project_file", None)
+        if not path:
+            return save_project_as()
+        return save_project_to(path)
+
+    def save_project_as():
+        path = project_save_path_dialog()
+        if not path:
+            return False
+        return save_project_to(path)
+
+    def open_project_dialog():
+        path, _ = QFileDialog.getOpenFileName(
+            window,
+            "プロジェクトを開く",
+            base_dir,
+            "PDX Mod Studio プロジェクト (*.pdxproj *.pdxpkg)",
+        )
+        if path:
+            open_project_file(path)
+
+    def apply_required_plugins(metadata):
+        missing = []
+        for plugin_id in metadata.get("required_plugins", []):
+            plugin = get_plugin_by_id(plugin_id)
+            if plugin:
+                select_plugin(plugin)
+            else:
+                missing.append(plugin_id)
+        if missing:
+            window.statusBar().showMessage(f"Missing required plugins: {', '.join(missing)}", 7000)
+
+    def import_all_plugin_data(metadata, project_file, mod_root, plugin_data):
+        context = project_context(metadata, project_file, mod_root)
+        for plugin_id, data in (plugin_data or {}).items():
+            plugin = get_plugin_by_id(plugin_id)
+            if plugin:
+                plugin_import_project_data(plugin, context, data)
+
+    def open_reference_project(path):
+        metadata = read_json_file(path)
+        mod_root = metadata.get("mod_root")
+        if not mod_root or not os.path.isdir(mod_root):
+            window.statusBar().showMessage("Project mod_root does not exist.", 7000)
+            return False
+        apply_required_plugins(metadata)
+        project_tree.load_project(mod_root)
+        import_all_plugin_data(metadata, path, mod_root, metadata.get("plugin_data", {}))
+        window.current_project_file = path
+        window.current_project_type = PROJECT_TYPE_REFERENCE
+        window.statusBar().showMessage(f"Project opened: {path}", 3000)
+        return True
+
+    def read_zip_json(archive, name):
+        with archive.open(name) as handle:
+            return json.loads(handle.read().decode("utf-8"))
+
+    def open_embedded_project(path):
+        workspace = tempfile.mkdtemp(prefix="pdx_mod_studio_")
+        with zipfile.ZipFile(path, "r") as archive:
+            metadata = read_zip_json(archive, "project.json")
+            archive.extractall(workspace)
+        mod_root = os.path.join(workspace, metadata.get("mod_root", "mod"))
+        if not os.path.isdir(mod_root):
+            window.statusBar().showMessage("Project package does not contain mod/.", 7000)
+            return False
+        apply_required_plugins(metadata)
+        project_tree.load_project(mod_root)
+        plugin_data = {}
+        plugin_data_root = os.path.join(workspace, "plugin_data")
+        for plugin_id in metadata.get("required_plugins", []):
+            plugin_dir = os.path.join(plugin_data_root, plugin_id)
+            plugin_data[plugin_id] = {}
+            if os.path.isdir(plugin_dir):
+                for filename in os.listdir(plugin_dir):
+                    if filename.endswith(".json"):
+                        data_key = os.path.splitext(filename)[0]
+                        plugin_data[plugin_id][data_key] = read_json_file(os.path.join(plugin_dir, filename))
+        import_all_plugin_data(metadata, path, mod_root, plugin_data)
+        window.current_project_file = path
+        window.current_project_type = PROJECT_TYPE_EMBEDDED
+        window.embedded_project_workspace = workspace
+        window.source_mod_root = metadata.get("source_mod_root")
+        window.statusBar().showMessage(f"Project package opened: {path}", 3000)
+        return True
+
+    def open_project_file(path):
+        try:
+            if path.lower().endswith(".pdxpkg"):
+                return open_embedded_project(path)
+            return open_reference_project(path)
+        except Exception as error:
+            window.statusBar().showMessage(f"Failed to open project: {error}", 7000)
+            return False
+
+    action_open_project = window.findChild(object, "actionOpenProject")
+    if action_open_project:
+        action_open_project.triggered.connect(open_project_dialog)
+
+    action_save_project = window.findChild(object, "actionSaveProject")
+    if action_save_project:
+        action_save_project.triggered.connect(save_project)
+
+    action_save_project_as = window.findChild(object, "actionSaveProjectAs")
+    if action_save_project_as:
+        action_save_project_as.triggered.connect(save_project_as)
+
     core.api.register_message_handler(lambda text, timeout: window.statusBar().showMessage(text, timeout))
 
     # 2. 進捗 (ステータスバーにプログレスバーを追加)

@@ -342,6 +342,10 @@ class ProjectTreeDock:
         if not self.modElementsTree or not self.folderStack:
             return
         self.current_project_path = folder_path
+        if hasattr(self.parent_window, "current_project_file"):
+            self.parent_window.current_project_file = None
+            self.parent_window.current_project_type = "reference"
+            self.parent_window.source_mod_root = None
         core.api.set_project_path(folder_path)
         self.modElementsTree.clear()
         self._populate_tree(folder_path, self.modElementsTree.invisibleRootItem())
