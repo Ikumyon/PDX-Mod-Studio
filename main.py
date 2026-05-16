@@ -2,11 +2,16 @@ import sys
 import os
 from PySide6.QtWidgets import QApplication, QMenu, QVBoxLayout, QToolButton, QWidget, QTabBar, QFileDialog
 from PySide6.QtUiTools import QUiLoader
-from PySide6.QtCore import QFile, Qt, QSize
+from PySide6.QtCore import QFile, Qt, QSize, QCoreApplication
 import core.api
+from core.i18n import I18nManager
+tr = QCoreApplication.translate
 
 def main():
     app = QApplication(sys.argv)
+    
+    # 翻訳の初期化
+    I18nManager().init_translation(app)
     
     # Windowsのタスクバーアイコンを正しく表示するための設定
     try:
@@ -28,7 +33,7 @@ def main():
     ui_file_path = os.path.join(base_dir, "ui", "main_window.ui")
     ui_file = QFile(ui_file_path)
     if not ui_file.open(QFile.OpenModeFlag.ReadOnly):
-        print(f"UIファイルを開けませんでした: {ui_file_path}")
+        print(tr("Main", "UIファイルを開けませんでした: {path}").format(path=ui_file_path))
         sys.exit(-1)
         
     loader = QUiLoader()
@@ -36,7 +41,7 @@ def main():
     ui_file.close()
     
     if not window:
-        print(f"UIのロードに失敗しました: {loader.errorString()}")
+        print(tr("Main", "UIのロードに失敗しました: {error}").format(error=loader.errorString()))
         sys.exit(-1)
 
     # --- アプリケーションアイコンの設定 ---
@@ -203,7 +208,7 @@ def main():
         
         # メニューの構築
         menu = QMenu(view_selector)
-        current_editor_name = "テキストエディタ"
+        current_editor_name = tr("MainWindow", "テキストエディタ")
         
         # 1. 外部定義エディタ
         for editor in available_editors:
@@ -218,7 +223,7 @@ def main():
         menu.addSeparator()
         
         # 2. 標準テキストエディタ
-        script_action = menu.addAction("テキストエディタ")
+        script_action = menu.addAction(tr("MainWindow", "テキストエディタ"))
         script_action.setData(TEXT_EDITOR_ID)
         if current_editor_id == TEXT_EDITOR_ID:
             script_action.setCheckable(True)
@@ -453,8 +458,8 @@ def main():
         if file_path.startswith("untitled:"):
             project_path = core.api.get_project_path() or os.path.expanduser("~")
             save_path, _ = QFileDialog.getSaveFileName(
-                window, "名前を付けて保存", 
-                project_path, "Text Files (*.txt);;All Files (*)"
+                window, tr("MainWindow", "名前を付けて保存"), 
+                project_path, tr("MainWindow", "Text Files (*.txt);;All Files (*)")
             )
             if not save_path:
                 return
@@ -484,7 +489,7 @@ def main():
             controller = getattr(widget, "plugin_controller", None)
             if controller and hasattr(controller, "on_save_triggered"):
                 controller.on_save_triggered()
-            window.statusBar().showMessage(f"保存しました: {file_path}", 3000)
+            window.statusBar().showMessage(tr("MainWindow", "保存しました: {path}").format(path=file_path), 3000)
             widget._last_notified_content = content
             set_tab_dirty(current_idx, False)
             
@@ -492,7 +497,7 @@ def main():
             # エクスプローラーの同期など
             project_tree.update_open_editors(window.editorTabs)
         except Exception as e:
-            QMessageBox.critical(window, "保存エラー", f"ファイルを保存できませんでした: {e}")
+            QMessageBox.critical(window, tr("MainWindow", "保存エラー"), tr("MainWindow", "ファイルを保存できませんでした: {error}").format(error=e))
 
     def on_file_saved(saved_file_path):
         # 他のタブで同じファイルが開かれていればリロードする
@@ -559,7 +564,7 @@ def main():
             file_menu.insertSeparator(exit_action)
     else:
         # アクションが見つからない場合のフォールバック
-        save_action = QAction("保存", window)
+        save_action = QAction(tr("MainWindow", "保存"), window)
         save_action.setShortcut(QKeySequence.StandardKey.Save)
         save_action.triggered.connect(save_current_file)
         window.addAction(save_action)
@@ -630,7 +635,7 @@ def main():
         plugin_layout.setContentsMargins(10, 0, 10, 0)
         plugin_layout.setSpacing(5)
         
-        label = QLabel("プラグイン:")
+        label = QLabel(tr("MainWindow", "プラグイン:"))
         label.setStyleSheet("font-weight: bold; color: #888;")
         plugin_layout.addWidget(label)
         
@@ -661,7 +666,7 @@ def main():
         from core.utils import load_svg_icon
         settings_button = QToolButton()
         settings_button.setIcon(load_svg_icon(os.path.join(base_dir, "assets/icons/settings.svg"), "#ffffff"))
-        settings_button.setToolTip("プラグイン設定")
+        settings_button.setToolTip(tr("MainWindow", "プラグイン設定"))
         settings_button.setCursor(Qt.CursorShape.PointingHandCursor)
         plugin_layout.addWidget(settings_button)
 

@@ -1,0 +1,43 @@
+{
+  "schema_name": "hoi4_achievement",
+  "file_scope": "common/achievements",
+  "root_pattern": "named_block",
+  "document_properties": {
+    "unique_id": {
+      "type": "identifier",
+      "required": true
+    }
+  },
+  "fields": {
+    "possible": {
+      "type": "trigger_block",
+      "required": true
+    },
+    "happened": {
+      "type": "trigger_block",
+      "required": true
+    },
+    "ribbon": {
+      "type": "object",
+      "required": false,
+      "schema": "achievement_ribbon"
+    }
+  },
+  "sub_schemas": {
+    "achievement_ribbon": {
+      "fields": {
+        "frame": {
+          "type": "array",
+          "item_type": "integer",
+          "size": 3,
+          "required": false
+        },
+        "colors": {
+          "type": "array",
+          "item_type": "color_block",
+          "required": false
+        }
+      }
+    }
+  }
+}

@@ -1,4 +1,5 @@
 import os
+from core.i18n import tr
 
 _current_project_path = None
 _project_path_handlers = []

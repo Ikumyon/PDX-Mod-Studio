@@ -1,0 +1,9 @@
+{
+    "name": "実績",
+    "editor_id": "achievement_editor",
+    "path": "common/achievements",
+    "extension": ".txt",
+    "form": "achievement_editor.ui",
+    "logic": "achievement_editor.py",
+    "schema": "achievement_schema.json"
+}

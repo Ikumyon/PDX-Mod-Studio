@@ -2,7 +2,8 @@ import json
 import os
 
 import core.api
-from PySide6.QtCore import QFile, QFileSystemWatcher, QSize, Qt, QTimer
+from PySide6.QtCore import QFile, QFileSystemWatcher, QSize, Qt, QTimer, QCoreApplication
+tr = QCoreApplication.translate
 from PySide6.QtGui import QIcon
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtWidgets import (
@@ -59,12 +60,12 @@ class VariableSelectorDialog(QDialog):
     """フォーマット変数を選択して編集するためのダイアログ"""
     def __init__(self, parent, variables, current_text):
         super().__init__(parent)
-        self.setWindowTitle("変数を選択")
+        self.setWindowTitle(tr("VariableSelector", "変数を選択"))
         
         layout = QVBoxLayout(self)
         
         # 変数ボタンの配置
-        layout.addWidget(QLabel("利用可能な変数:"))
+        layout.addWidget(QLabel(tr("VariableSelector", "利用可能な変数:")))
         btn_layout = QHBoxLayout()
         for var in variables:
             btn = QPushButton(var)
@@ -77,12 +78,12 @@ class VariableSelectorDialog(QDialog):
         layout.addSpacing(10)
         
         # プレビュー兼編集エリア
-        layout.addWidget(QLabel("現在の形式:"))
+        layout.addWidget(QLabel(tr("VariableSelector", "現在の形式:")))
         self.edit = QLineEdit(current_text)
         layout.addWidget(self.edit)
         
         # 決定ボタン
-        self.ok_btn = QPushButton("決定")
+        self.ok_btn = QPushButton(tr("VariableSelector", "決定"))
         self.ok_btn.clicked.connect(self.accept)
         layout.addWidget(self.ok_btn)
 
@@ -199,7 +200,7 @@ def setup_settings_controls(widget, plugin, project_path):
     
     if browse_button:
         def on_browse():
-            path = QFileDialog.getExistingDirectory(widget, "Hearts of Iron IV 本体の場所を選択", game_path_edit.text())
+            path = QFileDialog.getExistingDirectory(widget, tr("HoI4Plugin", "Hearts of Iron IV 本体の場所を選択"), game_path_edit.text())
             if path:
                 game_path_edit.setText(path)
         browse_button.clicked.connect(on_browse)
@@ -301,7 +302,7 @@ def initialize(plugin):
     from plugins.hoi4.assistant import AssistantWidget
     core.api.register_assistant_widget_handler(lambda parent: {
         "widget": AssistantWidget(parent),
-        "name": "ツールボックス",
+        "name": tr("HoI4Plugin", "ツールボックス"),
         "collapsible": True
     })
     
@@ -460,7 +461,7 @@ def show_settings(plugin, parent, project_path):
 
     # ダイアログの作成
     dialog = QDialog(parent)
-    dialog.setWindowTitle("Hearts of Iron IV プラグイン設定")
+    dialog.setWindowTitle(tr("HoI4Plugin", "Hearts of Iron IV プラグイン設定"))
     layout = QVBoxLayout(dialog)
     layout.setContentsMargins(0, 0, 0, 0)
     layout.addWidget(container)

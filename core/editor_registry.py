@@ -3,6 +3,7 @@ import os
 
 from PySide6.QtCore import QFile
 from PySide6.QtUiTools import QUiLoader
+from core.i18n import tr
 
 
 class EditorDefinition:
@@ -124,6 +125,7 @@ class EditorRegistry:
                 "file_path": file_path,
                 "content": content,
                 "__file__": editor.py_path,
+                "tr": tr,
             }
             exec(py_code, namespace)
 
