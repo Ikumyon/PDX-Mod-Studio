@@ -10,12 +10,30 @@
                     "icon": "mail-checkmark-24-regular.svg",
                     "items": [
                         {
+                            "id": "create_decision",
                             "label": "＋ 新規ディシジョンを作成...",
                             "action": "open_untitled_tab",
                             "params": {
                                 "name": "New Category",
                                 "editor_id": "decision_editor",
                                 "content": "\nnew_category_id = {\n\t# ここに処理を記述\n}\n"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "id": "achievements",
+                    "label": "実績",
+                    "icon": "trophy-32.svg",
+                    "items": [
+                        {
+                            "id": "create_achievement",
+                            "label": "＋ 新規実績を作成...",
+                            "action": "open_untitled_tab",
+                            "params": {
+                                "name": "New Achievements",
+                                "editor_id": "achievement_editor",
+                                "content": "unique_id = \"NEW_ACHIEVEMENTS_ID\"\n\nnew_achievement = {\n\tpossible = {\n\t\t\n\t}\n\thappened = {\n\t\t\n\t}\n}\n"
                             }
                         }
                     ]
@@ -28,6 +46,7 @@
             "icon": "event.svg",
             "items": [
                 {
+                    "id": "create_event",
                     "label": "＋ 新規イベントを作成...",
                     "action": "open_untitled_tab",
                     "params": {

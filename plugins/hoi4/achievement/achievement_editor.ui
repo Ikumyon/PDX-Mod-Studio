@@ -81,7 +81,7 @@
         <x>0</x>
         <y>0</y>
         <width>398</width>
-        <height>757</height>
+        <height>789</height>
        </rect>
       </property>
       <layout class="QVBoxLayout" name="editorLayout">
@@ -180,6 +180,90 @@
             </item>
             <item>
              <widget class="QPushButton" name="descriptionLocPathBrowseButton">
+              <property name="text">
+               <string>参照</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="iconsGroup">
+         <property name="title">
+          <string>アイコン</string>
+         </property>
+         <layout class="QFormLayout" name="iconsFormLayout">
+          <item row="0" column="0">
+           <widget class="QLabel" name="completedIconLabel">
+            <property name="text">
+             <string>達成済み</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <layout class="QHBoxLayout" name="completedIconLayout">
+            <item>
+             <widget class="QLineEdit" name="completedIconPathEdit">
+              <property name="text">
+               <string/>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="completedIconBrowseButton">
+              <property name="text">
+               <string>参照</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="possibleIconLabel">
+            <property name="text">
+             <string>出現可能</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <layout class="QHBoxLayout" name="possibleIconLayout">
+            <item>
+             <widget class="QLineEdit" name="possibleIconPathEdit">
+              <property name="text">
+               <string/>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="possibleIconBrowseButton">
+              <property name="text">
+               <string>参照</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item row="2" column="0">
+           <widget class="QLabel" name="notEligibleIconLabel">
+            <property name="text">
+             <string>対象外</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="1">
+           <layout class="QHBoxLayout" name="notEligibleIconLayout">
+            <item>
+             <widget class="QLineEdit" name="notEligibleIconPathEdit">
+              <property name="text">
+               <string/>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="notEligibleIconBrowseButton">
               <property name="text">
                <string>参照</string>
               </property>
@@ -546,87 +630,10 @@
         </widget>
        </item>
        <item>
-        <widget class="QGroupBox" name="iconsGroup">
-         <property name="title">
-          <string>アイコン</string>
+        <widget class="QPushButton" name="btnToggleAdvancedDecision">
+         <property name="text">
+          <string>実績設定の表示を切り替え</string>
          </property>
-         <layout class="QFormLayout" name="iconsFormLayout">
-          <item row="0" column="0">
-           <widget class="QLabel" name="completedIconLabel">
-            <property name="text">
-             <string>達成済み</string>
-            </property>
-           </widget>
-          </item>
-          <item row="0" column="1">
-           <layout class="QHBoxLayout" name="completedIconLayout">
-            <item>
-             <widget class="QLineEdit" name="completedIconPathEdit">
-              <property name="text">
-               <string/>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QPushButton" name="completedIconBrowseButton">
-              <property name="text">
-               <string>参照</string>
-              </property>
-             </widget>
-            </item>
-           </layout>
-          </item>
-          <item row="1" column="0">
-           <widget class="QLabel" name="possibleIconLabel">
-            <property name="text">
-             <string>出現可能</string>
-            </property>
-           </widget>
-          </item>
-          <item row="1" column="1">
-           <layout class="QHBoxLayout" name="possibleIconLayout">
-            <item>
-             <widget class="QLineEdit" name="possibleIconPathEdit">
-              <property name="text">
-               <string/>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QPushButton" name="possibleIconBrowseButton">
-              <property name="text">
-               <string>参照</string>
-              </property>
-             </widget>
-            </item>
-           </layout>
-          </item>
-          <item row="2" column="0">
-           <widget class="QLabel" name="notEligibleIconLabel">
-            <property name="text">
-             <string>対象外</string>
-            </property>
-           </widget>
-          </item>
-          <item row="2" column="1">
-           <layout class="QHBoxLayout" name="notEligibleIconLayout">
-            <item>
-             <widget class="QLineEdit" name="notEligibleIconPathEdit">
-              <property name="text">
-               <string/>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QPushButton" name="notEligibleIconBrowseButton">
-              <property name="text">
-               <string>参照</string>
-              </property>
-             </widget>
-            </item>
-           </layout>
-          </item>
-         </layout>
         </widget>
        </item>
        <item>
