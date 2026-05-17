@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 import core.api
-from PySide6.QtCore import Qt, QTimer, QObject
+from PySide6.QtCore import QModelIndex, Qt, QTimer
 from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen, QPixmap, QTextOption
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -33,46 +33,48 @@ from plugins.hoi4.script_parser import (
     AssignmentNode,
     ObjectNode,
     ParsedEntity,
-    Parser,
     ScalarNode,
     SchemaEvaluator,
 )
+from plugins.hoi4.base_editor import (
+    BaseDocument,
+    BaseEditorController,
+    BaseParsedEntity,
+    BaseParser,
+    block_text,
+    find,
+    prop_bool,
+    prop_text,
+    scalar_text,
+    set_checked,
+    set_line,
+    set_plain,
+    set_spin,
+)
 
 @dataclass
-class Document:
+class Document(BaseDocument):
     categories: list['ParsedDecisionCategory'] = field(default_factory=list)
 
-class ParsedDecision:
+class ParsedDecision(BaseParsedEntity):
     def __init__(self, entity: ParsedEntity):
-        self.entity = entity
-        self.id = entity.id
-        self.node = entity.node
-        self.source_path = entity.source_path
+        super().__init__(entity)
 
-    def first(self, key: str):
-        return self.entity.first(key)
-
-class ParsedDecisionCategory:
+class ParsedDecisionCategory(BaseParsedEntity):
     def __init__(self, entity: ParsedEntity):
-        self.entity = entity
-        self.id = entity.id
-        self.node = entity.node
-        self.source_path = entity.source_path
+        super().__init__(entity)
         self.decisions: list[ParsedDecision] = []
 
-    def first(self, key: str):
-        return self.entity.first(key)
-
-class DecisionParser:
+class DecisionParser(BaseParser):
     def __init__(self, plugin=None):
         self.plugin = plugin
         base_dir = os.path.dirname(__file__)
-        with open(os.path.join(base_dir, "decision_schema.json"), "r", encoding="utf-8") as f:
-            self.dec_schema = json.load(f)
+        super().__init__(os.path.join(base_dir, "decision_schema.json"))
+        self.dec_schema = self.schema_data
         with open(os.path.join(base_dir, "decision_category_schema.json"), "r", encoding="utf-8") as f:
             self.cat_schema = json.load(f)
         
-        self.dec_evaluator = SchemaEvaluator(self.dec_schema)
+        self.dec_evaluator = self.evaluator
         self.cat_evaluator = SchemaEvaluator(self.cat_schema)
         self.cat_fields = set(self.cat_schema.get("fields", {}).keys())
         self.schema_rules = self._load_schema_rules(base_dir)
@@ -142,8 +144,7 @@ class DecisionParser:
         return self.get_schema_rule(path).get("role", "decision")
 
     def parse_document(self, path: str, content: str) -> Document:
-        parser = Parser(content)
-        ast, _, _ = parser.parse()
+        ast = self.parse_ast(content)
 
         if self.get_schema_role(path) == "category":
             return self._parse_category_document(ast, path)
@@ -304,16 +305,12 @@ def setup(widget, file_path, content):
     widget.set_params = controller.set_params
     controller.bind()
 
-class DecisionEditorController(QObject):
+class DecisionEditorController(BaseEditorController):
     def __init__(self, widget, file_path, content):
-        super().__init__()
-        self.widget = widget
-        self.file_path = file_path
-        self.widget.content = content
+        super().__init__(widget, file_path, content)
         self.categories: list[ParsedDecisionCategory] = []
         self.file_contents: dict[str, str] = {}
         self.selected_id = ""
-        self.updating = False
         self.parser = DecisionParser(self.get_hoi4_plugin() or object())
         
         self.pending_target_id = ""
@@ -333,19 +330,6 @@ class DecisionEditorController(QObject):
                 self.format_config = {}
         else:
             self.format_config = {}
-
-    def get_hoi4_plugin(self):
-        """Find the active HOI4 plugin instance from the editor context."""
-        plugin = getattr(self.widget, "active_plugin", None)
-        if plugin:
-            return plugin
-        plugin = core.api.get_active_plugin()
-        if plugin:
-            return plugin
-        try:
-            return self.widget.parent().parent().active_plugin
-        except Exception:
-            return None
 
     def get_plugin_settings(self):
         settings_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "settings.json")
@@ -739,10 +723,6 @@ class DecisionEditorController(QObject):
         QTimer.singleShot(0, self.refresh)
         self.set_detailed_mode(False)
 
-    def set_content(self, content):
-        self.widget.content = content
-        self.refresh()
-
     def apply_format(self, fmt, **kwargs):
         try:
             return fmt.format(**kwargs)
@@ -997,7 +977,12 @@ class DecisionEditorController(QObject):
 
     def set_params(self, params):
         target_id = params.get("target_id")
-        if target_id:
+        if target_id == "file_settings":
+            if self.tree_decisions:
+                self.tree_decisions.clearSelection()
+                self.tree_decisions.setCurrentIndex(QModelIndex())
+            self.load_selected_item()
+        elif target_id:
             self.jump_to_id(target_id)
 
     def jump_to_id(self, item_id):
@@ -1589,95 +1574,6 @@ class DecisionEditorController(QObject):
             filename = self.default_loc_filename()
         return filename
 
-    def _get_loc_text(self, widget):
-        if not widget:
-            return ""
-        if hasattr(widget, "toPlainText"):
-            return widget.toPlainText()
-        if hasattr(widget, "text"):
-            return widget.text()
-        return ""
-
-    def save_localisation(self, key, text, loc_file_widget=None):
-        if not key:
-            return
-
-        plugin = self.get_hoi4_plugin()
-        if not plugin or not hasattr(plugin, "localisation_registry"):
-            return
-
-        registry = plugin.localisation_registry
-        status, entry = registry.search_key_status(key)
-        if status == "exists_in_hoi4":
-            print(f"Skipping save for HOI4 internal key: {key}")
-            return
-
-        settings = self.get_plugin_settings()
-        lang = settings.get("display_language", "l_japanese")
-
-        if status in ("exists_in_mod", "duplicate") and entry:
-            save_path = entry["file"]
-            if os.path.exists(save_path):
-                registry.update_file(save_path, "mod")
-                status, entry = registry.search_key_status(key)
-                if status == "exists_in_hoi4":
-                    print(f"Skipping save for HOI4 internal key after refresh: {key}")
-                    return
-                if status in ("exists_in_mod", "duplicate") and entry:
-                    save_path = entry["file"]
-            else:
-                registry.remove_file_entries(save_path)
-                save_path = os.path.join(self.get_mod_root(), "localisation", self.selected_loc_filename(loc_file_widget))
-        else:
-            save_path = os.path.join(self.get_mod_root(), "localisation", self.selected_loc_filename(loc_file_widget))
-
-        save_empty_loc = settings.get("save_empty_localisation", False)
-        self._write_to_loc_file(save_path, key, text, lang, save_empty_loc)
-
-        try:
-            registry.update_file(save_path, "mod")
-            registry.set_ignore_path(save_path, True)
-        finally:
-            QTimer.singleShot(500, lambda: registry.set_ignore_path(save_path, False))
-
-    def _write_to_loc_file(self, path, key, text, lang, save_empty_loc=False):
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        header = f"{lang}:"
-        escaped_text = text.replace("\\", "\\\\").replace('"', '\\"')
-        new_line = f' {key}: "{escaped_text}"'
-
-        lines = []
-        if os.path.exists(path):
-            with open(path, "r", encoding="utf-8-sig") as f:
-                lines = f.readlines()
-
-        found_key_idx = -1
-        has_header = False
-        for i, line in enumerate(lines):
-            if line.strip().startswith(header):
-                has_header = True
-            stripped = line.strip()
-            if ":" in stripped and stripped.split(":", 1)[0] == key:
-                found_key_idx = i
-
-        if found_key_idx >= 0:
-            if not text.strip() and not save_empty_loc:
-                del lines[found_key_idx]
-            else:
-                lines[found_key_idx] = new_line + "\n"
-        else:
-            if not text.strip() and not save_empty_loc:
-                return
-            if not lines or not has_header:
-                if not lines:
-                    lines.append(header + "\n")
-                else:
-                    lines.insert(0, header + "\n")
-            lines.append(new_line + "\n")
-
-        with open(path, "w", encoding="utf-8-sig") as f:
-            f.writelines(lines)
-
     def on_save_triggered(self):
         data = self.get_current_data()
         if isinstance(data, ParsedDecisionCategory):
@@ -1751,38 +1647,12 @@ class DecisionEditorController(QObject):
                 return True
         return super().eventFilter(obj, event)
 
-    def on_text_focus_out(self, key, edit, event):
-        QPlainTextEdit.focusOutEvent(edit, event)
-        self.replace_property(key, edit.toPlainText())
-
     def connect_scalar(self, control, property_name):
         if not control: return
         if property_name in ("category_id", "decision_id"):
             control.editingFinished.connect(lambda: self.replace_item_id(control.text()))
         else:
-            control.editingFinished.connect(lambda: self.replace_property(property_name, control.text()))
-
-    def connect_text(self, control, property_name):
-        if control:
-            control.focusOutEvent = lambda e: self.on_text_focus_out(property_name, control, e)
-
-    def connect_spin(self, control, property_name):
-        if control:
-            control.valueChanged.connect(lambda val: self.replace_property(property_name, str(val) if val > 0 else ""))
-
-    def connect_bool(self, control, property_name):
-        if control:
-            def on_toggled(checked, name=property_name):
-                if self.updating:
-                    return
-                settings = self.get_plugin_settings()
-                val = "yes" if checked else ("no" if settings.get("explicit_no_export", False) else "")
-                self.replace_property(name, val)
-            control.toggled.connect(on_toggled)
-
-    def connect_combo(self, control, property_name):
-        if control:
-            control.currentIndexChanged.connect(lambda: self.replace_property(property_name, control.currentText()))
+            super().connect_scalar(control, property_name)
 
     def replace_item_id(self, new_id):
         if self.updating or not new_id: return
@@ -1976,69 +1846,3 @@ class DecisionEditorController(QObject):
         item = self.tree_decisions.currentItem()
         if not item: return None
         return item.data(0, Qt.ItemDataRole.UserRole)
-
-# ユーティリティ関数
-
-def find(widget, cls, name):
-    return widget.findChild(cls, name)
-
-def set_line(control, value):
-    if control:
-        was_blocked = control.blockSignals(True)
-        control.setText(value or "")
-        control.blockSignals(was_blocked)
-
-def set_plain(control, value):
-    if control:
-        was_blocked = control.blockSignals(True)
-        control.setPlainText(value or "")
-        control.blockSignals(was_blocked)
-
-def set_spin(control, value):
-    if control:
-        was_blocked = control.blockSignals(True)
-        try:
-            control.setValue(int(value or 0))
-        except Exception:
-            control.setValue(0)
-        control.blockSignals(was_blocked)
-
-def set_checked(control, value):
-    if control:
-        was_blocked = control.blockSignals(True)
-        control.setChecked(bool(value))
-        control.blockSignals(was_blocked)
-
-def prop_text(item: Any, name: str) -> str:
-    return scalar_text(item.first(name)) if item else ""
-
-def prop_bool(item: Any, name: str) -> bool:
-    assignment = item.first(name) if item else None
-    if not assignment or not isinstance(assignment.value, ScalarNode):
-        return False
-    if assignment.value.value_type == "bool":
-        return bool(assignment.value.value)
-    return str(assignment.value.raw).lower() in {"yes", "true"}
-
-def scalar_text(assignment: Optional[AssignmentNode]) -> str:
-    if not assignment or not isinstance(assignment.value, ScalarNode):
-        return ""
-    return str(assignment.value.value)
-
-def block_text(content: str, node: Optional[AssignmentNode], name: str) -> str:
-    if not node or not isinstance(node.value, ObjectNode): return ""
-    
-    target = None
-    for item in node.value.items:
-        if isinstance(item, AssignmentNode) and item.key == name:
-            target = item
-            break
-    
-    if not target: return ""
-    
-    val = target.value
-    if isinstance(val, ObjectNode):
-        inner = content[val.range.start_offset + 1 : val.range.end_offset - 1]
-        return inner.strip("\r\n\t ")
-    
-    return content[val.range.start_offset : val.range.end_offset]

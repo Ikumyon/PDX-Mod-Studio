@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Optional
 
 import core.api
 from PySide6.QtCore import QFile, Qt, QTimer
@@ -35,81 +35,63 @@ from plugins.hoi4.script_parser import (
     AssignmentNode,
     ObjectNode,
     ParsedEntity,
-    Parser,
     ScalarNode,
-    SchemaEvaluator,
+)
+from plugins.hoi4.base_editor import (
+    BaseDocument,
+    BaseEditorController,
+    BaseParsedEntity,
+    BaseParser,
+    block_text,
+    find,
+    prop_bool,
+    prop_text,
+    scalar_text,
+    set_checked,
+    set_combo,
+    set_line,
+    set_plain,
+    set_spin,
 )
 
-class ParsedEvent:
+class ParsedEvent(BaseParsedEntity):
     def __init__(self, entity: ParsedEntity):
-        self.entity = entity
-        self.id = entity.id
-        self.node = entity.node
-        self.source_path = entity.source_path
-        
+        super().__init__(entity)
         self.event_id = self.id
         self.key = "country_event"
         self.options: list[AssignmentNode] = []
 
-    def first(self, key: str):
-        return self.entity.first(key)
-
 @dataclass
-class Document:
+class Document(BaseDocument):
     events: list[ParsedEvent] = field(default_factory=list)
-    properties: dict = field(default_factory=dict)
-    ast: Any = None
 
-class EventParser:
+class EventParser(BaseParser):
+    document_class = Document
+    entity_class = ParsedEvent
+    collection_attr = "events"
+    project_subdir = "events"
+    progress_label = "Parsing events"
+
     def __init__(self, plugin=None):
         self.plugin = plugin
         base_dir = os.path.dirname(__file__)
-        with open(os.path.join(base_dir, "event_schema.json"), "r", encoding="utf-8") as f:
-            self.schema_data = json.load(f)
-        self.evaluator = SchemaEvaluator(self.schema_data)
-        self.schema = self.schema_data
+        super().__init__(os.path.join(base_dir, "event_schema.json"))
 
-    def parse_document(self, path: str, content: str) -> Document:
-        parser = Parser(content)
-        ast, _, _ = parser.parse()
-        
-        doc = Document()
-        doc.ast = ast
-        
+    def extract_document_properties(self, doc: Document, ast, path: str) -> None:
         for item in getattr(ast, "items", []):
             if isinstance(item, AssignmentNode) and item.key == "add_namespace":
                 if isinstance(item.value, ScalarNode):
                     doc.properties["add_namespace"] = str(item.value.value)
-        
-        entities = self.evaluator.evaluate(ast, path)
-        for e in entities:
-            pe = ParsedEvent(e)
-            if isinstance(e.node, AssignmentNode):
-                pe.key = e.node.key
-            for opt_node in e.properties.get("option", []):
-                pe.options.append(opt_node)
-            doc.events.append(pe)
-            
-        return doc
+
+    def wrap_entity(self, entity: ParsedEntity) -> ParsedEvent:
+        event = ParsedEvent(entity)
+        if isinstance(entity.node, AssignmentNode):
+            event.key = entity.node.key
+        event.options.extend(entity.properties.get("option", []))
+        return event
 
     def parse_project(self, project_path: str) -> list[ParsedEvent]:
-        events = []
-        events_dir = os.path.join(project_path, "events")
-        if not os.path.exists(events_dir):
-            return events
-
-        for root, _, files in os.walk(events_dir):
-            for file in files:
-                if file.endswith(".txt"):
-                    file_path = os.path.join(root, file)
-                    try:
-                        with open(file_path, "r", encoding="utf-8") as f:
-                            content = f.read()
-                        doc = self.parse_document(file_path, content)
-                        events.extend(getattr(doc, "events", []))
-                    except Exception as e:
-                        print(f"Failed to parse event file {file_path}: {e}")
-        return events
+        return super().parse_project(project_path)
 
     def serialize_events(self, events: list[ParsedEvent]) -> list[dict]:
         return [{"id": e.event_id, "source_path": e.source_path, "key": getattr(e, "key", "country_event")} for e in events]
@@ -117,7 +99,12 @@ class EventParser:
     def deserialize_events(self, data: list[dict]) -> list[ParsedEvent]:
         events = []
         for item in data:
-            entity = ParsedEntity(item["id"], None, item["source_path"])
+            entity = ParsedEntity(
+                schema_name="hoi4_event",
+                id=item["id"],
+                parent_id=None,
+                source_path=item["source_path"]
+            )
             pe = ParsedEvent(entity)
             pe.key = item.get("key", "country_event")
             events.append(pe)
@@ -271,14 +258,11 @@ def setup(widget, file_path, content):
     core.api.notify_editor_ready(widget)
 
 
-class EventEditorController:
+class EventEditorController(BaseEditorController):
     def __init__(self, widget, file_path, content):
-        self.widget = widget
-        self.file_path = file_path
-        self.widget.content = content
+        super().__init__(widget, file_path, content)
         self.events: list[ParsedEvent] = []
         self.selected_event_id = ""
-        self.updating = False
         self.localization_updates = {} # ローカライズの更新内容を保持
         self.parser = EventParser(self.get_hoi4_plugin() or object())
         self.loc_timer = QTimer()
@@ -548,24 +532,37 @@ class EventEditorController:
         QPlainTextEdit.focusOutEvent(edit, event)
         self.replace_property(key, edit.toPlainText())
 
-    def set_content(self, content):
-        self.widget.content = content
-        self.refresh()
-
     def set_params(self, params):
         """外部から渡されたパラメータ（target_id等）を処理する"""
         if not params:
             return
             
         target_id = params.get("target_id")
-        if target_id and self.event_list:
+        if target_id == "file_settings":
+            self.selected_event_id = "__file_settings__"
+            self.select_event_tree_item("file_settings")
+        elif target_id and self.event_list:
             # リスト内を検索して選択を切り替える
-            for i in range(self.event_list.topLevelItemCount()):
-                item = self.event_list.topLevelItem(i)
+            self.selected_event_id = target_id
+            self.select_event_tree_item(target_id)
+
+    def select_event_tree_item(self, target_id):
+        if not self.event_list:
+            return
+        for i in range(self.event_list.topLevelItemCount()):
+            top_item = self.event_list.topLevelItem(i)
+            data = top_item.data(0, Qt.ItemDataRole.UserRole)
+            if target_id == "file_settings" and data == "file_settings":
+                self.event_list.setCurrentItem(top_item)
+                self.event_list.scrollToItem(top_item)
+                return
+            for j in range(top_item.childCount()):
+                item = top_item.child(j)
                 event = item.data(0, Qt.ItemDataRole.UserRole)
                 if event and event.event_id == target_id:
                     self.event_list.setCurrentItem(item)
-                    break
+                    self.event_list.scrollToItem(item)
+                    return
 
     def refresh(self):
         # EventParser に解析を依頼
@@ -583,8 +580,16 @@ class EventEditorController:
                     plugin = self.get_hoi4_plugin()
                     registry = getattr(plugin, "localisation_registry", None) if plugin else None
                     
+                    namespace = getattr(doc, "properties", {}).get("add_namespace", "")
+                    root_label = namespace or os.path.basename(self.file_path)
                     self.event_list.clear()
+                    root_item = QTreeWidgetItem(self.event_list)
+                    root_item.setText(0, root_label)
+                    root_item.setData(0, Qt.ItemDataRole.UserRole, "file_settings")
+                    root_item.setExpanded(True)
                     target_item = None
+                    if selected == "__file_settings__":
+                        target_item = root_item
                     for event in self.events:
                         # title プロパティの値をキーとして翻訳を検索
                         title_assign = event.first("title")
@@ -594,7 +599,7 @@ class EventEditorController:
                         
                         label = event_name if event_name else (event.event_id or f"{event.key}@{event.node.range.start.line}")
                         
-                        item = QTreeWidgetItem(self.event_list)
+                        item = QTreeWidgetItem(root_item)
                         item.setText(0, label)
                         item.setData(0, Qt.ItemDataRole.UserRole, event)
                         if event.event_id == selected:
@@ -602,8 +607,10 @@ class EventEditorController:
                     
                     if target_item:
                         self.event_list.setCurrentItem(target_item)
-                    elif self.event_list.topLevelItemCount() > 0:
-                        self.event_list.setCurrentItem(self.event_list.topLevelItem(0))
+                    elif root_item.childCount() > 0:
+                        self.event_list.setCurrentItem(root_item.child(0))
+                    else:
+                        self.event_list.setCurrentItem(root_item)
                         
                     self.load_event(self.current_event())
                 finally:
@@ -668,7 +675,11 @@ class EventEditorController:
             return
         self.updating = True
         try:
-            self.load_event(self.current_event())
+            if current and current.data(0, Qt.ItemDataRole.UserRole) == "file_settings":
+                self.selected_event_id = "__file_settings__"
+                self.load_event(None)
+            else:
+                self.load_event(self.current_event())
         finally:
             self.updating = False
 
@@ -678,10 +689,14 @@ class EventEditorController:
         item = self.event_list.currentItem()
         if not item:
             return None
-        return item.data(0, Qt.ItemDataRole.UserRole)
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        return data if isinstance(data, ParsedEvent) else None
 
     def load_event(self, event: Optional[ParsedEvent]):
-        self.selected_event_id = event.event_id if event else ""
+        if event:
+            self.selected_event_id = event.event_id
+        elif self.selected_event_id != "__file_settings__":
+            self.selected_event_id = ""
         set_line(self.event_id, prop_text(event, "id"))
         set_combo(self.event_type, event.key if event else "")
         set_line(self.title_key, prop_text(event, "title"))
@@ -1299,18 +1314,6 @@ class EventEditorController:
             
         self.refresh()
 
-    def connect_scalar(self, control, property_name):
-        if control:
-            control.editingFinished.connect(lambda name=property_name, edit=control: self.replace_property(name, edit.text()))
-
-    def connect_bool(self, control, property_name):
-        if control:
-            def on_toggled(checked, name=property_name):
-                settings = self.get_plugin_settings()
-                val = "yes" if checked else ("no" if settings.get("explicit_no_export", False) else "")
-                self.replace_property(name, val)
-            control.toggled.connect(on_toggled)
-
     def replace_property(self, property_name, replacement):
         if self.updating:
             return
@@ -1555,15 +1558,6 @@ class EventEditorController:
         elif hasattr(widget, "setText"):
             set_line(widget, text)
 
-    def _get_loc_text(self, widget):
-        if not widget:
-            return ""
-        if hasattr(widget, "toPlainText"):
-            return widget.toPlainText()
-        if hasattr(widget, "text"):
-            return widget.text()
-        return ""
-
     def default_loc_filename(self):
         settings = self.get_plugin_settings()
         fmt = settings.get("event_loc_file_format", "{namespace}_{lang}.yml")
@@ -1585,123 +1579,8 @@ class EventEditorController:
             filename = self.default_loc_filename()
         return filename
 
-    def save_localisation(self, key, text, loc_file_widget=None):
-        """ローカライズ情報を適切なファイルに保存する"""
-        if not key: return
-        
-        plugin = self.get_hoi4_plugin()
-        if not plugin or not hasattr(plugin, "localisation_registry"):
-            return
-        registry = plugin.localisation_registry
-        status, entry = registry.search_key_status(key)
-        
-        if status == "exists_in_hoi4":
-            print(f"Skipping save for HOI4 internal key: {key}")
-            return
-
-        settings = self.get_plugin_settings()
-        lang = settings.get("display_language", "l_japanese")
-        
-        # 保存先ファイルの決定
-        if status == "exists_in_mod" or status == "duplicate":
-            save_path = entry["file"]
-            
-            # 衝突チェック: 保存前にファイルの最終更新日時を確認
-            if os.path.exists(save_path):
-                registry.update_file(save_path, "mod")
-                status, entry = registry.search_key_status(key)
-                if status == "exists_in_hoi4":
-                    print(f"Skipping save for HOI4 internal key after refresh: {key}")
-                    return
-                if status == "exists_in_mod" or status == "duplicate":
-                    save_path = entry["file"]
-            else:
-                registry.remove_file_entries(save_path)
-                status, entry = registry.search_key_status(key)
-                if status == "exists_in_hoi4":
-                    print(f"Skipping save for HOI4 internal key after file deletion: {key}")
-                    return
-                mod_root = self.get_mod_root()
-                filename = self.selected_loc_filename(loc_file_widget)
-                save_path = os.path.join(mod_root, "localisation", filename)
-        else:
-            # 新規作成: 既定のファイル名を使用
-            mod_root = self.get_mod_root()
-            filename = self.selected_loc_filename(loc_file_widget)
-            save_path = os.path.join(mod_root, "localisation", filename)
-
-        # 最終確認メッセージ（必要に応じて）
-        # core.api.set_progress(f"Saving localisation: {key}...", 50)
-
-        save_empty_loc = settings.get("save_empty_localisation", False)
-        self._write_to_loc_file(save_path, key, text, lang, save_empty_loc)
-        
-        # 監視イベントによる二重更新を防ぎつつ、レジストリを即時更新
-        try:
-            registry.update_file(save_path, "mod")
-            registry.set_ignore_path(save_path, True)
-        finally:
-            # 少し遅らせて解除（OSのファイル書き込み完了待ち）
-            QTimer.singleShot(500, lambda: registry.set_ignore_path(save_path, False))
-        
-        # UIを再更新
+    def after_save_localisation(self, key, save_path: str):
         self.update_localisation_ui()
-
-    def _write_to_loc_file(self, path, key, text, lang, save_empty_loc=False):
-        """ファイルへの書き込み実処理"""
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        header = f"{lang}:"
-        escaped_text = text.replace("\\", "\\\\").replace('"', '\\"')
-        new_line = f' {key}: "{escaped_text}"'
-        
-        lines = []
-        if os.path.exists(path):
-            with open(path, 'r', encoding='utf-8-sig') as f:
-                lines = f.readlines()
-        
-        # ヘッダーチェックと更新
-        found_key_idx = -1
-        has_header = False
-        for i, line in enumerate(lines):
-            if line.strip().startswith(header):
-                has_header = True
-            stripped = line.strip()
-            if ":" in stripped and stripped.split(":", 1)[0] == key:
-                found_key_idx = i
-                
-        if found_key_idx >= 0:
-            if not text.strip() and not save_empty_loc:
-                # 設定により削除
-                del lines[found_key_idx]
-            else:
-                # 既存キーの置換
-                lines[found_key_idx] = new_line + "\n"
-        else:
-            if not text.strip() and not save_empty_loc:
-                # そもそも書かない
-                return
-                
-            # 追記
-            if not lines or not has_header:
-                if not lines: lines.append(header + "\n")
-                else: lines.insert(0, header + "\n")
-            lines.append(new_line + "\n")
-
-        with open(path, 'w', encoding='utf-8-sig') as f:
-            f.writelines(lines)
-
-    def get_hoi4_plugin(self):
-        """本体からHOI4プラグインのインスタンスを探す"""
-        plugin = getattr(self.widget, "active_plugin", None)
-        if plugin:
-            return plugin
-        plugin = core.api.get_active_plugin()
-        if plugin:
-            return plugin
-        try:
-            return self.widget.parent().parent().active_plugin
-        except Exception:
-            return None
 
     def on_save_triggered(self):
         """本体からの保存要求時に呼ばれることを想定"""
@@ -1716,107 +1595,3 @@ class EventEditorController:
 
 def first(values):
     return values[0] if values else None
-
-
-def find(widget, cls, name):
-    return widget.findChild(cls, name)
-
-
-def scalar_text(assignment: Optional[AssignmentNode]) -> str:
-    if not assignment or not isinstance(assignment.value, ScalarNode):
-        return ""
-    return str(assignment.value.value)
-
-
-def prop_text(event: Optional[ParsedEvent], name: str) -> str:
-    return scalar_text(event.first(name)) if event else ""
-
-
-def prop_bool(event: Optional[ParsedEvent], name: str) -> bool:
-    assignment = event.first(name) if event else None
-    if not assignment or not isinstance(assignment.value, ScalarNode):
-        return False
-    return bool(assignment.value.value)
-
-
-def block_text(content: str, node: Optional[AssignmentNode], name: str) -> str:
-    if not node:
-        return ""
-    
-    target_node = node
-    if name:
-        # 子要素から検索
-        target_node = None
-        if isinstance(node.value, ObjectNode):
-            for item in node.value.items:
-                if isinstance(item, AssignmentNode) and item.key == name:
-                    target_node = item
-                    break
-    
-    if not target_node:
-        return ""
-
-    val = target_node.value if hasattr(target_node, "value") else target_node
-    if isinstance(val, ObjectNode):
-        # {} の中身だけを返す
-        inner = content[val.range.start_offset + 1 : val.range.end_offset - 1]
-        lines = inner.strip("\r\n").splitlines()
-        if not lines: return ""
-        
-        # 共通の最小インデント（タブまたはスペース）を削除
-        import re
-        margin = None
-        for line in lines:
-            if not line.strip(): continue
-            match = re.match(r"^(\s*)", line)
-            indent = match.group(1)
-            if margin is None or len(indent) < len(margin):
-                margin = indent
-        
-        if margin:
-            lines = [line[len(margin):] if line.startswith(margin) else line for line in lines]
-        
-        return "\n".join(lines).strip("\r\n\t ")
-    
-    return content[val.range.start_offset : val.range.end_offset]
-
-
-def set_line(control, value):
-    if control:
-        was_blocked = control.blockSignals(True)
-        control.setText(value or "")
-        control.blockSignals(was_blocked)
-
-
-def set_plain(control, value):
-    if control:
-        was_blocked = control.blockSignals(True)
-        control.setPlainText(value or "")
-        control.blockSignals(was_blocked)
-
-
-def set_spin(control, value):
-    if control:
-        was_blocked = control.blockSignals(True)
-        try:
-            control.setValue(int(value or 0))
-        except Exception:
-            control.setValue(0)
-        control.blockSignals(was_blocked)
-
-
-def set_checked(control, value):
-    if control:
-        was_blocked = control.blockSignals(True)
-        control.setChecked(bool(value))
-        control.blockSignals(was_blocked)
-
-
-def set_combo(control, value):
-    if not control:
-        return
-    was_blocked = control.blockSignals(True)
-    index = control.findText(value, Qt.MatchFlag.MatchExactly)
-    if index >= 0:
-        control.setCurrentIndex(index)
-    control.blockSignals(was_blocked)
