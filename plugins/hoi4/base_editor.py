@@ -262,15 +262,39 @@ class BaseEditorController(QObject):
             return result
 
     def localised_text(self, key: str, fallback: str = "") -> str:
+        return self.localisation_value(key, fallback=fallback, allow_empty=False)
+
+    def localisation_registry(self):
+        plugin = self.get_hoi4_plugin()
+        return getattr(plugin, "localisation_registry", None) if plugin else None
+
+    def localisation_lookup(self, key: str):
+        registry = self.localisation_registry()
+        if not registry:
+            return "not_found", None
+        return registry.search_key_status(key)
+
+    def localisation_entry(self, key: str):
+        _, entry = self.localisation_lookup(key)
+        return entry
+
+    def localisation_value(self, key: str, fallback: str = "", allow_empty: bool = True, strip: bool = False) -> str:
         if not key:
             return fallback
-        plugin = self.get_hoi4_plugin()
-        registry = getattr(plugin, "localisation_registry", None) if plugin else None
-        if registry:
-            _, entry = registry.search_key_status(key)
-            if entry and entry.get("value"):
-                return entry.get("value")
+        _, entry = self.localisation_lookup(key)
+        if entry and "value" in entry:
+            value = entry.get("value") or ""
+            if value or allow_empty:
+                return value.strip() if strip else value
         return fallback
+
+    def localisation_file_errors(self, entry) -> list:
+        if not entry:
+            return []
+        registry = self.localisation_registry()
+        if not registry:
+            return []
+        return registry.get_file_errors(entry.get("file", ""))
 
     def update_preview_delayed(self) -> None:
         if not hasattr(self, "preview_timer"):

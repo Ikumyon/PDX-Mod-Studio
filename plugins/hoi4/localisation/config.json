@@ -1,9 +1,12 @@
 {
     "name": "ローカリゼーション",
+    "editor_id": "localisation_editor",
     "path": "localisation",
     "extension": ".yml",
     "icon": "i18n.svg",
     "document_type": "localisation_file",
+    "form": "localisation_editor.ui",
+    "logic": "localisation_editor.py",
     "languages": [
         {"id": "l_english", "name": "English"},
         {"id": "l_japanese", "name": "日本語"},

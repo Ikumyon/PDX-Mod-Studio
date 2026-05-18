@@ -805,9 +805,6 @@ class DecisionEditorController(BaseEditorController):
             self.file_contents = { self.file_path: self.widget.content }
             
             # ローカライズレジストリを取得
-            plugin = self.get_hoi4_plugin()
-            registry = getattr(plugin, "localisation_registry", None) if plugin else None
-            
             if self.tree_decisions:
                 was_blocked = self.tree_decisions.blockSignals(True)
                 self.tree_decisions.setUpdatesEnabled(False)
@@ -820,10 +817,10 @@ class DecisionEditorController(BaseEditorController):
                     
                     if old_structure == new_structure and self.tree_decisions.topLevelItemCount() > 0:
                         # 構造が同じならデータだけ更新（差分更新）
-                        self._update_tree_data(registry)
+                        self._update_tree_data()
                     else:
                         # 構造が変わった場合は再構築しつつ展開状態を維持
-                        self._rebuild_tree(registry)
+                        self._rebuild_tree()
                     
                     # 選択を復元
                     if selected_item_data:
@@ -864,26 +861,22 @@ class DecisionEditorController(BaseEditorController):
             structure.append((cat.id, dec_ids))
         return tuple(structure)
 
-    def _update_tree_data(self, registry):
+    def _update_tree_data(self):
         for i in range(self.tree_decisions.topLevelItemCount()):
             cat_item = self.tree_decisions.topLevelItem(i)
             cat = self.categories[i]
             cat_item.setData(0, Qt.ItemDataRole.UserRole, cat)
             
-            status, entry = registry.search_key_status(cat.id) if registry else ("not_found", None)
-            cat_name = entry.get("value") if entry else None
-            cat_item.setText(0, cat_name if cat_name else cat.id)
+            cat_item.setText(0, self.localised_text(cat.id, cat.id))
             
             for j in range(cat_item.childCount()):
                 dec_item = cat_item.child(j)
                 dec = cat.decisions[j]
                 dec_item.setData(0, Qt.ItemDataRole.UserRole, dec)
                 
-                status, entry = registry.search_key_status(dec.id) if registry else ("not_found", None)
-                dec_name = entry.get("value") if entry else None
-                dec_item.setText(0, dec_name if dec_name else dec.id)
+                dec_item.setText(0, self.localised_text(dec.id, dec.id))
 
-    def _rebuild_tree(self, registry):
+    def _rebuild_tree(self):
         expanded_cat_ids = set()
         for i in range(self.tree_decisions.topLevelItemCount()):
             cat_item = self.tree_decisions.topLevelItem(i)
@@ -896,9 +889,7 @@ class DecisionEditorController(BaseEditorController):
         self.tree_decisions.clear()
         
         for cat in self.categories:
-            status, entry = registry.search_key_status(cat.id) if registry else ("not_found", None)
-            cat_name = entry.get("value") if entry else None
-            cat_label = cat_name if cat_name else cat.id
+            cat_label = self.localised_text(cat.id, cat.id)
             
             cat_item = QTreeWidgetItem(self.tree_decisions)
             cat_item.setText(0, cat_label)
@@ -908,9 +899,7 @@ class DecisionEditorController(BaseEditorController):
                 cat_item.setExpanded(True)
             
             for dec in cat.decisions:
-                status, entry = registry.search_key_status(dec.id) if registry else ("not_found", None)
-                dec_name = entry.get("value") if entry else None
-                dec_label = dec_name if dec_name else dec.id
+                dec_label = self.localised_text(dec.id, dec.id)
                 
                 dec_item = QTreeWidgetItem(cat_item)
                 dec_item.setText(0, dec_label)
@@ -1000,9 +989,6 @@ class DecisionEditorController(BaseEditorController):
         content = self.get_item_content(source_path)
         
         # ローカライズレジストリを取得
-        plugin = self.get_hoi4_plugin()
-        registry = getattr(plugin, "localisation_registry", None) if plugin else None
-        
         if isinstance(data, ParsedDecisionCategory):
             if self.stacked_editor: self.stacked_editor.setCurrentWidget(self.page_category)
             if self.label_editor_title: self.label_editor_title.setText("カテゴリ編集")
@@ -1020,8 +1006,8 @@ class DecisionEditorController(BaseEditorController):
             
             # ローカライズ表示名 (カテゴリも原則 ID がキー)
             name_key = data.id
-            status, entry = registry.search_key_status(name_key) if registry else ("not_found", None)
-            set_line(self.edit_category_localisation, entry.get("value") if entry else "")
+            status, entry = self.localisation_lookup(name_key)
+            set_line(self.edit_category_localisation, self.localisation_value(name_key, "", allow_empty=True))
             
             # 翻訳元ファイルを表示
             if entry and self.edit_category_loc_file:
@@ -1031,8 +1017,8 @@ class DecisionEditorController(BaseEditorController):
             
             # 説明のローカライズ表示 (常に ID_desc)
             desc_key = data.id + "_desc"
-            status, entry = registry.search_key_status(desc_key) if registry else ("not_found", None)
-            set_plain(self.text_category_desc_localisation, entry.get("value") if entry else "")
+            status, entry = self.localisation_lookup(desc_key)
+            set_plain(self.text_category_desc_localisation, self.localisation_value(desc_key, "", allow_empty=True))
             if entry and self.edit_category_desc_loc_file:
                 source_file = entry.get("file", "")
                 self.edit_category_desc_loc_file.setText(os.path.basename(source_file))
@@ -1052,8 +1038,8 @@ class DecisionEditorController(BaseEditorController):
             
             # ローカライズ表示名 (ディシジョンは常に ID がキー)
             name_key = data.id
-            status, entry = registry.search_key_status(name_key) if registry else ("not_found", None)
-            set_line(self.edit_decision_localisation, entry.get("value") if entry else "")
+            status, entry = self.localisation_lookup(name_key)
+            set_line(self.edit_decision_localisation, self.localisation_value(name_key, "", allow_empty=True))
             
             # 翻訳元ファイルを表示
             if entry and self.edit_decision_loc_file:
@@ -1063,8 +1049,8 @@ class DecisionEditorController(BaseEditorController):
             
             # 説明のローカライズ表示 (ディシジョンは常に ID_desc)
             desc_key = data.id + "_desc"
-            status, entry = registry.search_key_status(desc_key) if registry else ("not_found", None)
-            set_plain(self.text_decision_desc_localisation, entry.get("value") if entry else "")
+            status, entry = self.localisation_lookup(desc_key)
+            set_plain(self.text_decision_desc_localisation, self.localisation_value(desc_key, "", allow_empty=True))
             if entry and self.edit_decision_desc_loc_file:
                 source_file = entry.get("file", "")
                 self.edit_decision_desc_loc_file.setText(os.path.basename(source_file))
@@ -1074,8 +1060,8 @@ class DecisionEditorController(BaseEditorController):
             cc_key = prop_text(data, "custom_cost_text")
             set_line(self.edit_custom_cost_key, cc_key)
             if cc_key:
-                status, entry = registry.search_key_status(cc_key) if registry else ("not_found", None)
-                set_plain(self.text_custom_cost_localisation, entry.get("value") if entry else "")
+                status, entry = self.localisation_lookup(cc_key)
+                set_plain(self.text_custom_cost_localisation, self.localisation_value(cc_key, "", allow_empty=True))
                 if entry and self.edit_custom_cost_loc_file:
                     source_file = entry.get("file", "")
                     self.edit_custom_cost_loc_file.setText(os.path.basename(source_file))

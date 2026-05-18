@@ -813,14 +813,9 @@ class EventEditorController(BaseEditorController):
             title_val = self.title_text.text().strip()
             
         if not title_val:
-            plugin = self.get_hoi4_plugin()
-            registry = getattr(plugin, "localisation_registry", None) if plugin else None
             title_assign = event.first("title")
             title_key = scalar_text(title_assign)
-            if registry and title_key:
-                status, entry = registry.search_key_status(title_key)
-                if entry and entry.get("value"):
-                    title_val = entry["value"].strip()
+            title_val = self.localisation_value(title_key, "", allow_empty=False, strip=True)
                     
         if title_val:
             return title_val
@@ -1395,10 +1390,8 @@ class EventEditorController(BaseEditorController):
             opt_browse_btn = find(option_widget, QPushButton, "optionLocFileBrowseButton")
             if opt_loc_edit:
                 opt_loc_edit.setReadOnly(True)
-                plugin = self.get_hoi4_plugin()
-                if plugin and hasattr(plugin, "localisation_registry") and name_key:
-                    registry = plugin.localisation_registry
-                    status, entry = registry.search_key_status(name_key)
+                if name_key:
+                    status, entry = self.localisation_lookup(name_key)
                     if status in ("exists_in_mod", "duplicate") and entry:
                         opt_loc_edit.setText(os.path.basename(entry["file"]))
                         opt_loc_edit.setStyleSheet("color: #4caf50;")
@@ -2044,20 +2037,14 @@ class EventEditorController(BaseEditorController):
 
     def update_localisation_ui(self):
         """現在の入力キーに基づいてUI（本文の編集可否や保存先）を更新する"""
-        plugin = self.get_hoi4_plugin()
-        if not plugin or not hasattr(plugin, "localisation_registry"):
-            return
-            
-        registry = plugin.localisation_registry
-        
         # タイトルキーの判定
         title_key = self.widget.findChild(QLineEdit, "titleKeyEdit").text()
-        status, entry = registry.search_key_status(title_key)
+        status, entry = self.localisation_lookup(title_key)
         self._apply_loc_status("title", status, entry)
         
         # 説明キーの判定
         desc_key = self.widget.findChild(QLineEdit, "descKeyEdit").text()
-        status, entry = registry.search_key_status(desc_key)
+        status, entry = self.localisation_lookup(desc_key)
         self._apply_loc_status("desc", status, entry)
 
     def _apply_loc_status(self, prefix, status, entry):
@@ -2068,12 +2055,7 @@ class EventEditorController(BaseEditorController):
         if not text_edit or not path_label: return
         
         # ファイル自体のエラーを取得
-        errors = []
-        if entry:
-            plugin = self.get_hoi4_plugin()
-            if plugin and hasattr(plugin, "localisation_registry"):
-                registry = plugin.localisation_registry
-                errors = registry.get_file_errors(entry["file"])
+        errors = self.localisation_file_errors(entry)
         
         error_msg = ""
         if errors:
@@ -2182,13 +2164,7 @@ class EventEditorController(BaseEditorController):
             if isinstance(opt.value, ObjectNode):
                 name_assign = first([item for item in opt.value.items if isinstance(item, AssignmentNode) and item.key == "name"])
                 name_key = scalar_text(name_assign)
-                plugin = self.get_hoi4_plugin()
-                registry = getattr(plugin, "localisation_registry", None) if plugin else None
-                status, entry = registry.search_key_status(name_key) if registry and name_key else ("not_found", None)
-                if entry and entry.get("value"):
-                    opt_name = entry["value"]
-                elif name_key:
-                    opt_name = name_key
+                opt_name = self.localisation_value(name_key, name_key, allow_empty=False)
             option_names[id(opt)] = opt_name
         return option_names
 
@@ -2282,15 +2258,9 @@ class EventEditorController(BaseEditorController):
             if title_val:
                 return title_val
 
-        plugin = self.get_hoi4_plugin()
-        registry = getattr(plugin, "localisation_registry", None) if plugin else None
         title_assign = event.first("title")
         title_key = scalar_text(title_assign)
-        if registry and title_key:
-            status, entry = registry.search_key_status(title_key)
-            if entry and entry.get("value"):
-                return entry["value"]
-        return title_key or ""
+        return self.localisation_value(title_key, title_key or "", allow_empty=False)
 
     def update_full_event_chain(self, current_event: ParsedEvent):
         current_id = current_event.event_id

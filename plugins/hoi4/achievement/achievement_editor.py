@@ -294,6 +294,29 @@ class AchievementEditorController(BaseEditorController):
             **self.format_values()
         )
 
+    def localisation_file_display_path(self, entry) -> str:
+        if not entry:
+            return ""
+        abs_path = entry.get("file") or ""
+        project_path = core.api.get_project_path()
+        loc_root = os.path.normpath(os.path.join(project_path, "localisation")) if project_path else ""
+        if abs_path and loc_root:
+            try:
+                return os.path.relpath(abs_path, loc_root).replace("\\", "/")
+            except ValueError:
+                return abs_path
+        return abs_path
+
+    def achievement_title_entry(self, achievement_id: str):
+        return self.localisation_entry(f"{achievement_id}_NAME") or self.localisation_entry(achievement_id)
+
+    def achievement_desc_entry(self, achievement_id: str):
+        return self.localisation_entry(f"{achievement_id}_DESC") or self.localisation_entry(f"{achievement_id}_desc")
+
+    def achievement_title_from_registry(self, achievement_id: str, fallback: str = "") -> str:
+        entry = self.achievement_title_entry(achievement_id)
+        return entry.get("value") if entry and entry.get("value") else fallback
+
     def load_file_settings(self):
         self.updating = True
         try:
@@ -316,25 +339,13 @@ class AchievementEditorController(BaseEditorController):
                 self.file_unique_id.setText(unique_id)
             
             # ローカリゼーション (実績グループ名 と 保存先)
-            plugin = self.get_hoi4_plugin()
-            registry = getattr(plugin, "localisation_registry", None) if plugin else None
-            
             group_name = ""
             loc_path = ""
-            if registry and unique_id:
-                _, entry = registry.search_key_status(unique_id)
+            if unique_id:
+                entry = self.localisation_entry(unique_id)
                 if entry:
                     group_name = entry.get("value") or ""
-                    abs_path = entry.get("file") or ""
-                    project_path = core.api.get_project_path()
-                    loc_root = os.path.normpath(os.path.join(project_path, "localisation")) if project_path else ""
-                    if abs_path and loc_root:
-                        try:
-                            loc_path = os.path.relpath(abs_path, loc_root).replace("\\", "/")
-                        except ValueError:
-                            loc_path = abs_path
-                    else:
-                        loc_path = abs_path
+                    loc_path = self.localisation_file_display_path(entry)
             
             if self.file_group_name:
                 self.file_group_name.setText(group_name)
@@ -633,25 +644,13 @@ class AchievementEditorController(BaseEditorController):
             self.achievements = doc.achievements
             
             # ローカライズレジストリの取得
-            plugin = self.get_hoi4_plugin()
-            registry = getattr(plugin, "localisation_registry", None) if plugin else None
-            
             labels = []
             for ach in self.achievements:
-                entry = None
-                if registry:
-                    _, entry = registry.search_key_status(f"{ach.id}_NAME")
-                    if not entry:
-                        _, entry = registry.search_key_status(ach.id)
-                labels.append(entry.get("value") if entry else ach.id)
+                labels.append(self.achievement_title_from_registry(ach.id, ach.id))
 
             # ファイル設定（親ノード）のラベル決定
             unique_id = doc.properties.get("unique_id", "")
-            root_label = unique_id
-            if registry and unique_id:
-                _, root_entry = registry.search_key_status(unique_id)
-                if root_entry and root_entry.get("value"):
-                    root_label = root_entry.get("value")
+            root_label = self.localised_text(unique_id, unique_id)
             
             if not root_label:
                 root_label = os.path.basename(self.file_path)
@@ -713,60 +712,22 @@ class AchievementEditorController(BaseEditorController):
         try:
             if self.stacked_editor:
                 self.stacked_editor.setCurrentIndex(1)
-            # ローカライズレジストリの取得
-            plugin = self.get_hoi4_plugin()
-            registry = getattr(plugin, "localisation_registry", None) if plugin else None
-
             # 基本情報
             if self.achievement_id:
                 self.achievement_id.setText(ach.id)
+
+            title_entry = self.achievement_title_entry(ach.id)
+            if self.achievement_title:
+                self.achievement_title.setText(title_entry.get("value") if title_entry else "")
+            if self.title_loc_path:
+                self.title_loc_path.setText(self.localisation_file_display_path(title_entry) or self.default_loc_filename())
+
+            desc_entry = self.achievement_desc_entry(ach.id)
+            if self.achievement_desc:
+                self.achievement_desc.setPlainText(desc_entry.get("value") if desc_entry else "")
+            if self.desc_loc_path:
+                self.desc_loc_path.setText(self.localisation_file_display_path(desc_entry) or self.default_loc_filename())
             
-            if registry:
-                project_path = core.api.get_project_path()
-                loc_root = os.path.normpath(os.path.join(project_path, "localisation")) if project_path else ""
-
-                # タイトル: ID_NAME を優先
-                _, title_entry = registry.search_key_status(f"{ach.id}_NAME")
-                if not title_entry:
-                    _, title_entry = registry.search_key_status(ach.id)
-                
-                if self.achievement_title:
-                    self.achievement_title.setText(title_entry.get("value") if title_entry else "")
-                
-                if self.title_loc_path:
-                    abs_path = title_entry.get("file") if title_entry else ""
-                    if abs_path and loc_root:
-                        try:
-                            rel_path = os.path.relpath(abs_path, loc_root).replace("\\", "/")
-                            self.title_loc_path.setText(rel_path)
-                        except ValueError:
-                            self.title_loc_path.setText(abs_path)
-                    else:
-                        if not abs_path:
-                            abs_path = self.default_loc_filename()
-                        self.title_loc_path.setText(abs_path)
-                
-                # 説明: ID_DESC を優先
-                _, desc_entry = registry.search_key_status(f"{ach.id}_DESC")
-                if not desc_entry:
-                    _, desc_entry = registry.search_key_status(f"{ach.id}_desc")
-                
-                if self.achievement_desc:
-                    self.achievement_desc.setPlainText(desc_entry.get("value") if desc_entry else "")
-                
-                if self.desc_loc_path:
-                    abs_path = desc_entry.get("file") if desc_entry else ""
-                    if abs_path and loc_root:
-                        try:
-                            rel_path = os.path.relpath(abs_path, loc_root).replace("\\", "/")
-                            self.desc_loc_path.setText(rel_path)
-                        except ValueError:
-                            self.desc_loc_path.setText(abs_path)
-                    else:
-                        if not abs_path:
-                            abs_path = self.default_loc_filename()
-                        self.desc_loc_path.setText(abs_path)
-
             # 条件
             if self.possible_cond:
                 self.possible_cond.setPlainText(self.get_block_content(ach, "possible"))
@@ -1141,3 +1102,4 @@ class AchievementEditorController(BaseEditorController):
                 action.trigger()
                 return True
         return super().eventFilter(obj, event)
+
