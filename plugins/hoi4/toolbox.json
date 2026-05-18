@@ -39,6 +39,24 @@
                             }
                         }
                     ]
+                },
+                {
+                    "id": "national_focus",
+                    "label": "国家方針",
+                    "icon": "mail-checkmark-24-regular.svg",
+                    "items": [
+                        {
+                            "id": "create_focus",
+                            "label": "＋ 新規国家方針ツリーを作成...",
+                            "action": "open_untitled_tab",
+                            "pinnable": true,
+                            "params": {
+                                "name": "New Focus Tree",
+                                "editor_id": "focus_editor",
+                                "content": "\nfocus_tree = {\n\tid = new_focus_tree\n\tcountry = {\n\t\tfactor = 0\n\t\tmodifier = {\n\t\t\tadd = 20\n\t\t\ttag = HKB\n\t\t}\n\t}\n\tdefault = no\n\tfocus = {\n\t\tid = new_focus\n\t\ticon = GFX_goal_generic_political_reform\n\t\tx = 5\n\t\ty = 0\n\t\tcost = 8\n\t\tcompletion_reward = {\n\t\t\tadd_political_power = 10\n\t\t}\n\t}\n}\n"
+                            }
+                        }
+                    ]
                 }
             ]
         },

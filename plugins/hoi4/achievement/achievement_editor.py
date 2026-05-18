@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import html
-import json
 import os
 import re
 from dataclasses import dataclass, field
 
 import core.api
-from PySide6.QtCore import QEvent, Qt, QTimer
+from PySide6.QtCore import QEvent, Qt
 from PySide6.QtGui import QAction, QBrush, QColor, QFont, QPainter, QPen, QPixmap, QTextOption
 from PySide6.QtWidgets import (
     QColorDialog,
@@ -21,6 +20,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QMenu,
+    QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QSpinBox,
@@ -119,6 +119,7 @@ def setup(widget, file_path, content):
     # core側から呼ばれるインターフェース
     widget.toPlainText = lambda: widget.content
     widget.setPlainText = controller.set_content
+    widget.set_params = controller.set_params
     widget.setParams = controller.set_params
     
     # 初期解析とバインド
@@ -166,7 +167,7 @@ class AchievementEditorController(BaseEditorController):
         self.file_loc_path_browse_button = self.widget.findChild(QPushButton, "fileLocPathBrowseButton")
         
         if self.file_loc_path_browse_button:
-            self.file_loc_path_browse_button.clicked.connect(self.browse_loc_file)
+            self.file_loc_path_browse_button.clicked.connect(lambda: self.browse_loc_file(self.file_loc_path))
         
         # 実績基本情報
         self.achievement_id = self.widget.findChild(QLineEdit, "achievementIdEdit")
@@ -214,6 +215,28 @@ class AchievementEditorController(BaseEditorController):
             self.btn_toggle_advanced.setMenu(self.advanced_menu)
             self.advanced_menu.installEventFilter(self)
 
+        # 操作ボタンのバインド
+        self.add_achievement_button = self.widget.findChild(QPushButton, "addAchievementButton")
+        if self.add_achievement_button:
+            self.add_achievement_button.clicked.connect(self.add_achievement)
+            
+        self.duplicate_achievement_button = self.widget.findChild(QPushButton, "duplicateAchievementButton")
+        if self.duplicate_achievement_button:
+            self.duplicate_achievement_button.clicked.connect(self.duplicate_achievement)
+            
+        self.remove_achievement_button = self.widget.findChild(QPushButton, "removeAchievementButton")
+        if self.remove_achievement_button:
+            self.remove_achievement_button.clicked.connect(self.delete_achievement)
+
+        # 翻訳先参照ボタンのバインド
+        self.title_loc_path_browse_button = self.widget.findChild(QPushButton, "titleLocPathBrowseButton")
+        if self.title_loc_path_browse_button:
+            self.title_loc_path_browse_button.clicked.connect(lambda: self.browse_loc_file_for_widget(self.title_loc_path))
+            
+        self.desc_loc_path_browse_button = self.widget.findChild(QPushButton, "descriptionLocPathBrowseButton")
+        if self.desc_loc_path_browse_button:
+            self.desc_loc_path_browse_button.clicked.connect(lambda: self.browse_loc_file_for_widget(self.desc_loc_path))
+
         # リスト選択イベント
         if self.achievement_list:
             self.achievement_list.currentRowChanged.connect(self.on_selection_changed)
@@ -227,26 +250,49 @@ class AchievementEditorController(BaseEditorController):
         # ローカリゼーション更新の監視
         core.api.register_loc_changed_handler(self.refresh)
 
-    def browse_loc_file(self):
-        if not self.file_loc_path:
-            return
-        project_path = core.api.get_project_path()
-        loc_dir = os.path.join(project_path, "localisation") if project_path else ""
-        file_path, _ = QFileDialog.getOpenFileName(
-            self.widget,
-            "ローカリゼーションファイルの選択",
-            loc_dir,
-            "YAML Files (*.yml)"
+
+
+    def format_values(self, **kwargs) -> dict:
+        settings = self.get_plugin_settings()
+        lang = settings.get("display_language", "l_japanese")
+        display_lang = lang or ""
+        if display_lang.startswith("l_"):
+            display_lang = display_lang[2:]
+            
+        file_stem = os.path.splitext(os.path.basename(self.file_path))[0]
+        
+        doc = self.parser.parse_document(self.file_path, self.widget.content)
+        unique_id = doc.properties.get("unique_id", "")
+        
+        ach = self.current_achievement()
+        ach_id = ach.id if ach else ""
+        
+        res = {
+            "lang": display_lang,
+            "file": file_stem,
+            "unique_id": unique_id,
+            "id": ach_id,
+        }
+        
+        # もし number が渡された場合、a-z も自動設定する
+        if "number" in kwargs:
+            num = kwargs["number"]
+            res["a-z"] = chr(ord('a') + num - 1) if 0 <= num - 1 < 26 else str(num)
+            
+        res.update(kwargs)
+        return res
+
+    def default_loc_filename(self) -> str:
+        settings = self.get_plugin_settings()
+        if self.file_loc_path and self.file_loc_path.text().strip():
+            return self.file_loc_path.text().strip()
+
+        fmt = settings.get("achievement_loc_file_format", "{lang}/achievements_l_{lang}.yml") or "{lang}/achievements_l_{lang}.yml"
+        
+        return self.apply_format(
+            fmt,
+            **self.format_values()
         )
-        if file_path:
-            if loc_dir:
-                try:
-                    rel_path = os.path.relpath(file_path, loc_dir).replace("\\", "/")
-                    self.file_loc_path.setText(rel_path)
-                except ValueError:
-                    self.file_loc_path.setText(file_path)
-            else:
-                self.file_loc_path.setText(file_path)
 
     def load_file_settings(self):
         self.updating = True
@@ -258,6 +304,14 @@ class AchievementEditorController(BaseEditorController):
             
             # 生の unique_id
             unique_id = doc.properties.get("unique_id", "")
+            if not unique_id:
+                # 設定からフォーマットを取得して自動生成
+                settings = self.get_plugin_settings()
+                uniq_fmt = settings.get("achievement_unique_id_format", "{file}_{number}")
+                unique_id = self.apply_format(
+                    uniq_fmt,
+                    **self.format_values(number=1)
+                )
             if self.file_unique_id:
                 self.file_unique_id.setText(unique_id)
             
@@ -285,6 +339,8 @@ class AchievementEditorController(BaseEditorController):
             if self.file_group_name:
                 self.file_group_name.setText(group_name)
             if self.file_loc_path:
+                if not loc_path:
+                    loc_path = self.default_loc_filename()
                 self.file_loc_path.setText(loc_path)
         finally:
             self.updating = False
@@ -550,6 +606,27 @@ class AchievementEditorController(BaseEditorController):
                     break
 
     def refresh(self):
+        # 新規作成テンプレート（NEW_ACHIEVEMENTS_ID / new_achievement）の自動置換
+        if 'NEW_ACHIEVEMENTS_ID' in self.widget.content:
+            settings = self.get_plugin_settings()
+            
+            # 1. ユニークIDの生成
+            uniq_fmt = settings.get("achievement_unique_id_format", "{file}_{number}")
+            new_unique_id = self.apply_format(uniq_fmt, **self.format_values(number=1))
+            
+            # 2. 実績IDの生成
+            id_fmt = settings.get("achievement_id_format", "{unique_id}_{number}")
+            new_ach_id = self.apply_format(id_fmt, **self.format_values(unique_id=new_unique_id, number=1))
+            
+            # 置換を実行
+            updated_content = self.widget.content
+            updated_content = updated_content.replace('unique_id = "NEW_ACHIEVEMENTS_ID"', f'unique_id = {new_unique_id}')
+            updated_content = updated_content.replace('unique_id = NEW_ACHIEVEMENTS_ID', f'unique_id = {new_unique_id}')
+            updated_content = updated_content.replace('new_achievement = {', f'{new_ach_id} = {{')
+            
+            self.widget.content = updated_content
+            self.widget.is_dirty = True
+
         self.updating = True
         try:
             doc = self.parser.parse_document(self.file_path, self.widget.content)
@@ -598,7 +675,19 @@ class AchievementEditorController(BaseEditorController):
                 
                 root_item.setExpanded(True)
 
-            self.set_current_achievement_index(-2)
+            target_idx = -2
+            target_id = getattr(self, "target_achievement_id", None)
+            if target_id:
+                if target_id == "file_settings":
+                    target_idx = -2
+                else:
+                    for i, ach in enumerate(self.achievements):
+                        if ach.id == target_id:
+                            target_idx = i
+                            break
+                self.target_achievement_id = None
+            
+            self.set_current_achievement_index(target_idx)
         finally:
             self.updating = False
         
@@ -653,6 +742,8 @@ class AchievementEditorController(BaseEditorController):
                         except ValueError:
                             self.title_loc_path.setText(abs_path)
                     else:
+                        if not abs_path:
+                            abs_path = self.default_loc_filename()
                         self.title_loc_path.setText(abs_path)
                 
                 # 説明: ID_DESC を優先
@@ -672,6 +763,8 @@ class AchievementEditorController(BaseEditorController):
                         except ValueError:
                             self.desc_loc_path.setText(abs_path)
                     else:
+                        if not abs_path:
+                            abs_path = self.default_loc_filename()
                         self.desc_loc_path.setText(abs_path)
 
             # 条件
@@ -721,13 +814,6 @@ class AchievementEditorController(BaseEditorController):
             end = node.value.close_range.start_offset if node.value.close_range else node.value.range.end_offset
             return self.widget.content[start:end].strip()
         return ""
-
-    def update_preview_delayed(self):
-        if not hasattr(self, "preview_timer"):
-            self.preview_timer = QTimer()
-            self.preview_timer.setSingleShot(True)
-            self.preview_timer.timeout.connect(self.update_preview)
-        self.preview_timer.start(150)
 
     def update_preview(self):
         if self.updating or not hasattr(self, "preview_scene"):
@@ -929,17 +1015,6 @@ class AchievementEditorController(BaseEditorController):
                 return text
         return self.localised_text(f"{achievement.id}_DESC", self.localised_text(f"{achievement.id}_desc", ""))
 
-    def localised_text(self, key, fallback=""):
-        if not key:
-            return fallback
-        plugin = self.get_hoi4_plugin()
-        registry = getattr(plugin, "localisation_registry", None) if plugin else None
-        if registry:
-            _, entry = registry.search_key_status(key)
-            if entry and entry.get("value"):
-                return entry.get("value")
-        return fallback
-
     def icon_path_for_preview(self, index):
         for widget in (self.completed_icon, self.possible_icon, self.not_eligible_icon):
             path = self.resolve_preview_path(widget.text().strip() if widget else "")
@@ -992,6 +1067,71 @@ class AchievementEditorController(BaseEditorController):
             widgets["r"].setValue(color.red())
             widgets["g"].setValue(color.green())
             widgets["b"].setValue(color.blue())
+
+    def add_achievement(self):
+        text = self.widget.content
+        settings = self.get_plugin_settings()
+        id_fmt = settings.get("achievement_id_format", "{unique_id}_{number}")
+        
+        counter = 1
+        new_id = ""
+        while True:
+            new_id = self.apply_format(
+                id_fmt,
+                **self.format_values(number=counter)
+            )
+            if not any(ach.id == new_id for ach in self.achievements):
+                break
+            counter += 1
+            if counter > 9999: break
+        
+        template = f"\n\n{new_id} = {{\n\tpossible = {{\n\t\talways = yes\n\t}}\n\thappened = {{\n\t}}\n}}"
+        self.set_content(text.rstrip() + template)
+        self.target_achievement_id = new_id
+        self.refresh()
+
+    def duplicate_achievement(self):
+        idx = self.current_achievement_index()
+        if idx < 0: return
+        ach = self.achievements[idx]
+        
+        text = self.widget.content
+        ach_text = text[ach.node.range.start_offset:ach.node.range.end_offset]
+        
+        old_id = ach.id
+        new_id = old_id + "_copy"
+        
+        counter = 2
+        while any(a.id == new_id for a in self.achievements):
+            new_id = f"{old_id}_copy{counter}"
+            counter += 1
+        
+        ach_text = ach_text.replace(old_id, new_id, 1)
+        
+        self.set_content(text.rstrip() + "\n\n" + ach_text)
+        self.target_achievement_id = new_id
+        self.refresh()
+
+    def delete_achievement(self):
+        idx = self.current_achievement_index()
+        if idx < 0: return
+        ach = self.achievements[idx]
+        
+        res = QMessageBox.question(self.widget, "確認", f"{ach.id} を削除しますか？")
+        if res != QMessageBox.StandardButton.Yes:
+            return
+        
+        text = self.widget.content
+        start = ach.node.range.start_offset
+        end = ach.node.range.end_offset
+        
+        while start > 0 and text[start-1] in " \t":
+            start -= 1
+        if start > 0 and text[start-1] == "\n":
+            start -= 1
+            
+        self.set_content(text[:start] + text[end:])
+        self.refresh()
 
     def eventFilter(self, obj, event):
         # メニューのアイテムをクリックしたときに閉じないようにする処理

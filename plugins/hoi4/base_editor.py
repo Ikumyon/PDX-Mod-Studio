@@ -9,7 +9,12 @@ from typing import Any, Optional
 
 import core.api
 from PySide6.QtCore import QObject, Qt, QTimer
-from PySide6.QtWidgets import QPlainTextEdit
+from PySide6.QtWidgets import (
+    QFileDialog,
+    QInputDialog,
+    QMessageBox,
+    QPlainTextEdit,
+)
 
 from plugins.hoi4.script_parser import (
     AssignmentNode,
@@ -140,6 +145,7 @@ class BaseEditorController(QObject):
 
     ELEMENT_ID = ""
     DEFAULT_FORMAT_FILE = ""
+    PREVIEW_UPDATE_DELAY_MS = 150
 
     def __init__(self, widget, file_path: str, content: str):
         super().__init__()
@@ -210,8 +216,68 @@ class BaseEditorController(QObject):
             return path
         return os.path.dirname(self.file_path)
 
+    def plugin_root_dir(self) -> str:
+        module = sys.modules[self.__class__.__module__]
+        module_file = getattr(module, "__file__", "")
+        module_dir = os.path.dirname(module_file)
+        if os.path.basename(module_dir) in {"achievement", "decisions", "events", "localisation"}:
+            return os.path.dirname(module_dir)
+        return module_dir
+
     def get_plugin_settings(self):
+        settings_path = os.path.join(self.plugin_root_dir(), "settings.json")
+        try:
+            if os.path.exists(settings_path):
+                with open(settings_path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+        except Exception:
+            pass
         return {}
+
+    def get_item_content(self, path: str) -> str:
+        if not path or path == self.file_path:
+            return self.widget.content
+
+        cache = getattr(self, "file_contents", None)
+        if cache is not None and path in cache:
+            return cache[path]
+
+        try:
+            with open(path, "r", encoding="utf-8", errors="replace") as f:
+                content = f.read()
+        except Exception:
+            return ""
+
+        if cache is not None:
+            cache[path] = content
+        return content
+
+    def apply_format(self, fmt: str, **kwargs) -> str:
+        try:
+            return fmt.format(**kwargs)
+        except Exception:
+            result = fmt
+            for key, value in kwargs.items():
+                result = result.replace(f"{{{key}}}", str(value))
+            return result
+
+    def localised_text(self, key: str, fallback: str = "") -> str:
+        if not key:
+            return fallback
+        plugin = self.get_hoi4_plugin()
+        registry = getattr(plugin, "localisation_registry", None) if plugin else None
+        if registry:
+            _, entry = registry.search_key_status(key)
+            if entry and entry.get("value"):
+                return entry.get("value")
+        return fallback
+
+    def update_preview_delayed(self) -> None:
+        if not hasattr(self, "preview_timer"):
+            self.preview_timer = QTimer()
+            self.preview_timer.setSingleShot(True)
+            self.preview_timer.timeout.connect(self.update_preview)
+        self.preview_timer.start(self.PREVIEW_UPDATE_DELAY_MS)
 
     def set_content(self, content: str) -> None:
         self.widget.content = content
@@ -328,6 +394,50 @@ class BaseEditorController(QObject):
                     return entry["file"]
 
         return self.selected_loc_path(loc_file_widget)
+
+    def browse_loc_file(self, target_widget) -> None:
+        if not target_widget:
+            return
+        
+        project_path = core.api.get_project_path()
+        if not project_path:
+            return
+            
+        loc_dir = os.path.normpath(os.path.join(project_path, "localisation"))
+        os.makedirs(loc_dir, exist_ok=True)
+        
+        loc_files = []
+        for root, _, files in os.walk(loc_dir):
+            for f in files:
+                if f.lower().endswith(".yml"):
+                    rel = os.path.relpath(os.path.join(root, f), loc_dir).replace("\\", "/")
+                    loc_files.append(rel)
+                    
+        if loc_files:
+            file, ok = QInputDialog.getItem(
+                self.widget,
+                "ファイル選択",
+                "翻訳先ファイルを選択してください:",
+                loc_files,
+                0,
+                False
+            )
+            if ok and file:
+                target_widget.setText(file)
+                return
+                
+        file_path, _ = QFileDialog.getOpenFileName(
+            self.widget,
+            "ローカリゼーションファイルの選択",
+            loc_dir,
+            "YAML Files (*.yml)"
+        )
+        if file_path:
+            try:
+                rel_path = os.path.relpath(file_path, loc_dir).replace("\\", "/")
+                target_widget.setText(rel_path)
+            except ValueError:
+                target_widget.setText(file_path)
 
     def refresh_localisation_registry(self, registry, save_path: str) -> None:
         set_ignore_path = getattr(registry, "set_ignore_path", None)

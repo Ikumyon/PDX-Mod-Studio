@@ -45,7 +45,6 @@ from plugins.hoi4.base_editor import (
     find,
     prop_bool,
     prop_text,
-    scalar_text,
     set_checked,
     set_line,
     set_plain,
@@ -303,11 +302,13 @@ def setup(widget, file_path, content):
     widget.toPlainText = lambda: widget.content
     widget.setPlainText = controller.set_content
     widget.set_params = controller.set_params
+    widget.setParams = controller.set_params
     controller.bind()
 
 class DecisionEditorController(BaseEditorController):
     ELEMENT_ID = "decisions"
     DEFAULT_FORMAT_FILE = "decision_format.json"
+    PREVIEW_UPDATE_DELAY_MS = 200
 
     def __init__(self, widget, file_path, content):
         super().__init__(widget, file_path, content)
@@ -320,31 +321,6 @@ class DecisionEditorController(BaseEditorController):
         self.project_categories_cache = None
         self.is_detailed_mode = False
         self.system_widgets = []
-
-    def get_plugin_settings(self):
-        settings_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "settings.json")
-        try:
-            if os.path.exists(settings_path):
-                with open(settings_path, 'r', encoding='utf-8') as f:
-                    return json.load(f)
-        except Exception:
-            pass
-        return {}
-
-    def get_item_content(self, path):
-        if not path or path == self.file_path:
-            return self.widget.content
-        if path in self.file_contents:
-            return self.file_contents[path]
-        
-        # ファイルから読み込む
-        try:
-            with open(path, "r", encoding="utf-8", errors="replace") as f:
-                content = f.read()
-                self.file_contents[path] = content
-                return content
-        except Exception:
-            return ""
 
     def bind(self):
         # ウィジェットの取得
@@ -712,15 +688,6 @@ class DecisionEditorController(BaseEditorController):
         # 初期ロードを遅延実行（タブを先に表示させるため）
         QTimer.singleShot(0, self.refresh)
         self.set_detailed_mode(False)
-
-    def apply_format(self, fmt, **kwargs):
-        try:
-            return fmt.format(**kwargs)
-        except Exception:
-            result = fmt
-            for key, value in kwargs.items():
-                result = result.replace(f"{{{key}}}", str(value))
-            return result
 
     def format_values(self, category=None, decision_id="", number=1, lang=None):
         if lang is None:
@@ -1198,17 +1165,6 @@ class DecisionEditorController(BaseEditorController):
         data = self.get_current_data()
         return data.id if isinstance(data, ParsedDecision) else ""
 
-    def localised_text(self, key, fallback=""):
-        if not key:
-            return fallback
-        plugin = self.get_hoi4_plugin()
-        registry = getattr(plugin, "localisation_registry", None) if plugin else None
-        if registry:
-            status, entry = registry.search_key_status(key)
-            if entry and entry.get("value"):
-                return entry["value"]
-        return fallback or key
-
     def category_title_for_preview(self, category):
         data = self.get_current_data()
         if isinstance(data, ParsedDecisionCategory) and data.id == category.id:
@@ -1344,13 +1300,6 @@ class DecisionEditorController(BaseEditorController):
             self.add_preview_text(row, self.decision_cost_for_preview(decision), 413, 5, 42, 9, "#ffcf25", True)
 
         self.add_preview_pixmap(row, self.asset_path("mail_checkmark.png"), 462, 4, 34, 30)
-
-    def update_preview_delayed(self):
-        if not hasattr(self, "preview_timer"):
-            self.preview_timer = QTimer()
-            self.preview_timer.setSingleShot(True)
-            self.preview_timer.timeout.connect(self.update_preview)
-        self.preview_timer.start(200) # 200ms 待機
 
     def update_preview(self):
         if self.updating:
@@ -1501,32 +1450,7 @@ class DecisionEditorController(BaseEditorController):
         self.widget.content = text[:start] + text[end:]
         self.refresh()
             
-    def browse_loc_file(self, target_edit):
-        if not target_edit: return
-        project_path = core.api.get_project_path()
-        if not project_path: return
-        
-        loc_dir = os.path.join(project_path, "localisation")
-        if not os.path.exists(loc_dir): return
-        
-        # ymlファイルを再帰的に検索
-        loc_files = []
-        for root, dirs, files in os.walk(loc_dir):
-            for f in files:
-                if f.endswith(".yml"):
-                    # 相対パスを取得
-                    rel = os.path.relpath(os.path.join(root, f), loc_dir)
-                    loc_files.append(rel)
-        
-        if not loc_files:
-            QMessageBox.information(self.widget, "情報", "ローカライズファイルが見つかりません。")
-            return
-            
-        from PySide6.QtWidgets import QInputDialog
-        file, ok = QInputDialog.getItem(self.widget, "ファイル選択", "翻訳先ファイルを選択してください:", loc_files, 0, False)
-        if ok and file:
-            target_edit.setText(file)
-            # 必要に応じてここで保存ロジック（registryへの登録等）を呼ぶ
+
 
     def browse_icon(self, target_edit):
         if not target_edit: return
@@ -1535,9 +1459,6 @@ class DecisionEditorController(BaseEditorController):
         val, ok = QInputDialog.getText(self.widget, "アイコン選択", "アイコンまたはスプライトIDを入力してください:", text=target_edit.text())
         if ok:
             target_edit.setText(val)
-
-    def get_mod_root(self):
-        return core.api.get_project_path() or os.path.dirname(self.file_path)
 
     def default_loc_filename(self):
         settings = self.get_plugin_settings()
@@ -1556,12 +1477,6 @@ class DecisionEditorController(BaseEditorController):
             fmt,
             **self.format_values(category=category, decision_id=decision_id, number=1, lang=lang),
         )
-        return filename
-
-    def selected_loc_filename(self, widget):
-        filename = widget.text().strip() if widget and hasattr(widget, "text") else ""
-        if not filename or not filename.lower().endswith(".yml"):
-            filename = self.default_loc_filename()
         return filename
 
     def on_save_triggered(self):

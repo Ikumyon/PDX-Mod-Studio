@@ -1,0 +1,24 @@
+{
+  "focus_tree": {
+    "key_order": [
+      "id",
+      "country",
+      "default",
+      "continuous_focus_position"
+    ]
+  },
+  "focus": {
+    "key_order": [
+      "id",
+      "icon",
+      "",
+      "x",
+      "y",
+      "cost",
+      "",
+      "prerequisite",
+      "",
+      "completion_reward"
+    ]
+  }
+}

@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import json
 import os
 from dataclasses import dataclass, field
 from typing import Optional
 
 import core.api
-from PySide6.QtCore import QFile, Qt, QTimer, QRectF, QPointF, QLineF
+from PySide6.QtCore import QFile, Qt, QTimer, QRectF, QPointF
 from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen, QPixmap, QPainterPath, QPolygonF, QFontMetrics
 from PySide6.QtSvgWidgets import QGraphicsSvgItem
 from PySide6.QtUiTools import QUiLoader
@@ -20,7 +19,6 @@ from PySide6.QtWidgets import (
     QGraphicsTextItem,
     QGraphicsView,
     QLineEdit,
-    QListWidget,
     QPlainTextEdit,
     QPushButton,
     QRadioButton,
@@ -29,13 +27,11 @@ from PySide6.QtWidgets import (
     QSplitter,
     QTreeWidget,
     QTreeWidgetItem,
-    QTabWidget,
     QToolButton,
     QGraphicsObject,
     QGraphicsPathItem,
     QGraphicsPolygonItem,
     QGraphicsItem,
-    QStyleOptionGraphicsItem,
 )
 
 from plugins.hoi4.script_parser import (
@@ -483,6 +479,7 @@ def setup(widget, file_path, content):
     widget.plugin_controller = controller
     widget.toPlainText = lambda: widget.content
     widget.setPlainText = controller.set_content
+    widget.set_params = controller.set_params
     widget.setParams = controller.set_params
     controller.bind()
     
@@ -512,26 +509,6 @@ class EventEditorController(BaseEditorController):
         self.is_detailed_mode = False
         self.system_widgets = []
 
-    def get_plugin_settings(self):
-        """plugins/hoi4/settings.json を読み込む"""
-        # このファイルの場所は plugins/hoi4/events/event_editor.py なので 2階層上が plugins/hoi4/
-        settings_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "settings.json")
-        try:
-            if os.path.exists(settings_path):
-                with open(settings_path, 'r', encoding='utf-8') as f:
-                    return json.load(f)
-        except Exception:
-            pass
-        return {}
-
-    def get_mod_root(self) -> str:
-        """本体のAPIから現在開いているプロジェクトのパスを取得する"""
-        path = core.api.get_project_path()
-        if path:
-            return path
-        # フォールバック（プロジェクトが開かれていない場合など）
-        return os.path.dirname(self.file_path)
-
     def get_current_namespace(self):
         """現在のファイル内で定義されているネームスペースを取得する"""
         try:
@@ -539,17 +516,6 @@ class EventEditorController(BaseEditorController):
             return doc.properties.get("add_namespace", "")
         except Exception:
             return ""
-
-    def apply_format(self, fmt, **kwargs):
-        """フォーマット文字列に値を適用する"""
-        try:
-            return fmt.format(**kwargs)
-        except Exception:
-            # フォールバック: 単純置換
-            res = fmt
-            for k, v in kwargs.items():
-                res = res.replace(f"{{{k}}}", str(v))
-            return res
 
     def format_values(self, namespace=None, event_id="", number=1, option_index=0, lang=None):
         namespace = namespace if namespace is not None else (self.get_current_namespace() or "custom_events")
@@ -756,6 +722,15 @@ class EventEditorController(BaseEditorController):
         ]
         # Noneを除外
         self.system_widgets = [w for w in self.system_widgets if w is not None]
+
+        # 翻訳先参照ボタンのバインド
+        title_btn = find(self.widget, object, "titleLocFileBrowseButton")
+        if title_btn and self.title_loc_file:
+            title_btn.clicked.connect(lambda: self.browse_loc_file(self.title_loc_file))
+            
+        desc_btn = find(self.widget, object, "descLocFileBrowseButton")
+        if desc_btn and self.desc_loc_file:
+            desc_btn.clicked.connect(lambda: self.browse_loc_file(self.desc_loc_file))
 
         self.refresh()
         self.set_detailed_mode(False) # 初期状態は標準
@@ -1404,14 +1379,41 @@ class EventEditorController(BaseEditorController):
                         properties.setdefault(item.key, []).append(item)
 
             # 各フィールドへの値セット
+            name_key = scalar_text(first(properties.get("name", [])))
             name_edit = find(option_widget, QLineEdit, "nameKeyEdit")
-            set_line(name_edit, scalar_text(first(properties.get("name", []))))
+            set_line(name_edit, name_key)
             if name_edit:
                 name_edit.editingFinished.connect(lambda idx=i, edit=name_edit: self.update_option_property(idx, "name", edit.text()))
                 
             name_text_edit = find(option_widget, QLineEdit, "nameTextEdit")
             if name_text_edit:
+                if name_key:
+                    name_text_edit.setText(self.localised_text(name_key))
                 name_text_edit.editingFinished.connect(self.update_preview)
+
+            opt_loc_edit = find(option_widget, QLineEdit, "optionLocFileEdit")
+            opt_browse_btn = find(option_widget, QPushButton, "optionLocFileBrowseButton")
+            if opt_loc_edit:
+                opt_loc_edit.setReadOnly(True)
+                plugin = self.get_hoi4_plugin()
+                if plugin and hasattr(plugin, "localisation_registry") and name_key:
+                    registry = plugin.localisation_registry
+                    status, entry = registry.search_key_status(name_key)
+                    if status in ("exists_in_mod", "duplicate") and entry:
+                        opt_loc_edit.setText(os.path.basename(entry["file"]))
+                        opt_loc_edit.setStyleSheet("color: #4caf50;")
+                    elif status == "exists_in_hoi4" and entry:
+                        opt_loc_edit.setText(os.path.basename(entry["file"]))
+                        opt_loc_edit.setStyleSheet("color: #ff9800;")
+                    else:
+                        opt_loc_edit.setText(self.default_loc_filename())
+                        opt_loc_edit.setStyleSheet("color: #2196f3;")
+                else:
+                    opt_loc_edit.setText(self.default_loc_filename())
+                    opt_loc_edit.setStyleSheet("color: #2196f3;")
+
+            if opt_browse_btn and opt_loc_edit:
+                opt_browse_btn.clicked.connect(lambda _, edit=opt_loc_edit: self.browse_loc_file(edit))
 
             ai_spin = find(option_widget, QSpinBox, "aiSpin")
             ai_chance_node = first(properties.get("ai_chance", []))
@@ -2123,12 +2125,6 @@ class EventEditorController(BaseEditorController):
             ),
         )
 
-    def selected_loc_filename(self, widget):
-        filename = widget.text().strip() if widget and hasattr(widget, "text") else ""
-        if not filename or not filename.lower().endswith(".yml"):
-            filename = self.default_loc_filename()
-        return filename
-
     def after_save_localisation(self, key, save_path: str):
         self.update_localisation_ui()
 
@@ -2149,35 +2145,6 @@ class EventEditorController(BaseEditorController):
             return triggers
 
         return self.extract_event_triggers_in_source_order(event)
-
-        # 1. immediate からのトリガー
-        immediate_assign = event.first("immediate")
-        if immediate_assign:
-            triggers.extend([{'id': eid, 'context': '即時効果'} for eid in self._find_events_in_node(immediate_assign.value)])
-
-        # 2. after からのトリガー
-        after_assign = event.first("after")
-        if after_assign:
-            triggers.extend([{'id': eid, 'context': '事後処理'} for eid in self._find_events_in_node(after_assign.value)])
-
-        # 3. options からのトリガー
-        for i, opt in enumerate(event.options):
-            opt_name = f"選択肢 {i+1}"
-            name_key = ""
-            if isinstance(opt.value, ObjectNode):
-                name_assign = first([item for item in opt.value.items if isinstance(item, AssignmentNode) and item.key == "name"])
-                name_key = scalar_text(name_assign)
-                plugin = self.get_hoi4_plugin()
-                registry = getattr(plugin, "localisation_registry", None) if plugin else None
-                status, entry = registry.search_key_status(name_key) if registry and name_key else ("not_found", None)
-                if entry and entry.get("value"):
-                    opt_name = entry["value"]
-                elif name_key:
-                    opt_name = name_key
-
-            triggers.extend([{'id': eid, 'context': opt_name} for eid in self._find_events_in_node(opt.value)])
-
-        return triggers
 
     def extract_event_triggers_in_source_order(self, event: ParsedEvent) -> list[dict]:
         """イベント定義内の出現順で、他イベント呼び出しを抽出する。"""
@@ -2204,67 +2171,6 @@ class EventEditorController(BaseEditorController):
                 context = label_map.get(item.key, item.key)
 
             triggers.extend(self._find_event_triggers_with_context(item, context))
-
-        return triggers
-
-        label_map = {
-            "immediate": "即時効果",
-            "after": "事後処理",
-            "hidden_effect": "隠し効果",
-        }
-        ignored_keys = {
-            "id",
-            "title",
-            "desc",
-            "picture",
-            "is_triggered_only",
-            "fire_only_once",
-            "major",
-            "hidden",
-            "fire_for_sender",
-            "trigger",
-            "mean_time_to_happen",
-        }
-
-        option_names = {}
-        for i, opt in enumerate(event.options):
-            opt_name = f"選択肢 {i+1}"
-            name_key = ""
-            if isinstance(opt.value, ObjectNode):
-                name_assign = first([item for item in opt.value.items if isinstance(item, AssignmentNode) and item.key == "name"])
-                name_key = scalar_text(name_assign)
-                plugin = self.get_hoi4_plugin()
-                registry = getattr(plugin, "localisation_registry", None) if plugin else None
-                status, entry = registry.search_key_status(name_key) if registry and name_key else ("not_found", None)
-                if entry and entry.get("value"):
-                    opt_name = entry["value"]
-                elif name_key:
-                    opt_name = name_key
-            option_names[id(opt)] = opt_name
-
-        if not isinstance(getattr(event, "node", None), AssignmentNode) or not isinstance(event.node.value, ObjectNode):
-            return triggers
-
-        option_index = 0
-        for item in event.node.value.items:
-            if not isinstance(item, AssignmentNode):
-                continue
-
-            if item.key == "option":
-                context = option_names.get(id(item), f"選択肢 {option_index + 1}")
-                option_index += 1
-            elif item.key in label_map:
-                context = label_map[item.key]
-            elif item.key in ignored_keys:
-                continue
-            else:
-                context = item.key
-
-            event_ids = self._find_events_in_node(item.value)
-            if not event_ids:
-                continue
-
-            triggers.extend([{'id': eid, 'context': context} for eid in event_ids])
 
         return triggers
 
@@ -2550,108 +2456,7 @@ class EventEditorController(BaseEditorController):
         if not current_event:
             return
 
-        current_id = current_event.event_id
         self.update_full_event_chain(current_event)
-        return
-
-        # 現在のイベントのタイトル取得
-        plugin = self.get_hoi4_plugin()
-        registry = getattr(plugin, "localisation_registry", None) if plugin else None
-        title_assign = current_event.first("title")
-        title_key = scalar_text(title_assign)
-        status, entry = registry.search_key_status(title_key) if registry and title_key else ("not_found", None)
-        current_title = entry["value"] if entry else ""
-
-        # 2. 親（トリガー元）イベントの探索
-        parents = []  # (parent_event_id, parent_title, context)
-        for ev in self.events:
-            if ev.event_id == current_id:
-                continue
-            triggers = self.extract_event_triggers(ev)
-            for t in triggers:
-                if t['id'] == current_id:
-                    p_title_assign = ev.first("title")
-                    p_title_key = scalar_text(p_title_assign)
-                    p_status, p_entry = registry.search_key_status(p_title_key) if registry and p_title_key else ("not_found", None)
-                    p_title = p_entry["value"] if p_entry else ""
-                    parents.append((ev.event_id, p_title, t['context']))
-
-        # 3. 子（トリガー先）イベントの抽出
-        children = []  # (child_event_id, child_title, is_external, context)
-        triggers = self.extract_event_triggers(current_event)
-        for t in triggers:
-            child_id = t['id']
-            child_ev = next((e for e in self.events if e.event_id == child_id), None)
-            is_external = child_ev is None
-
-            child_title = ""
-            if child_ev:
-                c_title_assign = child_ev.first("title")
-                c_title_key = scalar_text(c_title_assign)
-                c_status, c_entry = registry.search_key_status(c_title_key) if registry and c_title_key else ("not_found", None)
-                child_title = c_entry["value"] if c_entry else ""
-
-            children.append((child_id, child_title, is_external, t['context']))
-
-        # --- 描画レイアウト ---
-        margin_x = 40
-        margin_y = 36
-        horizontal_gap = 120
-        vertical_gap = 26
-
-        parent_node_width = 180
-        child_node_width = 180
-        current_node_width = 200
-        branch_node_height = 50
-        current_node_height = 60
-
-        left_x = margin_x
-        center_x = left_x + parent_node_width + horizontal_gap
-        right_x = center_x + current_node_width + horizontal_gap
-
-        branch_count = max(len(parents), len(children), 1)
-        branch_stack_height = branch_count * branch_node_height + max(0, branch_count - 1) * vertical_gap
-        content_height = max(current_node_height, branch_stack_height)
-        canvas_width = right_x + child_node_width + margin_x
-        canvas_height = max(350, content_height + margin_y * 2)
-        center_y = (canvas_height - current_node_height) / 2
-
-        def branch_y(index: int, count: int) -> float:
-            stack_height = count * branch_node_height + max(0, count - 1) * vertical_gap
-            return (canvas_height - stack_height) / 2 + index * (branch_node_height + vertical_gap)
-
-        # カレントイベント
-        self._updating_chain_layout = True
-        current_node_item = EventNodeItem(current_id, current_title, is_current=True, is_external=False, controller=self, chain_root_id=current_id, chain_node_key="current")
-        self.apply_chain_node_position(current_node_item, center_x, center_y)
-        self.chain_scene.addItem(current_node_item)
-
-        # 親ノードの描画
-        for i, (p_id, p_title, context) in enumerate(parents):
-            y_pos = branch_y(i, len(parents))
-            node_item = EventNodeItem(p_id, p_title, is_current=False, is_external=False, controller=self, chain_root_id=current_id, chain_node_key=f"parent:{i}:{p_id}")
-            self.apply_chain_node_position(node_item, left_x, y_pos)
-            self.chain_scene.addItem(node_item)
-
-            # 親から中央への線を引く
-            self.draw_connection(node_item, current_node_item, context)
-
-        # 子ノードの描画
-        for i, (c_id, c_title, is_ext, context) in enumerate(children):
-            y_pos = branch_y(i, len(children))
-            node_item = EventNodeItem(c_id, c_title, is_current=False, is_external=is_ext, controller=self, chain_root_id=current_id, chain_node_key=f"child:{i}:{c_id}")
-            self.apply_chain_node_position(node_item, right_x, y_pos)
-            self.chain_scene.addItem(node_item)
-
-            # 中央から子への線を引く
-            self.draw_connection(current_node_item, node_item, context)
-
-        scene_rect = QRectF(0, 0, canvas_width, canvas_height)
-        for item in self.chain_scene.items():
-            if isinstance(item, EventNodeItem):
-                scene_rect = scene_rect.united(item.sceneBoundingRect().adjusted(-60, -60, 60, 60))
-        self.chain_scene.setSceneRect(scene_rect)
-        self._updating_chain_layout = False
 
     def draw_connection(self, start_node: EventNodeItem, end_node: EventNodeItem, label: str):
         """接続線と矢印、ラベルの描画"""

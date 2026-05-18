@@ -1,0 +1,34 @@
+{
+    "name": "国家方針",
+    "editor_id": "focus_editor",
+    "path": "common/national_focus",
+    "format": "focus_format.json",
+    "extension": ".txt",
+    "icon": "mail-checkmark-24-regular.svg",
+    "document_type": "focus_file",
+    "form": "focus_editor.ui",
+    "logic": "focus_editor.py",
+    "parser": "script_parser.py",
+    "schema": "focus_schema.json",
+    "children": [
+        {
+            "id": "common",
+            "name": "共通（common）",
+            "children": [
+                {
+                    "name": "国家方針ツリーを作成",
+                    "path": "common/national_focus",
+                    "extension": ".txt"
+                }
+            ]
+        }
+    ],
+    "schema_rules": [
+        {
+            "path": "common/national_focus",
+            "document_type": "focus_file",
+            "schema": "focus_schema.json",
+            "role": "focus_tree"
+        }
+    ]
+}

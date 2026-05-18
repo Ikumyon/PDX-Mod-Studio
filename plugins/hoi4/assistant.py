@@ -354,78 +354,63 @@ class AssistantWidget(QWidget):
             core.api.show_message(f"ナビゲーション読み込みエラー: {e}", 10000)
             return
 
-        files: dict[str, dict[str, object]] = {}
+        category_map = {}
         for category in categories:
+            category_id = category.id
             category_path = category.source_path or self._category_navigation_path(category)
-            if category_path:
-                files.setdefault(category_path, {"categories": [], "decisions": {}})
-                files[category_path]["categories"].append(category)
+            if not category_path:
+                continue
+            
+            if category_id not in category_map:
+                category_map[category_id] = {
+                    "category": category,
+                    "source_path": category_path,
+                    "decisions": {}
+                }
+            
             for decision in category.decisions:
                 if not decision.source_path:
                     continue
-                file_group = files.setdefault(decision.source_path, {"categories": [], "decisions": {}})
-                file_group["decisions"].setdefault(category.id, []).append((category, decision))
+                category_map[category_id]["decisions"][decision.id] = (decision, decision.source_path)
 
-        for source_path in sorted(files.keys()):
-            file_label = os.path.basename(source_path)
-            file_data = {
-                "id": f"decision_file:{source_path}",
-                "label": file_label,
+        for category_id in sorted(category_map.keys(), key=lambda k: k.lower()):
+            group = category_map[category_id]
+            category = group["category"]
+            source_path = group["source_path"]
+            
+            status, entry = registry.search_key_status(category.id) if registry else ("not_found", None)
+            category_label = entry.get("value") if entry else category.id
+            
+            category_data = {
+                "id": f"decision_category:{category.id}:{source_path}",
+                "label": category_label,
                 "icon": "mail-checkmark-24-regular.svg",
                 "action": "open_tab",
-                "params": {"path": source_path, "editor_id": "decision_editor", "target_id": "file_settings"},
+                "params": {"path": source_path, "editor_id": "decision_editor", "target_id": category.id},
             }
-            file_item = self.create_tree_item(file_data)
+            category_item = self.create_tree_item(category_data)
             pin_item = QStandardItem()
-            decisions_item.appendRow([file_item, pin_item])
-            self.add_pin_button_to_tree(pin_item, file_data["id"], file_data)
-            self.all_toolbox_items[file_data["id"]] = file_data
+            decisions_item.appendRow([category_item, pin_item])
+            self.add_pin_button_to_tree(pin_item, category_data["id"], category_data)
+            self.all_toolbox_items[category_data["id"]] = category_data
 
-            group = files[source_path]
-            category_by_id = {}
-            for category in group["categories"]:
-                category_by_id[category.id] = category
-            for category_id, entries in group["decisions"].items():
-                if category_id not in category_by_id and entries:
-                    category_by_id[category_id] = entries[0][0]
-
-            for category in sorted(category_by_id.values(), key=lambda cat: cat.id.lower()):
-                status, entry = registry.search_key_status(category.id) if registry else ("not_found", None)
-                category_label = entry.get("value") if entry else category.id
-                category_data = {
-                    "id": f"decision_category:{category.id}:{source_path}",
-                    "label": category_label,
-                    "icon": "mail-checkmark-24-regular.svg",
+            for dec_id in sorted(group["decisions"].keys(), key=lambda k: k.lower()):
+                decision, dec_source_path = group["decisions"][dec_id]
+                status, entry = registry.search_key_status(decision.id) if registry else ("not_found", None)
+                decision_label = entry.get("value") if entry else decision.id
+                
+                decision_data = {
+                    "id": f"decision:{category.id}:{decision.id}:{dec_source_path}",
+                    "label": decision_label,
+                    "icon": "generic_decision.png",
                     "action": "open_tab",
-                    "params": {"path": source_path, "editor_id": "decision_editor", "target_id": category.id},
+                    "params": {"path": dec_source_path, "editor_id": "decision_editor", "target_id": decision.id},
                 }
-                category_item = self.create_tree_item(category_data)
+                decision_item = self.create_tree_item(decision_data)
                 pin_item = QStandardItem()
-                file_item.appendRow([category_item, pin_item])
-                self.add_pin_button_to_tree(pin_item, category_data["id"], category_data)
-                self.all_toolbox_items[category_data["id"]] = category_data
-
-                seen_decisions = set()
-                decision_entries = group["decisions"].get(category.id, [])
-                for _, decision in sorted(decision_entries, key=lambda item: item[1].id.lower()):
-                    if decision.id in seen_decisions:
-                        continue
-                    seen_decisions.add(decision.id)
-
-                    status, entry = registry.search_key_status(decision.id) if registry else ("not_found", None)
-                    decision_label = entry.get("value") if entry else decision.id
-                    decision_data = {
-                        "id": f"decision:{category.id}:{decision.id}:{source_path}",
-                        "label": decision_label,
-                        "icon": "generic_decision.png",
-                        "action": "open_tab",
-                        "params": {"path": source_path, "editor_id": "decision_editor", "target_id": decision.id},
-                    }
-                    decision_item = self.create_tree_item(decision_data)
-                    pin_item = QStandardItem()
-                    category_item.appendRow([decision_item, pin_item])
-                    self.add_pin_button_to_tree(pin_item, decision_data["id"], decision_data)
-                    self.all_toolbox_items[decision_data["id"]] = decision_data
+                category_item.appendRow([decision_item, pin_item])
+                self.add_pin_button_to_tree(pin_item, decision_data["id"], decision_data)
+                self.all_toolbox_items[decision_data["id"]] = decision_data
 
     def add_dynamic_achievement_items(self):
         """MOD内の実績をナビゲーションへ追加する"""
