@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
     QGraphicsObject,
     QGraphicsPathItem,
     QGraphicsPolygonItem,
+    QGraphicsItem,
     QStyleOptionGraphicsItem,
 )
 
@@ -279,19 +280,27 @@ class EditableTextItem(QGraphicsTextItem):
 
 
 class EventNodeItem(QGraphicsObject):
-    def __init__(self, event_id: str, title: str, is_current: bool, is_external: bool, controller, parent=None):
+    def __init__(self, event_id: str, title: str, is_current: bool, is_external: bool, controller, parent=None, chain_root_id: str = "", chain_node_key: str = "", is_hidden_event: bool = False):
         super().__init__(parent)
         self.event_id = event_id
         self.title = title
         self.is_current = is_current
         self.is_external = is_external
+        self.is_hidden_event = is_hidden_event
         self.controller = controller
+        self.chain_root_id = chain_root_id
+        self.chain_node_key = chain_node_key or event_id
+        self.connections = []
         
         self.width = 200 if is_current else 180
         self.height = 60 if is_current else 50
         
         self.setAcceptHoverEvents(True)
         self.hovered = False
+        self.setZValue(10)
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, True)
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges, True)
+        self.setCursor(Qt.CursorShape.OpenHandCursor)
         
     def boundingRect(self):
         return QRectF(0, 0, self.width, self.height)
@@ -323,7 +332,7 @@ class EventNodeItem(QGraphicsObject):
         painter.fillPath(path, QBrush(bg_color))
         
         pen = QPen(border_color, 2 if self.is_current else 1)
-        if self.is_external:
+        if self.is_external or self.is_hidden_event:
             pen.setStyle(Qt.PenStyle.DashLine)
         painter.setPen(pen)
         painter.drawPath(path)
@@ -357,19 +366,116 @@ class EventNodeItem(QGraphicsObject):
         self.hovered = False
         self.update()
         super().hoverLeaveEvent(event)
+
+    def itemChange(self, change, value):
+        if change == QGraphicsItem.GraphicsItemChange.ItemPositionHasChanged:
+            for connection in self.connections:
+                connection.update_path()
+            if not getattr(self.controller, "_updating_chain_layout", False):
+                self.controller.remember_chain_node_position(self)
+        return super().itemChange(change, value)
         
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
-            event.accept()
-        else:
-            super().mousePressEvent(event)
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
+        super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        self.setCursor(Qt.CursorShape.OpenHandCursor)
+        super().mouseReleaseEvent(event)
             
     def mouseDoubleClickEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton and not self.is_current and not self.is_external:
             event.accept()
-            self.controller.select_event_tree_item(self.event_id)
+            self.controller.open_chain_event(self.event_id)
         else:
             super().mouseDoubleClickEvent(event)
+
+
+class ChainConnectionItem(QGraphicsPathItem):
+    def __init__(self, start_node: EventNodeItem, end_node: EventNodeItem, label: str):
+        super().__init__()
+        self.start_node = start_node
+        self.end_node = end_node
+        self.label = label
+
+        self.setPen(QPen(QColor("#778899"), 1.5, Qt.PenStyle.SolidLine))
+        self.setZValue(1)
+
+        self.arrow_item = QGraphicsPolygonItem(self)
+        self.arrow_item.setBrush(QBrush(QColor("#778899")))
+        self.arrow_item.setPen(QPen(Qt.GlobalColor.transparent))
+        self.arrow_item.setZValue(2)
+
+        self.label_bg_item = QGraphicsRectItem(self)
+        self.label_bg_item.setBrush(QBrush(QColor("#151515")))
+        self.label_bg_item.setPen(QPen(QColor("#2f3a42"), 1))
+        self.label_bg_item.setZValue(8)
+
+        self.label_text_item = QGraphicsTextItem(label, self)
+        self.label_text_item.setDefaultTextColor(QColor("#b0c4de"))
+        self.label_text_item.setFont(QFont("sans-serif", 7))
+        self.label_text_item.setZValue(9)
+
+        start_node.connections.append(self)
+        end_node.connections.append(self)
+        self.update_path()
+
+    def update_path(self):
+        start_center_x = self.start_node.pos().x() + self.start_node.width / 2
+        end_center_x = self.end_node.pos().x() + self.end_node.width / 2
+        if end_center_x >= start_center_x:
+            start_x = self.start_node.pos().x() + self.start_node.width
+            end_x = self.end_node.pos().x()
+        else:
+            start_x = self.start_node.pos().x()
+            end_x = self.end_node.pos().x() + self.end_node.width
+
+        start = QPointF(start_x, self.start_node.pos().y() + self.start_node.height / 2)
+        end = QPointF(end_x, self.end_node.pos().y() + self.end_node.height / 2)
+
+        path = QPainterPath()
+        path.moveTo(start)
+        ctrl_dist = abs(end.x() - start.x()) * 0.4
+        ctrl1 = QPointF(start.x() + ctrl_dist, start.y())
+        ctrl2 = QPointF(end.x() - ctrl_dist, end.y())
+        path.cubicTo(ctrl1, ctrl2, end)
+        self.setPath(path)
+
+        arrow_size = 6
+        dx = end.x() - ctrl2.x()
+        dy = end.y() - ctrl2.y()
+        length = (dx * dx + dy * dy) ** 0.5
+        arrow_head = QPolygonF()
+        if length > 0:
+            ux = dx / length
+            uy = dy / length
+            arrow_head.append(end)
+            arrow_head.append(QPointF(end.x() - arrow_size * ux + (arrow_size / 2) * uy, end.y() - arrow_size * uy - (arrow_size / 2) * ux))
+            arrow_head.append(QPointF(end.x() - arrow_size * ux - (arrow_size / 2) * uy, end.y() - arrow_size * uy + (arrow_size / 2) * ux))
+        self.arrow_item.setPolygon(arrow_head)
+
+        if not self.label:
+            self.label_bg_item.hide()
+            self.label_text_item.hide()
+            return
+
+        mid_x = (start.x() + end.x()) / 2
+        mid_y = (start.y() + end.y()) / 2
+        self.label_text_item.setTextWidth(max(84, min(150, abs(end.x() - start.x()) - 18)))
+        txt_rect = self.label_text_item.boundingRect()
+        label_padding_x = 6
+        label_padding_y = 2
+
+        self.label_bg_item.setRect(
+            mid_x - txt_rect.width() / 2 - label_padding_x,
+            mid_y - txt_rect.height() / 2 - label_padding_y,
+            txt_rect.width() + label_padding_x * 2,
+            txt_rect.height() + label_padding_y * 2,
+        )
+        self.label_text_item.setPos(mid_x - txt_rect.width() / 2, mid_y - txt_rect.height() / 2)
+        self.label_bg_item.show()
+        self.label_text_item.show()
 
 
 def setup(widget, file_path, content):
@@ -398,6 +504,10 @@ class EventEditorController(BaseEditorController):
         self.loc_timer.setSingleShot(True)
         self.loc_timer.timeout.connect(self.update_localisation_ui)
         core.api.register_loc_changed_handler(self.refresh)
+        self.chain_node_positions = {}
+        self._updating_chain_layout = False
+        self._chain_project_signature = None
+        self._chain_project_events: list[ParsedEvent] = []
         
         self.is_detailed_mode = False
         self.system_widgets = []
@@ -552,6 +662,7 @@ class EventEditorController(BaseEditorController):
             self.chain_panel.setScene(self.chain_scene)
             self.chain_panel.setBackgroundBrush(QBrush(QColor("#111111")))
             self.chain_panel.setRenderHint(QPainter.RenderHint.Antialiasing)
+            self.chain_panel.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         if self.title_text:
             self.title_text.editingFinished.connect(self.update_preview)
@@ -706,6 +817,20 @@ class EventEditorController(BaseEditorController):
                     self.event_list.setCurrentItem(item)
                     self.event_list.scrollToItem(item)
                     return
+
+    def open_chain_event(self, event_id: str):
+        local_event = self.find_event_by_id(event_id)
+        if local_event:
+            self.select_event_tree_item(event_id)
+            return
+
+        for event in self.get_chain_events():
+            if event.event_id != event_id:
+                continue
+            source_path = event.source_path
+            if source_path and os.path.exists(source_path):
+                core.api.open_tab(source_path, "event_editor", {"target_id": event_id})
+            return
 
     def resolve_event_label(self, event: ParsedEvent, is_current=False) -> str:
         title_val = ""
@@ -2023,6 +2148,8 @@ class EventEditorController(BaseEditorController):
         if not event:
             return triggers
 
+        return self.extract_event_triggers_in_source_order(event)
+
         # 1. immediate からのトリガー
         immediate_assign = event.first("immediate")
         if immediate_assign:
@@ -2052,6 +2179,133 @@ class EventEditorController(BaseEditorController):
 
         return triggers
 
+    def extract_event_triggers_in_source_order(self, event: ParsedEvent) -> list[dict]:
+        """イベント定義内の出現順で、他イベント呼び出しを抽出する。"""
+        triggers = []
+        option_names = self._event_option_labels(event)
+        label_map = {
+            "immediate": "即時効果",
+            "after": "事後処理",
+            "hidden_effect": "隠し効果",
+        }
+
+        if not isinstance(getattr(event, "node", None), AssignmentNode) or not isinstance(event.node.value, ObjectNode):
+            return triggers
+
+        option_index = 0
+        for item in event.node.value.items:
+            if not isinstance(item, AssignmentNode):
+                continue
+
+            if item.key == "option":
+                context = option_names.get(id(item), f"選択肢 {option_index + 1}")
+                option_index += 1
+            else:
+                context = label_map.get(item.key, item.key)
+
+            triggers.extend(self._find_event_triggers_with_context(item, context))
+
+        return triggers
+
+        label_map = {
+            "immediate": "即時効果",
+            "after": "事後処理",
+            "hidden_effect": "隠し効果",
+        }
+        ignored_keys = {
+            "id",
+            "title",
+            "desc",
+            "picture",
+            "is_triggered_only",
+            "fire_only_once",
+            "major",
+            "hidden",
+            "fire_for_sender",
+            "trigger",
+            "mean_time_to_happen",
+        }
+
+        option_names = {}
+        for i, opt in enumerate(event.options):
+            opt_name = f"選択肢 {i+1}"
+            name_key = ""
+            if isinstance(opt.value, ObjectNode):
+                name_assign = first([item for item in opt.value.items if isinstance(item, AssignmentNode) and item.key == "name"])
+                name_key = scalar_text(name_assign)
+                plugin = self.get_hoi4_plugin()
+                registry = getattr(plugin, "localisation_registry", None) if plugin else None
+                status, entry = registry.search_key_status(name_key) if registry and name_key else ("not_found", None)
+                if entry and entry.get("value"):
+                    opt_name = entry["value"]
+                elif name_key:
+                    opt_name = name_key
+            option_names[id(opt)] = opt_name
+
+        if not isinstance(getattr(event, "node", None), AssignmentNode) or not isinstance(event.node.value, ObjectNode):
+            return triggers
+
+        option_index = 0
+        for item in event.node.value.items:
+            if not isinstance(item, AssignmentNode):
+                continue
+
+            if item.key == "option":
+                context = option_names.get(id(item), f"選択肢 {option_index + 1}")
+                option_index += 1
+            elif item.key in label_map:
+                context = label_map[item.key]
+            elif item.key in ignored_keys:
+                continue
+            else:
+                context = item.key
+
+            event_ids = self._find_events_in_node(item.value)
+            if not event_ids:
+                continue
+
+            triggers.extend([{'id': eid, 'context': context} for eid in event_ids])
+
+        return triggers
+
+    def _event_option_labels(self, event: ParsedEvent) -> dict[int, str]:
+        option_names = {}
+        for i, opt in enumerate(event.options):
+            opt_name = f"選択肢 {i+1}"
+            name_key = ""
+            if isinstance(opt.value, ObjectNode):
+                name_assign = first([item for item in opt.value.items if isinstance(item, AssignmentNode) and item.key == "name"])
+                name_key = scalar_text(name_assign)
+                plugin = self.get_hoi4_plugin()
+                registry = getattr(plugin, "localisation_registry", None) if plugin else None
+                status, entry = registry.search_key_status(name_key) if registry and name_key else ("not_found", None)
+                if entry and entry.get("value"):
+                    opt_name = entry["value"]
+                elif name_key:
+                    opt_name = name_key
+            option_names[id(opt)] = opt_name
+        return option_names
+
+    def _find_event_triggers_with_context(self, node, context: str) -> list[dict]:
+        triggers = []
+        if isinstance(node, AssignmentNode):
+            if node.key in {"country_event", "news_event"}:
+                event_id = ""
+                if isinstance(node.value, ScalarNode):
+                    event_id = str(node.value.value)
+                elif isinstance(node.value, ObjectNode):
+                    id_assign = first([item for item in node.value.items if isinstance(item, AssignmentNode) and item.key == "id"])
+                    if id_assign and isinstance(id_assign.value, ScalarNode):
+                        event_id = str(id_assign.value.value)
+                if event_id:
+                    triggers.append({'id': event_id, 'context': context})
+                return triggers
+            triggers.extend(self._find_event_triggers_with_context(node.value, context))
+        elif isinstance(node, ObjectNode):
+            for item in node.items:
+                triggers.extend(self._find_event_triggers_with_context(item, context))
+        return triggers
+
     def _find_events_in_node(self, node) -> list[str]:
         """ノードから再帰的に country_event や news_event を探してイベントIDを抽出する"""
         events = []
@@ -2070,6 +2324,221 @@ class EventEditorController(BaseEditorController):
                 events.extend(self._find_events_in_node(item))
         return events
 
+    def chain_position_key(self, node_item: EventNodeItem):
+        return (node_item.chain_root_id, node_item.chain_node_key)
+
+    def remember_chain_node_position(self, node_item: EventNodeItem):
+        self.chain_node_positions[self.chain_position_key(node_item)] = (node_item.pos().x(), node_item.pos().y())
+        if self.chain_scene:
+            margin = 60
+            self.chain_scene.setSceneRect(self.chain_scene.sceneRect().united(node_item.sceneBoundingRect().adjusted(-margin, -margin, margin, margin)))
+
+    def apply_chain_node_position(self, node_item: EventNodeItem, x: float, y: float):
+        saved = self.chain_node_positions.get(self.chain_position_key(node_item))
+        if saved:
+            x, y = saved
+        node_item.setPos(x, y)
+
+    def get_chain_events(self) -> list[ParsedEvent]:
+        events_by_id = {}
+        project_path = core.api.get_project_path()
+        if project_path:
+            scan_dir = self.parser.project_scan_dir(project_path)
+            try:
+                files = self.parser.iter_project_files(scan_dir) if os.path.exists(scan_dir) else []
+                signature = tuple((os.path.normcase(path), os.path.getmtime(path)) for path in sorted(files))
+                if signature != self._chain_project_signature:
+                    self._chain_project_events = self.parser.parse_project(project_path)
+                    self._chain_project_signature = signature
+            except Exception:
+                self._chain_project_events = []
+                self._chain_project_signature = None
+
+            current_path = os.path.normcase(os.path.abspath(self.file_path))
+            for event in self._chain_project_events:
+                source_path = os.path.normcase(os.path.abspath(event.source_path)) if event.source_path else ""
+                if source_path == current_path:
+                    continue
+                if event.event_id:
+                    events_by_id[event.event_id] = event
+
+        for event in self.events:
+            if event.event_id:
+                events_by_id[event.event_id] = event
+
+        return list(events_by_id.values())
+
+    def chain_event_title(self, event: Optional[ParsedEvent], current_id: str) -> str:
+        if not event:
+            return ""
+        if event.event_id == current_id and self.title_text:
+            title_val = self.title_text.text().strip()
+            if title_val:
+                return title_val
+
+        plugin = self.get_hoi4_plugin()
+        registry = getattr(plugin, "localisation_registry", None) if plugin else None
+        title_assign = event.first("title")
+        title_key = scalar_text(title_assign)
+        if registry and title_key:
+            status, entry = registry.search_key_status(title_key)
+            if entry and entry.get("value"):
+                return entry["value"]
+        return title_key or ""
+
+    def update_full_event_chain(self, current_event: ParsedEvent):
+        current_id = current_event.event_id
+        events_by_id = {
+            event.event_id: event
+            for event in self.get_chain_events()
+            if event.event_id
+        }
+        events_by_id[current_id] = current_event
+
+        outgoing = {}
+        incoming = {}
+        edge_labels = {}
+        edge_order = {}
+        event_order = {event_id: index for index, event_id in enumerate(events_by_id.keys())}
+        order_index = 0
+        for event in events_by_id.values():
+            source_id = event.event_id
+            if not source_id:
+                continue
+            for trigger in self.extract_event_triggers(event):
+                target_id = trigger.get("id", "")
+                if not target_id:
+                    continue
+                targets = outgoing.setdefault(source_id, [])
+                if target_id not in targets:
+                    targets.append(target_id)
+                    edge_order[(source_id, target_id)] = order_index
+                    order_index += 1
+                incoming.setdefault(target_id, set()).add(source_id)
+                labels = edge_labels.setdefault((source_id, target_id), [])
+                label = trigger.get("context", "")
+                if label and label not in labels:
+                    labels.append(label)
+
+        connected_ids = set()
+        pending = [current_id]
+        while pending:
+            event_id = pending.pop()
+            if event_id in connected_ids:
+                continue
+            connected_ids.add(event_id)
+            for next_id in outgoing.get(event_id, []):
+                if next_id not in connected_ids:
+                    pending.append(next_id)
+            for prev_id in incoming.get(event_id, set()):
+                if prev_id not in connected_ids:
+                    pending.append(prev_id)
+
+        edges = [
+            (source_id, target_id, " / ".join(edge_labels.get((source_id, target_id), [])))
+            for source_id in sorted(connected_ids, key=lambda event_id: event_order.get(event_id, 999999))
+            for target_id in outgoing.get(source_id, [])
+            if target_id in connected_ids
+        ]
+
+        roots = sorted(
+            event_id for event_id in connected_ids
+            if not any(source_id in connected_ids for source_id in incoming.get(event_id, set()))
+        ) or [current_id]
+
+        levels = {root: 0 for root in roots}
+        for _ in range(max(1, len(connected_ids))):
+            changed = False
+            for source_id, target_id, _ in edges:
+                if source_id not in levels:
+                    continue
+                next_level = levels[source_id] + 1
+                if next_level > levels.get(target_id, -1):
+                    levels[target_id] = next_level
+                    changed = True
+            if not changed:
+                break
+
+        for event_id in connected_ids:
+            if event_id not in levels:
+                levels[event_id] = 0 if event_id == current_id else levels.get(current_id, 0) + 1
+
+        columns = {}
+        for event_id in connected_ids:
+            columns.setdefault(levels[event_id], []).append(event_id)
+
+        def column_sort_key(event_id: str):
+            parent_orders = [
+                edge_order.get((source_id, event_id), 999999)
+                for source_id in incoming.get(event_id, set())
+                if source_id in connected_ids
+            ]
+            if parent_orders:
+                return (min(parent_orders), event_id.lower())
+            return (event_order.get(event_id, 999999), event_id.lower())
+
+        for ids in columns.values():
+            ids.sort(key=column_sort_key)
+
+        margin_x = 40
+        margin_y = 36
+        horizontal_gap = 120
+        vertical_gap = 34
+        node_width = 180
+        current_node_width = 200
+        node_height = 50
+        current_node_height = 60
+
+        max_level = max(columns.keys()) if columns else 0
+        max_rows = max((len(ids) for ids in columns.values()), default=1)
+        column_width = max(current_node_width, node_width) + horizontal_gap
+        content_height = max(current_node_height, max_rows * node_height + max(0, max_rows - 1) * vertical_gap)
+        canvas_width = margin_x * 2 + max_level * column_width + max(current_node_width, node_width)
+        canvas_height = max(350, content_height + margin_y * 2)
+
+        def row_y(index: int, count: int) -> float:
+            stack_height = count * node_height + max(0, count - 1) * vertical_gap
+            return (canvas_height - stack_height) / 2 + index * (node_height + vertical_gap)
+
+        chain_root_id = "|".join(sorted(connected_ids))
+        self._updating_chain_layout = True
+        node_items = {}
+        for level in sorted(columns):
+            ids = columns[level]
+            x_pos = margin_x + level * column_width
+            for index, event_id in enumerate(ids):
+                event = events_by_id.get(event_id)
+                is_current = event_id == current_id
+                node_item = EventNodeItem(
+                    event_id,
+                    self.chain_event_title(event, current_id),
+                    is_current=is_current,
+                    is_external=event is None,
+                    controller=self,
+                    chain_root_id=chain_root_id,
+                    chain_node_key=event_id,
+                    is_hidden_event=prop_bool(event, "hidden") if event else False,
+                )
+                y_pos = row_y(index, len(ids))
+                if is_current:
+                    y_pos -= (current_node_height - node_height) / 2
+                self.apply_chain_node_position(node_item, x_pos, y_pos)
+                self.chain_scene.addItem(node_item)
+                node_items[event_id] = node_item
+
+        for source_id, target_id, label in edges:
+            start_node = node_items.get(source_id)
+            end_node = node_items.get(target_id)
+            if start_node and end_node:
+                self.draw_connection(start_node, end_node, label)
+
+        scene_rect = QRectF(0, 0, canvas_width, canvas_height)
+        for item in self.chain_scene.items():
+            if isinstance(item, EventNodeItem):
+                scene_rect = scene_rect.united(item.sceneBoundingRect().adjusted(-60, -60, 60, 60))
+        self.chain_scene.setSceneRect(scene_rect)
+        self._updating_chain_layout = False
+
     def update_event_chain(self):
         """イベントチェーン表示の更新"""
         if not hasattr(self, 'chain_scene') or not self.chain_scene:
@@ -2082,6 +2551,8 @@ class EventEditorController(BaseEditorController):
             return
 
         current_id = current_event.event_id
+        self.update_full_event_chain(current_event)
+        return
 
         # 現在のイベントのタイトル取得
         plugin = self.get_hoi4_plugin()
@@ -2123,105 +2594,69 @@ class EventEditorController(BaseEditorController):
             children.append((child_id, child_title, is_external, t['context']))
 
         # --- 描画レイアウト ---
-        col_width = 260
-        center_x = col_width
-        left_x = 20
-        right_x = col_width * 2 - 20
+        margin_x = 40
+        margin_y = 36
+        horizontal_gap = 120
+        vertical_gap = 26
 
-        max_nodes = max(1, len(parents), len(children))
-        canvas_height = max(350, max_nodes * 75 + 50)
-        center_y = canvas_height / 2 - 30
+        parent_node_width = 180
+        child_node_width = 180
+        current_node_width = 200
+        branch_node_height = 50
+        current_node_height = 60
+
+        left_x = margin_x
+        center_x = left_x + parent_node_width + horizontal_gap
+        right_x = center_x + current_node_width + horizontal_gap
+
+        branch_count = max(len(parents), len(children), 1)
+        branch_stack_height = branch_count * branch_node_height + max(0, branch_count - 1) * vertical_gap
+        content_height = max(current_node_height, branch_stack_height)
+        canvas_width = right_x + child_node_width + margin_x
+        canvas_height = max(350, content_height + margin_y * 2)
+        center_y = (canvas_height - current_node_height) / 2
+
+        def branch_y(index: int, count: int) -> float:
+            stack_height = count * branch_node_height + max(0, count - 1) * vertical_gap
+            return (canvas_height - stack_height) / 2 + index * (branch_node_height + vertical_gap)
 
         # カレントイベント
-        current_node_item = EventNodeItem(current_id, current_title, is_current=True, is_external=False, controller=self)
-        current_node_item.setPos(center_x - current_node_item.width / 2, center_y)
+        self._updating_chain_layout = True
+        current_node_item = EventNodeItem(current_id, current_title, is_current=True, is_external=False, controller=self, chain_root_id=current_id, chain_node_key="current")
+        self.apply_chain_node_position(current_node_item, center_x, center_y)
         self.chain_scene.addItem(current_node_item)
 
         # 親ノードの描画
-        parent_y_start = (canvas_height - (len(parents) * 65 - 15)) / 2
         for i, (p_id, p_title, context) in enumerate(parents):
-            y_pos = parent_y_start + i * 65
-            node_item = EventNodeItem(p_id, p_title, is_current=False, is_external=False, controller=self)
-            node_item.setPos(left_x, y_pos)
+            y_pos = branch_y(i, len(parents))
+            node_item = EventNodeItem(p_id, p_title, is_current=False, is_external=False, controller=self, chain_root_id=current_id, chain_node_key=f"parent:{i}:{p_id}")
+            self.apply_chain_node_position(node_item, left_x, y_pos)
             self.chain_scene.addItem(node_item)
 
             # 親から中央への線を引く
-            from PySide6.QtCore import QPointF
-            start_pt = QPointF(left_x + node_item.width, y_pos + node_item.height / 2)
-            end_pt = QPointF(center_x - current_node_item.width / 2, center_y + current_node_item.height / 2)
-            self.draw_connection(start_pt, end_pt, context)
+            self.draw_connection(node_item, current_node_item, context)
 
         # 子ノードの描画
-        child_y_start = (canvas_height - (len(children) * 65 - 15)) / 2
         for i, (c_id, c_title, is_ext, context) in enumerate(children):
-            y_pos = child_y_start + i * 65
-            node_item = EventNodeItem(c_id, c_title, is_current=False, is_external=is_ext, controller=self)
-            node_item.setPos(right_x - node_item.width, y_pos)
+            y_pos = branch_y(i, len(children))
+            node_item = EventNodeItem(c_id, c_title, is_current=False, is_external=is_ext, controller=self, chain_root_id=current_id, chain_node_key=f"child:{i}:{c_id}")
+            self.apply_chain_node_position(node_item, right_x, y_pos)
             self.chain_scene.addItem(node_item)
 
             # 中央から子への線を引く
-            from PySide6.QtCore import QPointF
-            start_pt = QPointF(center_x + current_node_item.width / 2, center_y + current_node_item.height / 2)
-            end_pt = QPointF(right_x - node_item.width, y_pos + node_item.height / 2)
-            self.draw_connection(start_pt, end_pt, context)
+            self.draw_connection(current_node_item, node_item, context)
 
-        self.chain_scene.setSceneRect(0, 0, col_width * 3 - 60, canvas_height)
+        scene_rect = QRectF(0, 0, canvas_width, canvas_height)
+        for item in self.chain_scene.items():
+            if isinstance(item, EventNodeItem):
+                scene_rect = scene_rect.united(item.sceneBoundingRect().adjusted(-60, -60, 60, 60))
+        self.chain_scene.setSceneRect(scene_rect)
+        self._updating_chain_layout = False
 
-    def draw_connection(self, start, end, label: str):
+    def draw_connection(self, start_node: EventNodeItem, end_node: EventNodeItem, label: str):
         """接続線と矢印、ラベルの描画"""
-        from PySide6.QtGui import QPainterPath, QPolygonF
-        from PySide6.QtCore import QPointF
-        from PySide6.QtWidgets import QGraphicsPathItem, QGraphicsPolygonItem, QGraphicsRectItem
-        
-        path = QPainterPath()
-        path.moveTo(start)
-        ctrl_dist = abs(end.x() - start.x()) * 0.4
-        ctrl1 = QPointF(start.x() + ctrl_dist, start.y())
-        ctrl2 = QPointF(end.x() - ctrl_dist, end.y())
-        path.cubicTo(ctrl1, ctrl2, end)
-
-        path_item = QGraphicsPathItem(path)
-        path_item.setPen(QPen(QColor("#778899"), 1.5, Qt.PenStyle.SolidLine))
-        self.chain_scene.addItem(path_item)
-
-        # 矢印
-        arrow_size = 6
-        arrow_head = QPolygonF()
-        dx = end.x() - ctrl2.x()
-        dy = end.y() - ctrl2.y()
-        length = (dx*dx + dy*dy)**0.5
-        if length > 0:
-            ux = dx / length
-            uy = dy / length
-            p1 = end
-            p2 = QPointF(end.x() - arrow_size * ux + (arrow_size / 2) * uy, end.y() - arrow_size * uy - (arrow_size / 2) * ux)
-            p3 = QPointF(end.x() - arrow_size * ux - (arrow_size / 2) * uy, end.y() - arrow_size * uy + (arrow_size / 2) * ux)
-            arrow_head.append(p1)
-            arrow_head.append(p2)
-            arrow_head.append(p3)
-
-            arrow_item = QGraphicsPolygonItem(arrow_head)
-            arrow_item.setBrush(QBrush(QColor("#778899")))
-            arrow_item.setPen(QPen(Qt.GlobalColor.transparent))
-            self.chain_scene.addItem(arrow_item)
-
-        # ラベル
-        if label:
-            mid_x = (start.x() + end.x()) / 2
-            mid_y = (start.y() + end.y()) / 2
-
-            txt_item = QGraphicsTextItem(label)
-            txt_item.setDefaultTextColor(QColor("#b0c4de"))
-            txt_item.setFont(QFont("sans-serif", 7))
-
-            txt_rect = txt_item.boundingRect()
-            bg_rect = QGraphicsRectItem(mid_x - txt_rect.width() / 2, mid_y - txt_rect.height() / 2, txt_rect.width(), txt_rect.height())
-            bg_rect.setBrush(QBrush(QColor("#151515")))
-            bg_rect.setPen(QPen(Qt.GlobalColor.transparent))
-
-            self.chain_scene.addItem(bg_rect)
-            txt_item.setPos(mid_x - txt_rect.width() / 2, mid_y - txt_rect.height() / 2)
-            self.chain_scene.addItem(txt_item)
+        connection = ChainConnectionItem(start_node, end_node, label)
+        self.chain_scene.addItem(connection)
 
 
 def first(values):
