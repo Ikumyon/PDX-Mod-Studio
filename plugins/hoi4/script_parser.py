@@ -23,6 +23,12 @@ class SourceRange:
     def between(start: SourceRange, end: SourceRange) -> SourceRange:
         return SourceRange(start.start, end.end)
 
+@dataclass(frozen=True)
+class DiagnosticAction:
+    title: str
+    range: SourceRange
+    replacement: str
+
 @dataclass
 class Diagnostic:
     severity: str
@@ -31,6 +37,7 @@ class Diagnostic:
     code: Optional[str] = None
     source: Optional[str] = None
     target: Any = None
+    actions: list[DiagnosticAction] = field(default_factory=list)
 
 
 class TokenKind(str, Enum):

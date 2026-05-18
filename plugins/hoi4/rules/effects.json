@@ -1,0 +1,16 @@
+{
+  "add_threat": {
+    "type": "integer",
+    "description": "世界の緊張度を追加します。"
+  },
+  "add_manpower": {
+    "type": "integer",
+    "description": "人的資源を追加します。"
+  },
+  "add_threat_old": {
+    "type": "integer",
+    "deprecated": true,
+    "replace_with": "add_threat",
+    "description": "古い緊張度追加エフェクトです（非推奨）。"
+  }
+}

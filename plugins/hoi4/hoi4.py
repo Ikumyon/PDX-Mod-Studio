@@ -438,6 +438,16 @@ def initialize(plugin):
 
     plugin.localisation_registry = _registry
 
+    # --- 診断プロバイダ (Linter) の登録 ---
+    from plugins.hoi4.script_validator import ScriptValidator
+    
+    def hoi4_diagnostics_provider(file_path, content):
+        validator = ScriptValidator(plugin.path)
+        return validator.validate(file_path, content)
+        
+    core.api.register_diagnostics_provider(".txt", hoi4_diagnostics_provider)
+
+
 def _path_to_project(path, mod_root):
     if not path:
         return path

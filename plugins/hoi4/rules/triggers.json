@@ -1,0 +1,7 @@
+{
+  "has_war": {
+    "type": "boolean",
+    "allowed_values": ["yes", "no"],
+    "description": "戦争状態にあるかどうかを判定します。"
+  }
+}

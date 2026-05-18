@@ -130,6 +130,7 @@ class AssistantWidget(QWidget):
             self.add_dynamic_decision_items()
             self.add_dynamic_achievement_items()
             self.add_dynamic_event_items()
+            self.add_dynamic_localisation_items()
             
             if self.navigationTree:
                 self.navigationTree.expandAll()
@@ -320,6 +321,46 @@ class AssistantWidget(QWidget):
                 file_item.appendRow([evt_tree_item, pin_item])
                 self.add_pin_button_to_tree(pin_item, evt_data["id"], evt_data)
                 self.all_toolbox_items[evt_data["id"]] = evt_data
+
+    def add_dynamic_localisation_items(self):
+        """MOD内の翻訳ファイルをナビゲーションへ追加する"""
+        loc_root_item = self.find_tree_item_by_id("localisation_root")
+        project_path = core.api.get_project_path()
+        if not loc_root_item or not project_path:
+            return
+
+        # MOD側のスキャン結果を取得して追加
+        try:
+            plugin = core.api.get_active_plugin()
+            registry = getattr(plugin, "localisation_registry", None) if plugin else None
+            if not registry:
+                return
+            
+            # MOD側のスキャン結果を取得
+            mod_files = [f for f in registry.file_registry if f.get("source") == "mod"]
+        except Exception as e:
+            print(f"Failed to load localisation navigation: {e}")
+            return
+
+        for file_info in sorted(mod_files, key=lambda f: f.get("filename", "").lower()):
+            file_path = file_info.get("path")
+            filename = file_info.get("filename")
+            
+            rel_path = os.path.relpath(file_path, project_path)
+
+            file_data = {
+                "id": f"localisation_file:{file_path}",
+                "label": filename,  # ファイル名を表示
+                "icon": "i18n.svg",
+                "action": "open_tab",
+                "params": {"path": rel_path, "editor_id": "localisation_editor"},
+            }
+            
+            file_item = self.create_tree_item(file_data)
+            pin_item = QStandardItem()
+            loc_root_item.appendRow([file_item, pin_item])
+            self.add_pin_button_to_tree(pin_item, file_data["id"], file_data)
+            self.all_toolbox_items[file_data["id"]] = file_data
 
     def add_dynamic_decision_items(self):
         """MOD内のディシジョンをカテゴリ別にナビゲーションへ追加する"""

@@ -399,6 +399,11 @@ def main():
         if element:
             widget.active_plugin = element.plugin
         widget._last_notified_content = content # 最後に通知したときの内容
+        
+        # 初回のエラー波線診断を実行
+        if hasattr(widget, "run_diagnostics"):
+            widget.run_diagnostics()
+
 
 
         controller = getattr(widget, "plugin_controller", None)
