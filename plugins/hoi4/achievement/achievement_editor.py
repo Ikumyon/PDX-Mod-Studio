@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import json
 import os
 import re
 from dataclasses import dataclass, field
@@ -134,6 +135,9 @@ def setup(widget, file_path, content):
     core.api.notify_editor_ready(widget)
 
 class AchievementEditorController(BaseEditorController):
+    ELEMENT_ID = "achievement"
+    DEFAULT_FORMAT_FILE = "achievement_format.json"
+
     def __init__(self, widget, file_path, content):
         super().__init__(widget, file_path, content)
         self.achievements: list[ParsedAchievement] = []
@@ -362,38 +366,67 @@ class AchievementEditorController(BaseEditorController):
         if not ach or not ach.node:
             return
 
-        new_id = self.achievement_id.text()
-        possible = self.possible_cond.toPlainText()
-        happened = self.happened_cond.toPlainText()
+        new_id = self.achievement_id.text().strip()
+        possible = self.possible_cond.toPlainText().strip()
+        happened = self.happened_cond.toPlainText().strip()
         
-        # 実績ブロックの構築
+        # フォーマット設定の取得
+        config = self.format_config.get("achievement", {})
+        key_order = config.get("key_order", ["possible", "happened", "ribbon"])
+        
+        ribbon_config = self.format_config.get("ribbon", {})
+        ribbon_key_order = ribbon_config.get("key_order", ["frame", "colors"])
+
+        # 各ブロックのテキスト表現を用意
+        blocks = {}
+        
+        if possible:
+            indented_possible = "\n".join([f"\t\t{line}" if line.strip() else line for line in possible.splitlines()])
+            blocks["possible"] = f"possible = {{\n{indented_possible}\n\t}}"
+            
+        if happened:
+            indented_happened = "\n".join([f"\t\t{line}" if line.strip() else line for line in happened.splitlines()])
+            blocks["happened"] = f"happened = {{\n{indented_happened}\n\t}}"
+            
+        if self.ribbon_group and self.ribbon_group.isVisible():
+            ribbon_lines = []
+            
+            # ribbon内の要素を並び替え
+            for r_key in ribbon_key_order:
+                if r_key == "frame":
+                    ribbon_lines.append(f"\t\tframe = {{\n\t\t\t{self.frame_x.value()} {self.frame_y.value()} {self.frame_style.value()}\n\t\t}}")
+                elif r_key == "colors":
+                    colors_lines = []
+                    colors_lines.append("\t\tcolors = {")
+                    for cw in self.color_widgets:
+                        colors_lines.append(f"\t\t\t{{ {cw['r'].value()} {cw['g'].value()} {cw['b'].value()} }}")
+                    colors_lines.append("\t\t}")
+                    ribbon_lines.append("\n".join(colors_lines))
+            
+            blocks["ribbon"] = f"ribbon = {{\n" + "\n".join(ribbon_lines) + "\n\t}"
+
+        # キーオーダーに従って実績ブロックを組み立て
         lines = []
         lines.append(f"{new_id} = {{")
         
-        if possible.strip():
-            lines.append("\tpossible = {")
-            for line in possible.splitlines():
-                lines.append(f"\t\t{line}")
-            lines.append("\t}")
+        for key in key_order:
+            if key == "":
+                # 空文字列は空行を意味する
+                if lines and lines[-1] != "":
+                    lines.append("")
+                continue
+            if key in blocks:
+                lines.append(f"\t{blocks[key]}")
         
-        if happened.strip():
-            lines.append("\thappened = {")
-            for line in happened.splitlines():
-                lines.append(f"\t\t{line}")
-            lines.append("\t}")
+        # key_orderに含まれていなかったが値があるものを最後に追加
+        for key, block_val in blocks.items():
+            if key not in key_order:
+                lines.append(f"\t{block_val}")
 
-        # リボンの再構成
-        if self.ribbon_group and self.ribbon_group.isVisible():
-            lines.append("\tribbon = {")
-            lines.append("\t\tframe = {")
-            lines.append(f"\t\t\t{self.frame_x.value()} {self.frame_y.value()} {self.frame_style.value()}")
-            lines.append("\t\t}")
-            lines.append("\t\tcolors = {")
-            for cw in self.color_widgets:
-                lines.append(f"\t\t\t{{ {cw['r'].value()} {cw['g'].value()} {cw['b'].value()} }}")
-            lines.append("\t\t}")
-            lines.append("\t}")
-            
+        # 末尾の空行を削除
+        while lines and lines[-1] == "":
+            lines.pop()
+
         lines.append("}")
         new_block = "\n".join(lines)
 

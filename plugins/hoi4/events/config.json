@@ -10,6 +10,7 @@
     "parser": "event_parser.py",
     "parser_entry": "EventParser",
     "schema": "event_schema.json",
+    "format": "event_format.json",
     "children": [
         { "name": "イベントを作成", "path": "events", "extension": ".txt" }
     ]

@@ -306,6 +306,9 @@ def setup(widget, file_path, content):
     controller.bind()
 
 class DecisionEditorController(BaseEditorController):
+    ELEMENT_ID = "decisions"
+    DEFAULT_FORMAT_FILE = "decision_format.json"
+
     def __init__(self, widget, file_path, content):
         super().__init__(widget, file_path, content)
         self.categories: list[ParsedDecisionCategory] = []
@@ -317,19 +320,6 @@ class DecisionEditorController(BaseEditorController):
         self.project_categories_cache = None
         self.is_detailed_mode = False
         self.system_widgets = []
-        self.format_config = {}
-        self.load_format_config()
-
-    def load_format_config(self):
-        path = os.path.join(os.path.dirname(__file__), "decision_format.json")
-        if os.path.exists(path):
-            try:
-                with open(path, "r", encoding="utf-8") as f:
-                    self.format_config = json.load(f)
-            except Exception:
-                self.format_config = {}
-        else:
-            self.format_config = {}
 
     def get_plugin_settings(self):
         settings_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "settings.json")

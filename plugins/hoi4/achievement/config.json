@@ -5,5 +5,15 @@
     "extension": ".txt",
     "form": "achievement_editor.ui",
     "logic": "achievement_editor.py",
-    "schema": "achievement_schema.json"
+    "schema": "achievement_schema.json",
+    "format": "achievement_format.json",
+    "children": [
+        {
+            "id": "common",
+            "name": "共通（common）",
+            "children": [
+                { "name": "実績を作成", "path": "common/achievements", "extension": ".txt" }
+            ]
+        }
+    ]
 }

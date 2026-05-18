@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
@@ -137,12 +138,56 @@ class BaseParser:
 class BaseEditorController(QObject):
     """Common QObject controller utilities for HOI4 editors."""
 
+    ELEMENT_ID = ""
+    DEFAULT_FORMAT_FILE = ""
+
     def __init__(self, widget, file_path: str, content: str):
         super().__init__()
         self.widget = widget
         self.file_path = file_path
         self.widget.content = content
         self.updating = False
+        self.element_config = {}
+        self.format_config = {}
+        if self.ELEMENT_ID:
+            self.initialize_config()
+
+    def get_element_config(self) -> dict:
+        """自身（具象クラス）の ELEMENT_ID に基づき、config情報を取得する"""
+        plugin = self.get_hoi4_plugin()
+        if plugin and self.ELEMENT_ID:
+            for element in getattr(plugin, "elements", []):
+                if element.id == self.ELEMENT_ID:
+                    return element.raw
+        return {}
+
+    def load_format_config(self) -> dict:
+        """自身（具象クラス）の情報に基づき、フォーマット設定ファイルをロードする"""
+        config = self.get_element_config()
+        format_file = config.get("format", "")
+        
+        if not format_file:
+            format_file = self.DEFAULT_FORMAT_FILE
+            
+        if not format_file:
+            return {}
+            
+        module = sys.modules[self.__class__.__module__]
+        base_dir = os.path.dirname(getattr(module, "__file__", ""))
+        
+        path = os.path.join(base_dir, format_file)
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                return {}
+        return {}
+
+    def initialize_config(self):
+        """要素のconfig情報およびフォーマット設定を初期化する"""
+        self.element_config = self.get_element_config()
+        self.format_config = self.load_format_config()
 
     def find(self, cls, name: str):
         return self.widget.findChild(cls, name)

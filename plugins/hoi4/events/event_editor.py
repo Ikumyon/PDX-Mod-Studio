@@ -6,8 +6,8 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 import core.api
-from PySide6.QtCore import QFile, Qt, QTimer
-from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen, QPixmap
+from PySide6.QtCore import QFile, Qt, QTimer, QRectF, QPointF, QLineF
+from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen, QPixmap, QPainterPath, QPolygonF, QFontMetrics
 from PySide6.QtSvgWidgets import QGraphicsSvgItem
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtWidgets import (
@@ -29,6 +29,12 @@ from PySide6.QtWidgets import (
     QSplitter,
     QTreeWidget,
     QTreeWidgetItem,
+    QTabWidget,
+    QToolButton,
+    QGraphicsObject,
+    QGraphicsPathItem,
+    QGraphicsPolygonItem,
+    QStyleOptionGraphicsItem,
 )
 
 from plugins.hoi4.script_parser import (
@@ -60,6 +66,7 @@ class ParsedEvent(BaseParsedEntity):
         self.event_id = self.id
         self.key = "country_event"
         self.options: list[AssignmentNode] = []
+        self.namespace = ""
 
 @dataclass
 class Document(BaseDocument):
@@ -82,6 +89,31 @@ class EventParser(BaseParser):
             if isinstance(item, AssignmentNode) and item.key == "add_namespace":
                 if isinstance(item.value, ScalarNode):
                     doc.properties["add_namespace"] = str(item.value.value)
+
+    def parse_document(self, path: str, content: str) -> Document:
+        doc = super().parse_document(path, content)
+        
+        current_ns = ""
+        ns_list = []
+        
+        for item in getattr(doc.ast, "items", []):
+            if isinstance(item, AssignmentNode):
+                if item.key == "add_namespace" and isinstance(item.value, ScalarNode):
+                    current_ns = str(item.value.value)
+                    if current_ns not in ns_list:
+                        ns_list.append(current_ns)
+                elif item.key in {"country_event", "news_event"} and isinstance(item.value, ObjectNode):
+                    for ev in doc.events:
+                        if ev.node == item:
+                            ev.namespace = current_ns
+                            break
+                            
+        doc.properties["namespaces"] = ns_list
+        if ns_list:
+            doc.properties["add_namespace"] = ns_list[0]
+            
+        return doc
+
 
     def wrap_entity(self, entity: ParsedEntity) -> ParsedEvent:
         event = ParsedEvent(entity)
@@ -246,6 +278,100 @@ class EditableTextItem(QGraphicsTextItem):
         self.controller.on_preview_text_changed(self.prop_name, self.toPlainText(), self.is_editing_key, self.option_index)
 
 
+class EventNodeItem(QGraphicsObject):
+    def __init__(self, event_id: str, title: str, is_current: bool, is_external: bool, controller, parent=None):
+        super().__init__(parent)
+        self.event_id = event_id
+        self.title = title
+        self.is_current = is_current
+        self.is_external = is_external
+        self.controller = controller
+        
+        self.width = 200 if is_current else 180
+        self.height = 60 if is_current else 50
+        
+        self.setAcceptHoverEvents(True)
+        self.hovered = False
+        
+    def boundingRect(self):
+        return QRectF(0, 0, self.width, self.height)
+        
+    def paint(self, painter, option, widget=None):
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        
+        if self.is_current:
+            bg_color = QColor("#2d5a27")
+            border_color = QColor("#4caf50")
+            text_color = QColor("#ffffff")
+        elif self.is_external:
+            bg_color = QColor("#2a2a2a")
+            border_color = QColor("#555555")
+            text_color = QColor("#888888")
+        else:
+            bg_color = QColor("#1e3d59")
+            border_color = QColor("#17b978")
+            text_color = QColor("#ffffff")
+            
+        if self.hovered and not self.is_current and not self.is_external:
+            bg_color = bg_color.lighter(130)
+            border_color = border_color.lighter(130)
+            
+        rect = self.boundingRect()
+        path = QPainterPath()
+        path.addRoundedRect(rect, 8, 8)
+        
+        painter.fillPath(path, QBrush(bg_color))
+        
+        pen = QPen(border_color, 2 if self.is_current else 1)
+        if self.is_external:
+            pen.setStyle(Qt.PenStyle.DashLine)
+        painter.setPen(pen)
+        painter.drawPath(path)
+        
+        # ID
+        font_id = QFont("sans-serif", 9, QFont.Weight.Bold if self.is_current else QFont.Weight.Normal)
+        painter.setFont(font_id)
+        painter.setPen(text_color)
+        id_rect = QRectF(10, 5, self.width - 20, 20)
+        painter.drawText(id_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, self.event_id)
+        
+        # Title
+        font_title = QFont("sans-serif", 8)
+        painter.setFont(font_title)
+        painter.setPen(text_color.darker(110) if not self.is_external else text_color)
+        title_rect = QRectF(10, 25 if self.is_current else 22, self.width - 20, 25 if self.is_current else 22)
+        display_title = self.title if self.title else "(ローカライズなし)"
+        if self.is_external:
+            display_title = "(外部のイベント)"
+            
+        metrics = QFontMetrics(font_title)
+        elided = metrics.elidedText(display_title, Qt.TextElideMode.ElideRight, int(self.width - 20))
+        painter.drawText(title_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, elided)
+        
+    def hoverEnterEvent(self, event):
+        self.hovered = True
+        self.update()
+        super().hoverEnterEvent(event)
+        
+    def hoverLeaveEvent(self, event):
+        self.hovered = False
+        self.update()
+        super().hoverLeaveEvent(event)
+        
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+            
+    def mouseDoubleClickEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton and not self.is_current and not self.is_external:
+            event.accept()
+            self.controller.select_event_tree_item(self.event_id)
+        else:
+            super().mouseDoubleClickEvent(event)
+
+
 def setup(widget, file_path, content):
     controller = EventEditorController(widget, file_path, content)
     widget.plugin_controller = controller
@@ -259,6 +385,9 @@ def setup(widget, file_path, content):
 
 
 class EventEditorController(BaseEditorController):
+    ELEMENT_ID = "events"
+    DEFAULT_FORMAT_FILE = "event_format.json"
+
     def __init__(self, widget, file_path, content):
         super().__init__(widget, file_path, content)
         self.events: list[ParsedEvent] = []
@@ -272,19 +401,6 @@ class EventEditorController(BaseEditorController):
         
         self.is_detailed_mode = False
         self.system_widgets = []
-        self.format_config = {}
-        self.load_format_config()
-
-    def load_format_config(self):
-        path = os.path.join(os.path.dirname(__file__), "event_format.json")
-        if os.path.exists(path):
-            try:
-                with open(path, "r", encoding="utf-8") as f:
-                    self.format_config = json.load(f)
-            except Exception:
-                self.format_config = {}
-        else:
-            self.format_config = {}
 
     def get_plugin_settings(self):
         """plugins/hoi4/settings.json を読み込む"""
@@ -364,6 +480,10 @@ class EventEditorController(BaseEditorController):
 
     def bind(self):
         self.event_list = find(self.widget, QTreeWidget, "eventTreeWidget")
+        if self.event_list:
+            self.event_list.setDragEnabled(True)
+            self.event_list.setAcceptDrops(True)
+            self.event_list.setDragDropMode(QTreeWidget.DragDropMode.InternalMove)
         self.event_id = find(self.widget, QLineEdit, "eventIdEdit")
         self.event_type = find(self.widget, QComboBox, "eventTypeCombo")
         self.title_key = find(self.widget, QLineEdit, "titleKeyEdit")
@@ -426,7 +546,20 @@ class EventEditorController(BaseEditorController):
             self.preview_panel.setBackgroundBrush(QBrush(QColor("#1e1e1e")))
             self.preview_panel.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        if self.title_text: self.title_text.editingFinished.connect(self.update_preview)
+        self.chain_panel = find(self.widget, QGraphicsView, "chainPanel")
+        if self.chain_panel:
+            self.chain_scene = QGraphicsScene()
+            self.chain_panel.setScene(self.chain_scene)
+            self.chain_panel.setBackgroundBrush(QBrush(QColor("#111111")))
+            self.chain_panel.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        if self.title_text:
+            self.title_text.editingFinished.connect(self.update_preview)
+            self.title_text.textChanged.connect(self.on_title_text_changed)
+        if self.event_id:
+            self.event_id.editingFinished.connect(self.on_title_text_changed)
+        if self.title_key:
+            self.title_key.editingFinished.connect(self.on_title_text_changed)
         if self.desc_text: self.desc_text.textChanged.connect(self.update_preview)
 
         # ドキュメントプロパティのバインド
@@ -437,12 +570,16 @@ class EventEditorController(BaseEditorController):
                 if widget:
                     self.doc_prop_widgets[prop_key] = widget
                     if prop_key == "add_namespace":
-                        widget.textChanged.connect(lambda _, k=prop_key: self.on_doc_prop_edited(k))
+                        widget.editingFinished.connect(lambda k=prop_key: self.on_doc_prop_edited(k))
+                        self.btn_add_ns = find(self.widget, QToolButton, "btnAddNamespace")
+                        if self.btn_add_ns:
+                            self.btn_add_ns.clicked.connect(self.on_add_namespace_clicked)
                     else:
                         widget.editingFinished.connect(lambda k=prop_key: self.on_doc_prop_edited(k))
 
         if self.event_list:
             self.event_list.currentItemChanged.connect(self.on_event_selected)
+            self.event_list.model().layoutChanged.connect(self.serialize_document_by_tree)
 
         # イベント操作ボタンの接続
         self.new_event_btn = find(self.widget, QPushButton, "newEventButton")
@@ -479,13 +616,13 @@ class EventEditorController(BaseEditorController):
         
         # トップレベルのテキストエディタの接続
         if self.trigger:
-            self.trigger.focusOutEvent = lambda event: self.on_top_text_focus_out("trigger", self.trigger, event)
+            self.trigger.focusOutEvent = lambda event: self.on_text_focus_out("trigger", self.trigger, event)
         if self.mtth:
-            self.mtth.focusOutEvent = lambda event: self.on_top_text_focus_out("mean_time_to_happen", self.mtth, event)
+            self.mtth.focusOutEvent = lambda event: self.on_text_focus_out("mean_time_to_happen", self.mtth, event)
         if self.immediate:
-            self.immediate.focusOutEvent = lambda event: self.on_top_text_focus_out("immediate", self.immediate, event)
+            self.immediate.focusOutEvent = lambda event: self.on_text_focus_out("immediate", self.immediate, event)
         if self.after:
-            self.after.focusOutEvent = lambda event: self.on_top_text_focus_out("after", self.after, event)
+            self.after.focusOutEvent = lambda event: self.on_text_focus_out("after", self.after, event)
 
         # モード切替ボタンの接続
         self.standard_mode_btn = find(self.widget, object, "standardModeButton")
@@ -552,20 +689,50 @@ class EventEditorController(BaseEditorController):
         for i in range(self.event_list.topLevelItemCount()):
             top_item = self.event_list.topLevelItem(i)
             data = top_item.data(0, Qt.ItemDataRole.UserRole)
-            if target_id == "file_settings" and data == "file_settings":
-                self.event_list.setCurrentItem(top_item)
-                self.event_list.scrollToItem(top_item)
-                return
+            if isinstance(data, str) and data.startswith("namespace_settings:"):
+                ns = data.split(":", 1)[1]
+                if target_id == f"namespace_settings:{ns}" or (target_id == "file_settings" and i == 0):
+                    self.event_list.setCurrentItem(top_item)
+                    self.event_list.scrollToItem(top_item)
+                    return
             for j in range(top_item.childCount()):
                 item = top_item.child(j)
-                event = item.data(0, Qt.ItemDataRole.UserRole)
-                if event and event.event_id == target_id:
+                data = item.data(0, Qt.ItemDataRole.UserRole)
+                if isinstance(data, ParsedEvent) and data.event_id == target_id:
+                    self.event_list.setCurrentItem(item)
+                    self.event_list.scrollToItem(item)
+                    return
+                elif isinstance(data, str) and data == target_id:
                     self.event_list.setCurrentItem(item)
                     self.event_list.scrollToItem(item)
                     return
 
+    def resolve_event_label(self, event: ParsedEvent, is_current=False) -> str:
+        title_val = ""
+        if is_current and self.title_text:
+            title_val = self.title_text.text().strip()
+            
+        if not title_val:
+            plugin = self.get_hoi4_plugin()
+            registry = getattr(plugin, "localisation_registry", None) if plugin else None
+            title_assign = event.first("title")
+            title_key = scalar_text(title_assign)
+            if registry and title_key:
+                status, entry = registry.search_key_status(title_key)
+                if entry and entry.get("value"):
+                    title_val = entry["value"].strip()
+                    
+        if title_val:
+            return title_val
+            
+        title_assign = event.first("title")
+        title_key = scalar_text(title_assign)
+        if title_key:
+            return title_key
+            
+        return event.event_id or f"{event.key}@{event.node.range.start.line}"
+
     def refresh(self):
-        # EventParser に解析を依頼
         doc = self.parser.parse_document(self.file_path, self.widget.content)
         self.events = getattr(doc, "events", [])
         
@@ -576,62 +743,113 @@ class EventEditorController(BaseEditorController):
                 was_blocked = self.event_list.blockSignals(True)
                 self.event_list.setUpdatesEnabled(False)
                 try:
-                    # ローカライズレジストリの取得
-                    plugin = self.get_hoi4_plugin()
-                    registry = getattr(plugin, "localisation_registry", None) if plugin else None
-                    
-                    namespace = getattr(doc, "properties", {}).get("add_namespace", "")
-                    root_label = namespace or os.path.basename(self.file_path)
                     self.event_list.clear()
-                    root_item = QTreeWidgetItem(self.event_list)
-                    root_item.setText(0, root_label)
-                    root_item.setData(0, Qt.ItemDataRole.UserRole, "file_settings")
-                    root_item.setExpanded(True)
+                    
+                    namespaces = getattr(doc, "properties", {}).get("namespaces", [])
+                    if not namespaces:
+                        namespaces = [""]
+                        
+                    ns_items = {}
                     target_item = None
-                    if selected == "__file_settings__":
-                        target_item = root_item
+                    
+                    for ns in namespaces:
+                        root_label = ns or os.path.basename(self.file_path)
+                        root_item = QTreeWidgetItem(self.event_list)
+                        root_item.setText(0, root_label)
+                        root_item.setData(0, Qt.ItemDataRole.UserRole, f"namespace_settings:{ns}")
+                        root_item.setExpanded(True)
+                        flags = root_item.flags() | Qt.ItemFlag.ItemIsDropEnabled
+                        flags &= ~Qt.ItemFlag.ItemIsDragEnabled
+                        if ns:
+                            flags |= Qt.ItemFlag.ItemIsEditable
+                        root_item.setFlags(flags)
+                        ns_items[ns] = root_item
+                        
+                        if selected == f"namespace_settings:{ns}":
+                            target_item = root_item
+                            
+                    if selected == "__file_settings__" and ns_items:
+                        target_item = list(ns_items.values())[0]
+                        
                     for event in self.events:
-                        # title プロパティの値をキーとして翻訳を検索
-                        title_assign = event.first("title")
-                        title_key = scalar_text(title_assign)
-                        status, entry = registry.search_key_status(title_key) if registry and title_key else ("not_found", None)
-                        event_name = entry.get("value") if entry else None
+                        ns = getattr(event, "namespace", "")
+                        parent_item = ns_items.get(ns)
+                        if not parent_item:
+                            if "" in ns_items:
+                                parent_item = ns_items[""]
+                            else:
+                                root_item = QTreeWidgetItem(self.event_list)
+                                root_item.setText(0, ns or os.path.basename(self.file_path))
+                                root_item.setData(0, Qt.ItemDataRole.UserRole, f"namespace_settings:{ns}")
+                                root_item.setExpanded(True)
+                                flags = root_item.flags() | Qt.ItemFlag.ItemIsDropEnabled
+                                flags &= ~Qt.ItemFlag.ItemIsDragEnabled
+                                if ns:
+                                    flags |= Qt.ItemFlag.ItemIsEditable
+                                root_item.setFlags(flags)
+                                ns_items[ns] = root_item
+                                parent_item = root_item
+                                
+                        is_curr = (event.event_id == selected)
+                        label = self.resolve_event_label(event, is_current=is_curr)
                         
-                        label = event_name if event_name else (event.event_id or f"{event.key}@{event.node.range.start.line}")
-                        
-                        item = QTreeWidgetItem(root_item)
+                        item = QTreeWidgetItem(parent_item)
                         item.setText(0, label)
-                        item.setData(0, Qt.ItemDataRole.UserRole, event)
+                        item.setData(0, Qt.ItemDataRole.UserRole, event.event_id)
+                        flags = item.flags() | Qt.ItemFlag.ItemIsDragEnabled
+                        flags &= ~Qt.ItemFlag.ItemIsDropEnabled
+                        item.setFlags(flags)
                         if event.event_id == selected:
                             target_item = item
-                    
+                            
                     if target_item:
                         self.event_list.setCurrentItem(target_item)
-                    elif root_item.childCount() > 0:
-                        self.event_list.setCurrentItem(root_item.child(0))
-                    else:
-                        self.event_list.setCurrentItem(root_item)
-                        
+                    elif self.event_list.topLevelItemCount() > 0:
+                        first_parent = self.event_list.topLevelItem(0)
+                        if first_parent.childCount() > 0:
+                            self.event_list.setCurrentItem(first_parent.child(0))
+                        else:
+                            self.event_list.setCurrentItem(first_parent)
+                            
                     self.load_event(self.current_event())
                 finally:
                     self.event_list.setUpdatesEnabled(True)
                     self.event_list.blockSignals(was_blocked)
             
+            # アクティブなネームスペースのテキスト連動
+            active_ns = ""
+            current_item = self.event_list.currentItem() if self.event_list else None
+            if current_item:
+                data = current_item.data(0, Qt.ItemDataRole.UserRole)
+                if isinstance(data, ParsedEvent):
+                    active_ns = getattr(data, "namespace", "")
+                elif isinstance(data, str) and not data.startswith("namespace_settings:"):
+                    ev = self.find_event_by_id(data)
+                    active_ns = getattr(ev, "namespace", "") if ev else ""
+                elif isinstance(data, str) and data.startswith("namespace_settings:"):
+                    active_ns = data.split(":", 1)[1]
+                    
+            if not active_ns and namespaces:
+                active_ns = namespaces[0]
+                
+            pass
+                
             for prop_key, widget in self.doc_prop_widgets.items():
+                if prop_key == "add_namespace":
+                    continue
                 val = getattr(doc, "properties", {}).get(prop_key, "")
                 if widget.text() != val:
                     widget.setText(val)
             
-            # ネームスペースがない場合は新規イベント作成を抑制
-            namespace = getattr(doc, "properties", {}).get("add_namespace", "")
             if self.new_event_btn:
-                self.new_event_btn.setEnabled(bool(namespace))
-                self.new_event_btn.setToolTip("" if namespace else "イベントを追加するにはネームスペースを定義してください")
+                self.new_event_btn.setEnabled(bool(active_ns))
+                self.new_event_btn.setToolTip("" if active_ns else "イベントを追加するにはネームスペースを定義してください")
+
             
             has_event = bool(self.current_event())
             if self.duplicate_event_btn:
-                self.duplicate_event_btn.setEnabled(bool(namespace) and has_event)
-                if not namespace:
+                self.duplicate_event_btn.setEnabled(bool(active_ns) and has_event)
+                if not active_ns:
                     self.duplicate_event_btn.setToolTip("複製するにはネームスペースを定義してください")
                 elif not has_event:
                     self.duplicate_event_btn.setToolTip("複製するイベントを選択してください")
@@ -644,13 +862,13 @@ class EventEditorController(BaseEditorController):
             # ネームスペース未入力時のハイライト
             ns_widget = self.doc_prop_widgets.get("add_namespace")
             if ns_widget:
-                if not namespace:
+                if not active_ns:
                     ns_widget.setStyleSheet("border: 1px solid #f44336; background-color: rgba(244, 67, 54, 0.1); border-radius: 4px;")
                 else:
                     ns_widget.setStyleSheet("")
             
             # フォームとプレビューの表示制御
-            has_namespace = bool(namespace)
+            has_namespace = bool(active_ns)
             has_event = bool(self.current_event())
             
             should_show_editor = has_namespace and has_event
@@ -670,6 +888,66 @@ class EventEditorController(BaseEditorController):
         finally:
             self.updating = False
 
+    def on_tree_item_changed(self, item, column):
+        if self.updating:
+            return
+            
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        new_text = item.text(0).strip()
+        if not new_text:
+            self.refresh()
+            return
+            
+        # A. 親ノード (ネームスペース名) の編集時
+        if isinstance(data, str) and data.startswith("namespace_settings:"):
+            old_ns = data.split(":", 1)[1]
+            if old_ns == new_text:
+                return
+                
+            self.updating = True
+            try:
+                doc = self.parser.parse_document(self.file_path, self.widget.content)
+                text = self.widget.content
+                
+                target = None
+                for ast_item in doc.ast.items:
+                    if isinstance(ast_item, AssignmentNode) and ast_item.key == "add_namespace":
+                        from plugins.hoi4.script_parser import ScalarNode
+                        val = str(ast_item.value.value) if isinstance(ast_item.value, ScalarNode) else ""
+                        if val == old_ns:
+                            target = ast_item
+                            break
+                            
+                rename_all = False
+                if old_ns and doc.events:
+                    from PySide6.QtWidgets import QMessageBox
+                    reply = QMessageBox.question(
+                        self.widget,
+                        "ID一括リネーム",
+                        f"ネームスペースが '{old_ns}' から '{new_text}' に変更されました。\n"
+                        f"ファイル内のイベントIDおよび関連するキー（例: {old_ns}.X -> {new_text}.X）を一括で更新しますか？",
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                    )
+                    if reply == QMessageBox.StandardButton.Yes:
+                        rename_all = True
+                        
+                if target:
+                    val_range = target.value.range
+                    text = text[:val_range.start_offset] + new_text + text[val_range.end_offset:]
+                    
+                if rename_all:
+                    text = text.replace(f"{old_ns}.", f"{new_text}.")
+                    
+                self.widget.content = text
+                self.selected_event_id = f"namespace_settings:{new_text}"
+            finally:
+                self.updating = False
+                
+            self.serialize_document_by_tree()
+            self.refresh()
+            
+        pass
+
     def on_event_selected(self, current, previous):
         if self.updating:
             return
@@ -683,6 +961,12 @@ class EventEditorController(BaseEditorController):
         finally:
             self.updating = False
 
+    def find_event_by_id(self, event_id: str) -> Optional[ParsedEvent]:
+        for event in getattr(self, "events", []):
+            if event.event_id == event_id:
+                return event
+        return None
+
     def current_event(self) -> Optional[ParsedEvent]:
         if not self.event_list:
             return self.events[0] if self.events else None
@@ -690,7 +974,11 @@ class EventEditorController(BaseEditorController):
         if not item:
             return None
         data = item.data(0, Qt.ItemDataRole.UserRole)
-        return data if isinstance(data, ParsedEvent) else None
+        if isinstance(data, ParsedEvent):
+            return data
+        if isinstance(data, str) and not data.startswith("namespace_settings:"):
+            return self.find_event_by_id(data)
+        return None
 
     def load_event(self, event: Optional[ParsedEvent]):
         if event:
@@ -722,9 +1010,26 @@ class EventEditorController(BaseEditorController):
         self.refresh_options(event)
         self.update_localisation_ui()
         self.update_preview()
+        self.update_event_chain()
+
+    def on_title_text_changed(self, text=None):
+        if self.updating or not self.event_list:
+            return
+        item = self.event_list.currentItem()
+        if not item:
+            return
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        event = None
+        if isinstance(data, ParsedEvent):
+            event = data
+        elif isinstance(data, str) and not data.startswith("namespace_settings:"):
+            event = self.find_event_by_id(data)
+            
+        if isinstance(event, ParsedEvent):
+            label = self.resolve_event_label(event, is_current=True)
+            item.setText(0, label)
 
     def update_preview(self):
-        if self.updating: return
         if not hasattr(self, 'scene'): return
         self.scene.clear()
         
@@ -924,7 +1229,6 @@ class EventEditorController(BaseEditorController):
         if not event:
             return
 
-        loader = QUiLoader()
         ui_path = os.path.join(os.path.dirname(__file__), "event_option_node.ui")
         
         # AI選択確率の集計
@@ -954,6 +1258,7 @@ class EventEditorController(BaseEditorController):
             if not ui_file.open(QFile.ReadOnly):
                 continue
             
+            loader = QUiLoader()
             option_widget = loader.load(ui_file)
             ui_file.close()
             
@@ -1285,6 +1590,36 @@ class EventEditorController(BaseEditorController):
             self.replace_top_level_property(prop_key, widget.text())
 
 
+    def on_add_namespace_clicked(self):
+        ns_widget = self.doc_prop_widgets.get("add_namespace")
+        if not ns_widget:
+            return
+            
+        ns_text = ns_widget.text().strip()
+        if not ns_text:
+            return
+            
+        doc = self.parser.parse_document(self.file_path, self.widget.content)
+        namespaces = getattr(doc, "properties", {}).get("namespaces", [])
+        
+        if ns_text in namespaces:
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.warning(
+                self.widget,
+                "追加不可",
+                f"ネームスペース '{ns_text}' はすでに存在します。"
+            )
+            ns_widget.clear()
+            return
+            
+        text = self.widget.content.rstrip()
+        self.widget.content = text + f"\n\nadd_namespace = {ns_text}\n"
+        
+        self.selected_event_id = f"namespace_settings:{ns_text}"
+        self.refresh()
+        ns_widget.clear()
+
+
     def replace_top_level_property(self, property_name, replacement):
         if self.updating: return
         doc = self.parser.parse_document(self.file_path, self.widget.content)
@@ -1296,12 +1631,32 @@ class EventEditorController(BaseEditorController):
                 target = item
                 break
         
+        if property_name == "add_namespace" and target and replacement:
+            from PySide6.QtWidgets import QMessageBox
+            from plugins.hoi4.script_parser import ScalarNode
+            old_ns = str(target.value.value) if isinstance(target.value, ScalarNode) else ""
+            if old_ns and old_ns != replacement and doc.events:
+                reply = QMessageBox.question(
+                    self.widget,
+                    "ID一括リネーム",
+                    f"ネームスペースが '{old_ns}' から '{replacement}' に変更されました。\n"
+                    f"ファイル内のイベントIDおよび関連するキー（例: {old_ns}.X -> {replacement}.X）を一括で更新しますか？",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                )
+                if reply == QMessageBox.StandardButton.Yes:
+                    text = text.replace(f"{old_ns}.", f"{replacement}.")
+                    self.widget.content = text
+                    self.serialize_document_by_tree()
+                    self.refresh()
+                    return
+
         if not replacement:
             if target:
                 start = target.range.start_offset
                 end = target.range.end_offset
                 if start > 0 and text[start-1] == "\n": start -= 1
                 self.widget.content = text[:start] + text[end:]
+                self.serialize_document_by_tree()
                 self.refresh()
             return
 
@@ -1312,6 +1667,7 @@ class EventEditorController(BaseEditorController):
             new_prop = f"{property_name} = {replacement}\n\n"
             self.widget.content = new_prop + text
             
+        self.serialize_document_by_tree()
         self.refresh()
 
     def replace_property(self, property_name, replacement):
@@ -1393,80 +1749,150 @@ class EventEditorController(BaseEditorController):
         if property_name == "id":
             self.selected_event_id = replacement
             
-        self.reformat_event(self.selected_event_id)
+        self.serialize_document_by_tree()
+        self.refresh()
 
     def reformat_event(self, event_id):
-        if not event_id: return
-        # メモリ上のデータから再度パースして最新の状態を取得
-        text = self.widget.content
-        events = self.parser.parse_document(self.file_path, text).events
+        self.serialize_document_by_tree()
+        self.refresh()
 
-        target = None
-        for ev in events:
-            if ev.event_id == event_id:
-                target = ev
-                break
-        
-        if not target: return
-        
-        # インデントレベルの決定 (イベントは1段)
-        indent_level = 1
-        tabs = "\t" * indent_level
-        
-        # ブロックの中身を再構築
+    def serialize_document_by_tree(self):
+        if self.updating or not self.event_list:
+            return
+            
+        was_blocked = self.event_list.blockSignals(True)
+        self.updating = True
+        try:
+            sections = []
+            for i in range(self.event_list.topLevelItemCount()):
+                parent_item = self.event_list.topLevelItem(i)
+                data = parent_item.data(0, Qt.ItemDataRole.UserRole)
+                ns = ""
+                if isinstance(data, str) and data.startswith("namespace_settings:"):
+                    ns = data.split(":", 1)[1]
+                    
+                event_texts = []
+                for j in range(parent_item.childCount()):
+                    child_item = parent_item.child(j)
+                    data = child_item.data(0, Qt.ItemDataRole.UserRole)
+                    event = None
+                    if isinstance(data, ParsedEvent):
+                        event = data
+                    elif isinstance(data, str) and not data.startswith("namespace_settings:"):
+                        event = self.find_event_by_id(data)
+                        
+                    if isinstance(event, ParsedEvent):
+                        event_text = self.serialize_event(event)
+                        if event_text:
+                            event_texts.append(event_text)
+                            
+                section = ""
+                if ns:
+                    section += f"add_namespace = {ns}"
+                if event_texts:
+                    if section:
+                        section += "\n\n"
+                    section += "\n\n".join(event_texts)
+                    
+                if section:
+                    sections.append(section)
+                    
+            full_text = "\n\n".join(sections) + "\n"
+            
+            if self.widget.content != full_text:
+                self.widget.content = full_text
+                
+        finally:
+            self.updating = False
+            self.event_list.blockSignals(was_blocked)
+            
+        self.refresh()
+
+    def serialize_event(self, event: ParsedEvent) -> str:
         config = self.format_config.get("event", {})
         key_order = config.get("key_order", [])
         
-        # 既存のノードを辞書に整理
+        opt_config = self.format_config.get("option", {})
+        opt_key_order = opt_config.get("key_order", ["name", "trigger", "ai_chance"])
+
         nodes = {}
-        if isinstance(target.node.value, ObjectNode):
-            for item in target.node.value.items:
+        if isinstance(event.node.value, ObjectNode):
+            for item in event.node.value.items:
                 if isinstance(item, AssignmentNode):
-                    # 同一キーが複数ある場合（optionなど）はリストで保持
                     if item.key not in nodes:
                         nodes[item.key] = []
                     nodes[item.key].append(item)
-        
+
         lines = []
         used_keys = set()
         
-        # 定義された順序に従って追加（空行対応）
         for key in key_order:
-            if key == "": # 空行（スペーサー）
+            if key == "":
                 if lines and lines[-1] != "":
                     lines.append("")
                 continue
                 
             if key in nodes:
                 for node in nodes[key]:
-                    formatted = self.format_ast_node(node, indent_level)
+                    if key == "option":
+                        formatted = self.serialize_option_node(node, opt_key_order, indent_level=1)
+                    else:
+                        formatted = self.serialize_ast_node(node, opt_key_order, indent_level=1)
                     if formatted:
-                        lines.append(f"{tabs}{formatted}")
+                        lines.append(f"\t{formatted}")
                 used_keys.add(key)
-        
-        # 定義にないキーを追加
+
         for key, node_list in nodes.items():
             if key not in used_keys:
                 for node in node_list:
-                    formatted = self.format_ast_node(node, indent_level)
+                    formatted = self.serialize_ast_node(node, opt_key_order, indent_level=1)
                     if formatted:
-                        lines.append(f"{tabs}{formatted}")
-        
-        # 末尾の空行を削除
+                        lines.append(f"\t{formatted}")
+
         while lines and lines[-1] == "":
             lines.pop()
-        
-        inner_text = "\n".join(lines)
-        node_range = target.node.value.range
-        new_text = text[:node_range.start_offset + 1] + "\n" + inner_text + "\n" + text[node_range.end_offset - 1:]
-        
-        self.widget.content = new_text
-        self.refresh()
 
-    def format_ast_node(self, node, indent_level):
+        inner_text = "\n".join(lines)
+        return f"{event.key} = {{\n{inner_text}\n}}"
+
+    def serialize_option_node(self, node, opt_key_order, indent_level) -> str:
+        if not isinstance(node.value, ObjectNode):
+            return self.serialize_ast_node(node, opt_key_order, indent_level)
+            
+        opt_nodes = {}
+        for item in node.value.items:
+            if isinstance(item, AssignmentNode):
+                if item.key not in opt_nodes:
+                    opt_nodes[item.key] = []
+                opt_nodes[item.key].append(item)
+                
+        lines = []
+        used_keys = set()
+        tabs = "\t" * (indent_level + 1)
+        
+        for key in opt_key_order:
+            if key in opt_nodes:
+                for n in opt_nodes[key]:
+                    formatted = self.serialize_ast_node(n, opt_key_order, indent_level + 1)
+                    if formatted:
+                        lines.append(f"{tabs}{formatted}")
+                used_keys.add(key)
+                
+        for key, node_list in opt_nodes.items():
+            if key not in used_keys:
+                for n in node_list:
+                    formatted = self.serialize_ast_node(n, opt_key_order, indent_level + 1)
+                    if formatted:
+                        lines.append(f"{tabs}{formatted}")
+                        
+        close_tabs = "\t" * indent_level
+        inner_text = "\n".join(lines)
+        return f"option = {{\n{inner_text}\n{close_tabs}}}"
+
+    def serialize_ast_node(self, node, opt_key_order, indent_level) -> str:
         from plugins.hoi4.script_parser import ScalarNode, ObjectNode, AssignmentNode
         if isinstance(node, AssignmentNode):
-            val = self.format_ast_node(node.value, indent_level)
+            val = self.serialize_ast_node(node.value, opt_key_order, indent_level)
             return f"{node.key} = {val}"
         if isinstance(node, ScalarNode):
             return node.raw
@@ -1474,10 +1900,9 @@ class EventEditorController(BaseEditorController):
             tabs = "\t" * (indent_level + 1)
             inner_lines = []
             for item in node.items:
-                formatted = self.format_ast_node(item, indent_level + 1)
+                formatted = self.serialize_ast_node(item, opt_key_order, indent_level + 1)
                 if formatted:
                     inner_lines.append(f"{tabs}{formatted}")
-            
             close_tabs = "\t" * indent_level
             return "{\n" + "\n".join(inner_lines) + f"\n{close_tabs}}}"
         return ""
@@ -1591,6 +2016,212 @@ class EventEditorController(BaseEditorController):
         desc_key = self.desc_key.text() if self.desc_key else ""
         desc_text = self._get_loc_text(self.desc_text)
         self.save_localisation(desc_key, desc_text, self.desc_loc_file)
+
+    def extract_event_triggers(self, event: ParsedEvent) -> list[dict]:
+        """イベントからトリガーされる他のイベントIDとコンテキストを抽出する"""
+        triggers = []
+        if not event:
+            return triggers
+
+        # 1. immediate からのトリガー
+        immediate_assign = event.first("immediate")
+        if immediate_assign:
+            triggers.extend([{'id': eid, 'context': '即時効果'} for eid in self._find_events_in_node(immediate_assign.value)])
+
+        # 2. after からのトリガー
+        after_assign = event.first("after")
+        if after_assign:
+            triggers.extend([{'id': eid, 'context': '事後処理'} for eid in self._find_events_in_node(after_assign.value)])
+
+        # 3. options からのトリガー
+        for i, opt in enumerate(event.options):
+            opt_name = f"選択肢 {i+1}"
+            name_key = ""
+            if isinstance(opt.value, ObjectNode):
+                name_assign = first([item for item in opt.value.items if isinstance(item, AssignmentNode) and item.key == "name"])
+                name_key = scalar_text(name_assign)
+                plugin = self.get_hoi4_plugin()
+                registry = getattr(plugin, "localisation_registry", None) if plugin else None
+                status, entry = registry.search_key_status(name_key) if registry and name_key else ("not_found", None)
+                if entry and entry.get("value"):
+                    opt_name = entry["value"]
+                elif name_key:
+                    opt_name = name_key
+
+            triggers.extend([{'id': eid, 'context': opt_name} for eid in self._find_events_in_node(opt.value)])
+
+        return triggers
+
+    def _find_events_in_node(self, node) -> list[str]:
+        """ノードから再帰的に country_event や news_event を探してイベントIDを抽出する"""
+        events = []
+        if isinstance(node, AssignmentNode):
+            if node.key in {"country_event", "news_event"}:
+                if isinstance(node.value, ScalarNode):
+                    events.append(str(node.value.value))
+                elif isinstance(node.value, ObjectNode):
+                    id_assign = first([item for item in node.value.items if isinstance(item, AssignmentNode) and item.key == "id"])
+                    if id_assign and isinstance(id_assign.value, ScalarNode):
+                        events.append(str(id_assign.value.value))
+            else:
+                events.extend(self._find_events_in_node(node.value))
+        elif isinstance(node, ObjectNode):
+            for item in node.items:
+                events.extend(self._find_events_in_node(item))
+        return events
+
+    def update_event_chain(self):
+        """イベントチェーン表示の更新"""
+        if not hasattr(self, 'chain_scene') or not self.chain_scene:
+            return
+
+        self.chain_scene.clear()
+
+        current_event = self.current_event()
+        if not current_event:
+            return
+
+        current_id = current_event.event_id
+
+        # 現在のイベントのタイトル取得
+        plugin = self.get_hoi4_plugin()
+        registry = getattr(plugin, "localisation_registry", None) if plugin else None
+        title_assign = current_event.first("title")
+        title_key = scalar_text(title_assign)
+        status, entry = registry.search_key_status(title_key) if registry and title_key else ("not_found", None)
+        current_title = entry["value"] if entry else ""
+
+        # 2. 親（トリガー元）イベントの探索
+        parents = []  # (parent_event_id, parent_title, context)
+        for ev in self.events:
+            if ev.event_id == current_id:
+                continue
+            triggers = self.extract_event_triggers(ev)
+            for t in triggers:
+                if t['id'] == current_id:
+                    p_title_assign = ev.first("title")
+                    p_title_key = scalar_text(p_title_assign)
+                    p_status, p_entry = registry.search_key_status(p_title_key) if registry and p_title_key else ("not_found", None)
+                    p_title = p_entry["value"] if p_entry else ""
+                    parents.append((ev.event_id, p_title, t['context']))
+
+        # 3. 子（トリガー先）イベントの抽出
+        children = []  # (child_event_id, child_title, is_external, context)
+        triggers = self.extract_event_triggers(current_event)
+        for t in triggers:
+            child_id = t['id']
+            child_ev = next((e for e in self.events if e.event_id == child_id), None)
+            is_external = child_ev is None
+
+            child_title = ""
+            if child_ev:
+                c_title_assign = child_ev.first("title")
+                c_title_key = scalar_text(c_title_assign)
+                c_status, c_entry = registry.search_key_status(c_title_key) if registry and c_title_key else ("not_found", None)
+                child_title = c_entry["value"] if c_entry else ""
+
+            children.append((child_id, child_title, is_external, t['context']))
+
+        # --- 描画レイアウト ---
+        col_width = 260
+        center_x = col_width
+        left_x = 20
+        right_x = col_width * 2 - 20
+
+        max_nodes = max(1, len(parents), len(children))
+        canvas_height = max(350, max_nodes * 75 + 50)
+        center_y = canvas_height / 2 - 30
+
+        # カレントイベント
+        current_node_item = EventNodeItem(current_id, current_title, is_current=True, is_external=False, controller=self)
+        current_node_item.setPos(center_x - current_node_item.width / 2, center_y)
+        self.chain_scene.addItem(current_node_item)
+
+        # 親ノードの描画
+        parent_y_start = (canvas_height - (len(parents) * 65 - 15)) / 2
+        for i, (p_id, p_title, context) in enumerate(parents):
+            y_pos = parent_y_start + i * 65
+            node_item = EventNodeItem(p_id, p_title, is_current=False, is_external=False, controller=self)
+            node_item.setPos(left_x, y_pos)
+            self.chain_scene.addItem(node_item)
+
+            # 親から中央への線を引く
+            from PySide6.QtCore import QPointF
+            start_pt = QPointF(left_x + node_item.width, y_pos + node_item.height / 2)
+            end_pt = QPointF(center_x - current_node_item.width / 2, center_y + current_node_item.height / 2)
+            self.draw_connection(start_pt, end_pt, context)
+
+        # 子ノードの描画
+        child_y_start = (canvas_height - (len(children) * 65 - 15)) / 2
+        for i, (c_id, c_title, is_ext, context) in enumerate(children):
+            y_pos = child_y_start + i * 65
+            node_item = EventNodeItem(c_id, c_title, is_current=False, is_external=is_ext, controller=self)
+            node_item.setPos(right_x - node_item.width, y_pos)
+            self.chain_scene.addItem(node_item)
+
+            # 中央から子への線を引く
+            from PySide6.QtCore import QPointF
+            start_pt = QPointF(center_x + current_node_item.width / 2, center_y + current_node_item.height / 2)
+            end_pt = QPointF(right_x - node_item.width, y_pos + node_item.height / 2)
+            self.draw_connection(start_pt, end_pt, context)
+
+        self.chain_scene.setSceneRect(0, 0, col_width * 3 - 60, canvas_height)
+
+    def draw_connection(self, start, end, label: str):
+        """接続線と矢印、ラベルの描画"""
+        from PySide6.QtGui import QPainterPath, QPolygonF
+        from PySide6.QtCore import QPointF
+        from PySide6.QtWidgets import QGraphicsPathItem, QGraphicsPolygonItem, QGraphicsRectItem
+        
+        path = QPainterPath()
+        path.moveTo(start)
+        ctrl_dist = abs(end.x() - start.x()) * 0.4
+        ctrl1 = QPointF(start.x() + ctrl_dist, start.y())
+        ctrl2 = QPointF(end.x() - ctrl_dist, end.y())
+        path.cubicTo(ctrl1, ctrl2, end)
+
+        path_item = QGraphicsPathItem(path)
+        path_item.setPen(QPen(QColor("#778899"), 1.5, Qt.PenStyle.SolidLine))
+        self.chain_scene.addItem(path_item)
+
+        # 矢印
+        arrow_size = 6
+        arrow_head = QPolygonF()
+        dx = end.x() - ctrl2.x()
+        dy = end.y() - ctrl2.y()
+        length = (dx*dx + dy*dy)**0.5
+        if length > 0:
+            ux = dx / length
+            uy = dy / length
+            p1 = end
+            p2 = QPointF(end.x() - arrow_size * ux + (arrow_size / 2) * uy, end.y() - arrow_size * uy - (arrow_size / 2) * ux)
+            p3 = QPointF(end.x() - arrow_size * ux - (arrow_size / 2) * uy, end.y() - arrow_size * uy + (arrow_size / 2) * ux)
+            arrow_head.append(p1)
+            arrow_head.append(p2)
+            arrow_head.append(p3)
+
+            arrow_item = QGraphicsPolygonItem(arrow_head)
+            arrow_item.setBrush(QBrush(QColor("#778899")))
+            arrow_item.setPen(QPen(Qt.GlobalColor.transparent))
+            self.chain_scene.addItem(arrow_item)
+
+        # ラベル
+        if label:
+            mid_x = (start.x() + end.x()) / 2
+            mid_y = (start.y() + end.y()) / 2
+
+            txt_item = QGraphicsTextItem(label)
+            txt_item.setDefaultTextColor(QColor("#b0c4de"))
+            txt_item.setFont(QFont("sans-serif", 7))
+
+            txt_rect = txt_item.boundingRect()
+            bg_rect = QGraphicsRectItem(mid_x - txt_rect.width() / 2, mid_y - txt_rect.height() / 2, txt_rect.width(), txt_rect.height())
+            bg_rect.setBrush(QBrush(QColor("#151515")))
+            bg_rect.setPen(QPen(Qt.GlobalColor.transparent))
+
+            self.chain_scene.addItem(bg_rect)
+            txt_item.setPos(mid_x - txt_rect.width() / 2, mid_y - txt_rect.height() / 2)
+            self.chain_scene.addItem(txt_item)
 
 
 def first(values):

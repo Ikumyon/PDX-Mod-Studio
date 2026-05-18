@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>664</width>
-    <height>600</height>
+    <width>780</width>
+    <height>500</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -25,325 +25,483 @@
     </widget>
    </item>
    <item>
-    <widget class="QGroupBox" name="generalGroup">
-     <property name="title">
-      <string>全般設定</string>
+    <!-- 横並びのレイアウトで左にリスト、右にスタックを配置 -->
+    <layout class="QHBoxLayout" name="contentLayout">
+     <property name="spacing">
+      <number>15</number>
      </property>
-     <layout class="QFormLayout" name="generalFormLayout">
-      <item row="0" column="0">
-       <widget class="QLabel" name="gamePathLabel">
+
+     <!-- 左側: 縦積みリスト -->
+     <item>
+      <widget class="QListWidget" name="settingsListWidget">
+       <property name="maximumSize">
+        <size>
+         <width>160</width>
+         <height>16777215</height>
+        </size>
+       </property>
+       <item>
         <property name="text">
-         <string>ゲーム本体のパス:</string>
+         <string>全般設定</string>
         </property>
-       </widget>
-      </item>
-      <item row="0" column="1">
-       <layout class="QHBoxLayout" name="gamePathLayout">
-        <item>
-         <widget class="QLineEdit" name="gamePathEdit">
-          <property name="placeholderText">
-           <string>例: C:/Program Files (x86)/Steam/steamapps/common/Hearts of Iron IV</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QPushButton" name="gamePathBrowseButton">
-          <property name="text">
-           <string>参照...</string>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-     </layout>
-    </widget>
-   </item>
-   <item>
-    <widget class="QGroupBox" name="eventSettingsGroup">
-     <property name="title">
-      <string>イベント設定</string>
-     </property>
-     <layout class="QFormLayout" name="editorAssistFormLayout">
-      <item row="1" column="0">
-       <widget class="QLabel" name="idFormatLabel">
+       </item>
+       <item>
         <property name="text">
-         <string>ID形式:</string>
+         <string>イベント設定</string>
         </property>
-       </widget>
-      </item>
-      <item row="1" column="1">
-       <layout class="QHBoxLayout" name="idFormatLayout">
-        <item>
-         <widget class="QLineEdit" name="idFormatEdit">
-          <property name="placeholderText">
-           <string>例: {namespace}.{number}</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QToolButton" name="idFormatBrowseButton">
-          <property name="text">
-           <string>...</string>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item row="2" column="0">
-       <widget class="QLabel" name="locFileFormatLabel">
+       </item>
+       <item>
         <property name="text">
-         <string>翻訳ファイル形式:</string>
+         <string>ディシジョン設定</string>
         </property>
-       </widget>
-      </item>
-      <item row="2" column="1">
-       <layout class="QHBoxLayout" name="locFileFormatLayout">
-        <item>
-         <widget class="QLineEdit" name="locFileFormatEdit">
-          <property name="placeholderText">
-           <string>例: {namespace}_{lang}.yml</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QToolButton" name="locFileFormatBrowseButton">
-          <property name="text">
-           <string>...</string>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item row="3" column="0">
-       <widget class="QLabel" name="titleKeyFormatLabel">
+       </item>
+       <item>
         <property name="text">
-         <string>タイトルキー形式:</string>
+         <string>翻訳設定</string>
         </property>
+       </item>
+      </widget>
+     </item>
+
+     <!-- 右側: スタックコンテンツ -->
+     <item>
+      <widget class="QStackedWidget" name="settingsStackedWidget">
+       
+       <!-- ページ1: 全般 -->
+       <widget class="QWidget" name="generalPage">
+        <layout class="QVBoxLayout" name="generalPageLayout">
+         <property name="leftMargin">
+          <number>0</number>
+         </property>
+         <property name="topMargin">
+          <number>0</number>
+         </property>
+         <property name="rightMargin">
+          <number>0</number>
+         </property>
+         <property name="bottomMargin">
+          <number>0</number>
+         </property>
+         <item>
+          <widget class="QGroupBox" name="generalGroup">
+           <property name="title">
+            <string>全般設定</string>
+           </property>
+           <layout class="QFormLayout" name="generalFormLayout">
+            <item row="0" column="0">
+             <widget class="QLabel" name="gamePathLabel">
+              <property name="text">
+               <string>ゲーム本体 of Iron IV パス:</string>
+              </property>
+             </widget>
+            </item>
+            <item row="0" column="1">
+             <layout class="QHBoxLayout" name="gamePathLayout">
+              <item>
+               <widget class="QLineEdit" name="gamePathEdit">
+                <property name="placeholderText">
+                 <string>例: C:/Program Files (x86)/Steam/steamapps/common/Hearts of Iron IV</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="gamePathBrowseButton">
+                <property name="text">
+                 <string>参照...</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+           </layout>
+          </widget>
+         </item>
+         <item>
+          <widget class="QCheckBox" name="explicitNoCheck">
+           <property name="toolTip">
+            <string>有効にすると、エディタでチェックを外した際にスクリプトへ 'property = no' を書き込みます。無効にすると、スクリプトからその項目自体を削除してデフォルト値（通常はno扱い）に任せます。</string>
+           </property>
+           <property name="text">
+            <string>チェック解除時に値を 'no' に固定する</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="generalSpacer">
+           <property name="orientation">
+            <enum>Qt::Orientation::Vertical</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>20</width>
+             <height>40</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+        </layout>
        </widget>
-      </item>
-      <item row="3" column="1">
-       <layout class="QHBoxLayout" name="titleKeyFormatLayout">
-        <item>
-         <widget class="QLineEdit" name="titleKeyFormatEdit">
-          <property name="placeholderText">
-           <string>例: {id}.t</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QToolButton" name="titleKeyFormatBrowseButton">
-          <property name="text">
-           <string>...</string>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item row="4" column="0">
-       <widget class="QLabel" name="descKeyFormatLabel">
-        <property name="text">
-         <string>説明キー形式:</string>
-        </property>
+
+       <!-- ページ2: イベント -->
+       <widget class="QWidget" name="eventPage">
+        <layout class="QVBoxLayout" name="eventPageLayout">
+         <property name="leftMargin">
+          <number>0</number>
+         </property>
+         <property name="topMargin">
+          <number>0</number>
+         </property>
+         <property name="rightMargin">
+          <number>0</number>
+         </property>
+         <property name="bottomMargin">
+          <number>0</number>
+         </property>
+         <item>
+          <widget class="QGroupBox" name="eventSettingsGroup">
+           <property name="title">
+            <string>イベント設定</string>
+           </property>
+           <layout class="QFormLayout" name="editorAssistFormLayout">
+            <item row="1" column="0">
+             <widget class="QLabel" name="idFormatLabel">
+              <property name="text">
+               <string>ID形式:</string>
+              </property>
+             </widget>
+            </item>
+            <item row="1" column="1">
+             <layout class="QHBoxLayout" name="idFormatLayout">
+              <item>
+               <widget class="QLineEdit" name="idFormatEdit">
+                <property name="placeholderText">
+                 <string>例: {namespace}.{number}</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QToolButton" name="idFormatBrowseButton">
+                <property name="text">
+                 <string>...</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+            <item row="2" column="0">
+             <widget class="QLabel" name="locFileFormatLabel">
+              <property name="text">
+               <string>翻訳ファイル形式:</string>
+              </property>
+             </widget>
+            </item>
+            <item row="2" column="1">
+             <layout class="QHBoxLayout" name="locFileFormatLayout">
+              <item>
+               <widget class="QLineEdit" name="locFileFormatEdit">
+                <property name="placeholderText">
+                 <string>例: {namespace}_{lang}.yml</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QToolButton" name="locFileFormatBrowseButton">
+                <property name="text">
+                 <string>...</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+            <item row="3" column="0">
+             <widget class="QLabel" name="titleKeyFormatLabel">
+              <property name="text">
+               <string>タイトルキー形式:</string>
+              </property>
+             </widget>
+            </item>
+            <item row="3" column="1">
+             <layout class="QHBoxLayout" name="titleKeyFormatLayout">
+              <item>
+               <widget class="QLineEdit" name="titleKeyFormatEdit">
+                <property name="placeholderText">
+                 <string>例: {id}.t</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QToolButton" name="titleKeyFormatBrowseButton">
+                <property name="text">
+                 <string>...</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+            <item row="4" column="0">
+             <widget class="QLabel" name="descKeyFormatLabel">
+              <property name="text">
+               <string>説明キー形式:</string>
+              </property>
+             </widget>
+            </item>
+            <item row="4" column="1">
+             <layout class="QHBoxLayout" name="descKeyFormatLayout">
+              <item>
+               <widget class="QLineEdit" name="descKeyFormatEdit">
+                <property name="placeholderText">
+                 <string>例: {id}.d</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QToolButton" name="descKeyFormatBrowseButton">
+                <property name="text">
+                 <string>...</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+            <item row="5" column="0">
+             <widget class="QLabel" name="optionKeyFormatLabel">
+              <property name="text">
+               <string>選択肢キー形式:</string>
+              </property>
+             </widget>
+            </item>
+            <item row="5" column="1">
+             <layout class="QHBoxLayout" name="optionKeyFormatLayout">
+              <item>
+               <widget class="QLineEdit" name="optionKeyFormatEdit">
+                <property name="placeholderText">
+                 <string>例: {id}.{a-z}</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QToolButton" name="optionKeyFormatBrowseButton">
+                <property name="text">
+                 <string>...</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+            <item row="0" column="0">
+             <widget class="QLabel" name="eventNamespaceLabel">
+              <property name="text">
+               <string>ネームスペース</string>
+              </property>
+             </widget>
+            </item>
+            <item row="0" column="1">
+             <layout class="QHBoxLayout" name="horizontalLayout">
+              <item>
+               <widget class="QLineEdit" name="eventNamespaceEdit"/>
+              </item>
+              <item>
+               <widget class="QToolButton" name="eventNamespaceBrowseButton">
+                <property name="text">
+                 <string>...</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+           </layout>
+          </widget>
+         </item>
+         <item>
+          <spacer name="eventSpacer">
+           <property name="orientation">
+            <enum>Qt::Orientation::Vertical</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>20</width>
+             <height>40</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+        </layout>
        </widget>
-      </item>
-      <item row="4" column="1">
-       <layout class="QHBoxLayout" name="descKeyFormatLayout">
-        <item>
-         <widget class="QLineEdit" name="descKeyFormatEdit">
-          <property name="placeholderText">
-           <string>例: {id}.d</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QToolButton" name="descKeyFormatBrowseButton">
-          <property name="text">
-           <string>...</string>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item row="5" column="0">
-       <widget class="QLabel" name="optionKeyFormatLabel">
-        <property name="text">
-         <string>選択肢キー形式:</string>
-        </property>
+
+       <!-- ページ3: ディシジョン -->
+       <widget class="QWidget" name="decisionPage">
+        <layout class="QVBoxLayout" name="decisionPageLayout">
+         <property name="leftMargin">
+          <number>0</number>
+         </property>
+         <property name="topMargin">
+          <number>0</number>
+         </property>
+         <property name="rightMargin">
+          <number>0</number>
+         </property>
+         <property name="bottomMargin">
+          <number>0</number>
+         </property>
+         <item>
+          <widget class="QGroupBox" name="decisionSettingsGroup">
+           <property name="title">
+            <string>ディシジョン設定</string>
+           </property>
+           <layout class="QFormLayout" name="decisionFormLayout">
+            <item row="0" column="0">
+             <widget class="QLabel" name="decisionCategoryIdFormatLabel">
+              <property name="text">
+               <string>カテゴリID形式</string>
+              </property>
+             </widget>
+            </item>
+            <item row="0" column="1">
+             <layout class="QHBoxLayout" name="decisionCategoryIdFormatLayout">
+              <item>
+               <widget class="QLineEdit" name="decisionCategoryIdFormatEdit"/>
+              </item>
+              <item>
+               <widget class="QToolButton" name="decisionCategoryIdFormatBrowseButton">
+                <property name="text">
+                 <string>...</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+            <item row="2" column="1">
+             <layout class="QHBoxLayout" name="decisionLocFileFormatLayout">
+              <item>
+               <widget class="QLineEdit" name="decisionLocFileFormatEdit"/>
+              </item>
+              <item>
+               <widget class="QToolButton" name="decisionLocFileFormatBrowseButton">
+                <property name="text">
+                 <string>...</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+            <item row="2" column="0">
+             <widget class="QLabel" name="decisionLocFileFormatLabel">
+              <property name="text">
+               <string>翻訳ファイル形式</string>
+              </property>
+             </widget>
+            </item>
+            <item row="1" column="0">
+             <widget class="QLabel" name="decisionIdFormatLabel">
+              <property name="text">
+               <string>ディシジョンID形式</string>
+              </property>
+             </widget>
+            </item>
+            <item row="1" column="1">
+             <layout class="QHBoxLayout" name="decisionIdFormatLayout">
+              <item>
+               <widget class="QLineEdit" name="decisionIdFormatEdit"/>
+              </item>
+              <item>
+               <widget class="QToolButton" name="decisionIdFormatBrowseButton">
+                <property name="text">
+                 <string>...</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+           </layout>
+          </widget>
+         </item>
+         <item>
+          <spacer name="decisionSpacer">
+           <property name="orientation">
+            <enum>Qt::Orientation::Vertical</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>20</width>
+             <height>40</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+        </layout>
        </widget>
-      </item>
-      <item row="5" column="1">
-       <layout class="QHBoxLayout" name="optionKeyFormatLayout">
-        <item>
-         <widget class="QLineEdit" name="optionKeyFormatEdit">
-          <property name="placeholderText">
-           <string>例: {id}.{a-z}</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QToolButton" name="optionKeyFormatBrowseButton">
-          <property name="text">
-           <string>...</string>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item row="0" column="0">
-       <widget class="QLabel" name="eventNamespaceLabel">
-        <property name="text">
-         <string>ネームスペース</string>
-        </property>
+
+       <!-- ページ4: 翻訳 -->
+       <widget class="QWidget" name="localisationPage">
+        <layout class="QVBoxLayout" name="localisationPageLayout">
+         <property name="leftMargin">
+          <number>0</number>
+         </property>
+         <property name="topMargin">
+          <number>0</number>
+         </property>
+         <property name="rightMargin">
+          <number>0</number>
+         </property>
+         <property name="bottomMargin">
+          <number>0</number>
+         </property>
+         <item>
+          <widget class="QGroupBox" name="localisationGroup">
+           <property name="title">
+            <string>ローカリゼーション</string>
+           </property>
+           <layout class="QVBoxLayout" name="localisationLayout">
+            <item>
+             <layout class="QHBoxLayout" name="displayLanguageLayout">
+              <item>
+               <widget class="QLabel" name="displayLanguageLabel">
+                <property name="text">
+                 <string>設定済み言語:</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QComboBox" name="displayLanguageCombo">
+                <property name="toolTip">
+                 <string>エディタ内のプレビュー等で、翻訳キーに対応するテキストを表示する際に使用される言語です。</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QCheckBox" name="saveEmptyLocCheck">
+                <property name="toolTip">
+                 <string>チェックを入れると空の文章を保存し、外すと翻訳ファイルから削除（ゲーム内でキーが表示される状態）します。</string>
+                </property>
+                <property name="text">
+                 <string>空の文章も翻訳ファイルに書き出す</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+           </layout>
+          </widget>
+         </item>
+         <item>
+          <spacer name="localisationSpacer">
+           <property name="orientation">
+            <enum>Qt::Orientation::Vertical</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>20</width>
+             <height>40</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+        </layout>
        </widget>
-      </item>
-      <item row="0" column="1">
-       <layout class="QHBoxLayout" name="horizontalLayout">
-        <item>
-         <widget class="QLineEdit" name="eventNamespaceEdit"/>
-        </item>
-        <item>
-         <widget class="QToolButton" name="eventNamespaceBrowseButton">
-          <property name="text">
-           <string>...</string>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-     </layout>
-    </widget>
-   </item>
-   <item>
-    <widget class="QGroupBox" name="decisionSettingsGroup">
-     <property name="title">
-      <string>ディシジョン設定</string>
-     </property>
-     <layout class="QFormLayout" name="decisionFormLayout">
-      <item row="0" column="0">
-       <widget class="QLabel" name="decisionCategoryIdFormatLabel">
-        <property name="text">
-         <string>カテゴリID形式</string>
-        </property>
-       </widget>
-      </item>
-      <item row="0" column="1">
-       <layout class="QHBoxLayout" name="decisionCategoryIdFormatLayout">
-        <item>
-         <widget class="QLineEdit" name="decisionCategoryIdFormatEdit"/>
-        </item>
-        <item>
-         <widget class="QToolButton" name="decisionCategoryIdFormatBrowseButton">
-          <property name="text">
-           <string>...</string>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item row="2" column="1">
-       <layout class="QHBoxLayout" name="decisionLocFileFormatLayout">
-        <item>
-         <widget class="QLineEdit" name="decisionLocFileFormatEdit"/>
-        </item>
-        <item>
-         <widget class="QToolButton" name="decisionLocFileFormatBrowseButton">
-          <property name="text">
-           <string>...</string>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item row="2" column="0">
-       <widget class="QLabel" name="decisionLocFileFormatLabel">
-        <property name="text">
-         <string>翻訳ファイル形式</string>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="0">
-       <widget class="QLabel" name="decisionIdFormatLabel">
-        <property name="text">
-         <string>ディシジョンID形式</string>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="1">
-       <layout class="QHBoxLayout" name="decisionIdFormatLayout">
-        <item>
-         <widget class="QLineEdit" name="decisionIdFormatEdit"/>
-        </item>
-        <item>
-         <widget class="QToolButton" name="decisionIdFormatBrowseButton">
-          <property name="text">
-           <string>...</string>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-     </layout>
-    </widget>
-   </item>
-   <item>
-    <widget class="QGroupBox" name="localisationGroup">
-     <property name="title">
-      <string>ローカリゼーション</string>
-     </property>
-     <layout class="QVBoxLayout" name="localisationLayout">
-      <item>
-       <layout class="QHBoxLayout" name="displayLanguageLayout">
-        <item>
-         <widget class="QLabel" name="displayLanguageLabel">
-          <property name="text">
-           <string>設定済み言語:</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QComboBox" name="displayLanguageCombo">
-          <property name="toolTip">
-           <string>エディタ内のプレビュー等で、翻訳キーに対応するテキストを表示する際に使用される言語です。</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QCheckBox" name="saveEmptyLocCheck">
-          <property name="toolTip">
-           <string>チェックを入れると空の文章を保存し、外すと翻訳ファイルから削除（ゲーム内でキーが表示される状態）します。</string>
-          </property>
-          <property name="text">
-           <string>空の文章も翻訳ファイルに書き出す</string>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-     </layout>
-    </widget>
-   </item>
-   <item>
-    <widget class="QCheckBox" name="explicitNoCheck">
-     <property name="toolTip">
-      <string>有効にすると、エディタでチェックを外した際にスクリプトへ 'property = no' を書き込みます。無効にすると、スクリプトからその項目自体を削除してデフォルト値（通常はno扱い）に任せます。</string>
-     </property>
-     <property name="text">
-      <string>チェック解除時に値を 'no' に固定する</string>
-     </property>
-    </widget>
-   </item>
-   <item>
-    <spacer name="verticalSpacer">
-     <property name="orientation">
-      <enum>Qt::Orientation::Vertical</enum>
-     </property>
-     <property name="sizeHint" stdset="0">
-      <size>
-       <width>20</width>
-       <height>40</height>
-      </size>
-     </property>
-    </spacer>
+
+      </widget>
+     </item>
+    </layout>
    </item>
   </layout>
  </widget>

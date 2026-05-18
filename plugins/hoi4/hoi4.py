@@ -568,9 +568,19 @@ def show_settings(plugin, parent, project_path):
     if not container:
         return
 
+    # リストとスタックの連携設定
+    list_widget = container.findChild(object, "settingsListWidget")
+    stacked_widget = container.findChild(object, "settingsStackedWidget")
+    if list_widget and stacked_widget:
+        # シグナル接続と初期行のセット
+        list_widget.currentRowChanged.connect(stacked_widget.setCurrentIndex)
+        list_widget.setCurrentRow(0)
+
     # ダイアログの作成
     dialog = QDialog(parent)
     dialog.setWindowTitle(tr("HoI4Plugin", "Hearts of Iron IV プラグイン設定"))
+    dialog.resize(800, 500) # タブ配置に合わせて横広のサイズに変更
+    
     layout = QVBoxLayout(dialog)
     layout.setContentsMargins(0, 0, 0, 0)
     layout.addWidget(container)

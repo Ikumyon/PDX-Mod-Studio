@@ -1,0 +1,17 @@
+{
+  "achievement": {
+    "key_order": [
+      "possible",
+      "",
+      "happened",
+      "",
+      "ribbon"
+    ]
+  },
+  "ribbon": {
+    "key_order": [
+      "frame",
+      "colors"
+    ]
+  }
+}

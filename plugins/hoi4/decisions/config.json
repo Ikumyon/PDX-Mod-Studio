@@ -2,6 +2,7 @@
     "name": "ディシジョン",
     "editor_id": "decision_editor",
     "path": "common/decisions",
+    "format": "decision_format.json",
     "extension": ".txt",
     "icon": "mail-checkmark-24-regular.svg",
     "document_type": "decision_file",

@@ -18,5 +18,12 @@
       "option",
       "after"
     ]
+  },
+  "option": {
+    "key_order": [
+      "name",
+      "trigger",
+      "ai_chance"
+    ]
   }
 }
