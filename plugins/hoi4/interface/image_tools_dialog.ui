@@ -6,14 +6,14 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>528</width>
+    <width>581</width>
     <height>505</height>
    </rect>
   </property>
   <property name="windowTitle">
    <string>🎨 画像アセット調整・加工ツール</string>
   </property>
-  <layout class="QVBoxLayout" name="layoutDialogMain">
+  <layout class="QVBoxLayout" name="layoutDialogMain" stretch="0,0,1,0">
    <property name="spacing">
     <number>8</number>
    </property>
@@ -30,6 +30,27 @@
     <number>8</number>
    </property>
    <item>
+    <layout class="QHBoxLayout" name="layoutMainPreset">
+     <item>
+      <widget class="QLabel" name="lblMainPreset">
+       <property name="text">
+        <string>プリセット</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QComboBox" name="comboMainPreset">
+       <property name="sizePolicy">
+        <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+         <horstretch>0</horstretch>
+         <verstretch>0</verstretch>
+        </sizepolicy>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
     <widget class="QFrame" name="toolsFrame">
      <property name="sizePolicy">
       <sizepolicy hsizetype="Preferred" vsizetype="Maximum">
@@ -37,13 +58,27 @@
        <verstretch>0</verstretch>
       </sizepolicy>
      </property>
+     <property name="styleSheet">
+      <string notr="true">QToolButton {
+	background: transparent;
+	border: none;
+    border-radius: 4px;
+}
+QToolButton:hover {
+	background-color: palette(midlight);
+}
+QToolButton:checked {
+	background-color: palette(highlight);
+	color: palette(highlighted-text);
+}</string>
+     </property>
      <property name="frameShape">
       <enum>QFrame::Shape::StyledPanel</enum>
      </property>
      <property name="frameShadow">
       <enum>QFrame::Shadow::Raised</enum>
      </property>
-     <layout class="QHBoxLayout" name="horizontalLayout">
+     <layout class="QHBoxLayout" name="layoutToolButtons">
       <property name="spacing">
        <number>0</number>
       </property>
@@ -61,44 +96,107 @@
       </property>
       <item>
        <widget class="QToolButton" name="toolButtonCrop">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
         <property name="text">
          <string>トリミング</string>
         </property>
+        <property name="checkable">
+         <bool>true</bool>
+        </property>
+        <property name="checked">
+         <bool>true</bool>
+        </property>
+        <attribute name="buttonGroup">
+         <string notr="true">buttonGroupTools</string>
+        </attribute>
        </widget>
       </item>
       <item>
        <widget class="QToolButton" name="toolButtonBlur">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
         <property name="text">
          <string>選択的ガウスぼかし</string>
         </property>
+        <property name="checkable">
+         <bool>true</bool>
+        </property>
+        <attribute name="buttonGroup">
+         <string notr="true">buttonGroupTools</string>
+        </attribute>
        </widget>
       </item>
       <item>
        <widget class="QToolButton" name="toolButtonSharpen">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
         <property name="text">
          <string>シャープネス</string>
         </property>
+        <property name="checkable">
+         <bool>true</bool>
+        </property>
+        <attribute name="buttonGroup">
+         <string notr="true">buttonGroupTools</string>
+        </attribute>
        </widget>
       </item>
       <item>
        <widget class="QToolButton" name="toolButtonRemoveBg">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
         <property name="text">
          <string>クロマキー透過</string>
         </property>
+        <property name="checkable">
+         <bool>true</bool>
+        </property>
+        <attribute name="buttonGroup">
+         <string notr="true">buttonGroupTools</string>
+        </attribute>
        </widget>
       </item>
       <item>
        <widget class="QToolButton" name="toolButtonColorize">
-        <property name="text">
-         <string>カラー化</string>
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
         </property>
+        <property name="text">
+         <string>AIカラー化</string>
+        </property>
+        <property name="checkable">
+         <bool>true</bool>
+        </property>
+        <attribute name="buttonGroup">
+         <string notr="true">buttonGroupTools</string>
+        </attribute>
        </widget>
       </item>
      </layout>
     </widget>
    </item>
    <item>
-    <widget class="QSplitter" name="splitter">
+    <widget class="QSplitter" name="splitterMain">
      <property name="orientation">
       <enum>Qt::Orientation::Horizontal</enum>
      </property>
@@ -106,7 +204,9 @@
       <number>4</number>
      </property>
      <widget class="QStackedWidget" name="stackedWidgetSettings">
-      <!-- 1. トリミングページ -->
+      <property name="currentIndex">
+       <number>0</number>
+      </property>
       <widget class="QWidget" name="pageCrop">
        <layout class="QVBoxLayout" name="layoutCropSettings">
         <property name="spacing">
@@ -125,40 +225,78 @@
          <number>4</number>
         </property>
         <item>
-         <widget class="QLabel" name="lblCropPreset">
-          <property name="text">
-           <string>📐 プリセットサイズ選択:</string>
-          </property>
-         </widget>
+         <layout class="QHBoxLayout" name="layoutMaskSelect">
+          <item>
+           <widget class="QLabel" name="lblMaskSelect">
+            <property name="text">
+             <string>マスク形状選択:</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QComboBox" name="comboMaskImage">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+           </widget>
+          </item>
+         </layout>
         </item>
         <item>
-         <widget class="QComboBox" name="comboCropPreset">
+         <layout class="QHBoxLayout" name="layoutScaleSelect">
           <item>
-           <property name="text">
-            <string>自由選択</string>
-           </property>
+           <widget class="QLabel" name="lblScaleSelect">
+            <property name="text">
+             <string>画像の拡大縮小率 (%):</string>
+            </property>
+           </widget>
           </item>
           <item>
-           <property name="text">
-            <string>国民精神 (60 x 60)</string>
-           </property>
+           <widget class="QSpinBox" name="spinScale">
+            <property name="minimum">
+             <number>10</number>
+            </property>
+            <property name="maximum">
+             <number>1000</number>
+            </property>
+            <property name="singleStep">
+             <number>10</number>
+            </property>
+            <property name="value">
+             <number>100</number>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="layoutInterpolationSelect">
+          <item>
+           <widget class="QLabel" name="lblInterpolationSelect">
+            <property name="text">
+             <string>補間方式:</string>
+            </property>
+           </widget>
           </item>
           <item>
-           <property name="text">
-            <string>国家方針 (82 x 82)</string>
-           </property>
+           <widget class="QComboBox" name="comboInterpolation">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+           </widget>
           </item>
-          <item>
-           <property name="text">
-            <string>指導者・将軍肖像画 (156 x 210)</string>
-           </property>
-          </item>
-         </widget>
+         </layout>
         </item>
         <item>
          <widget class="QLabel" name="lblCropManual">
           <property name="text">
-           <string>⚙️ 手動サイズ調整 (px):</string>
+           <string>手動サイズ調整 (px):</string>
           </property>
          </widget>
         </item>
@@ -221,7 +359,6 @@
         </item>
        </layout>
       </widget>
-      <!-- 2. ガウスぼかしページ -->
       <widget class="QWidget" name="pageBlur">
        <layout class="QVBoxLayout" name="layoutBlurSettings">
         <property name="spacing">
@@ -240,9 +377,16 @@
          <number>4</number>
         </property>
         <item>
+         <widget class="QCheckBox" name="chkBlurEnable">
+          <property name="text">
+           <string>ぼかし効果を有効にする</string>
+          </property>
+         </widget>
+        </item>
+        <item>
          <widget class="QLabel" name="lblBlurRadius">
           <property name="text">
-           <string>💧 ぼかし半径 (Radius):</string>
+           <string>ぼかし半径 (Radius):</string>
           </property>
          </widget>
         </item>
@@ -276,7 +420,7 @@
         <item>
          <widget class="QLabel" name="lblBlurThreshold">
           <property name="text">
-           <string>🛡️ エッジ保護しきい値 (Threshold):</string>
+           <string>エッジ保護しきい値 (Threshold):</string>
           </property>
          </widget>
         </item>
@@ -316,7 +460,6 @@
         </item>
        </layout>
       </widget>
-      <!-- 3. シャープネスページ -->
       <widget class="QWidget" name="pageSharpen">
        <layout class="QVBoxLayout" name="layoutSharpenSettings">
         <property name="spacing">
@@ -335,9 +478,16 @@
          <number>4</number>
         </property>
         <item>
+         <widget class="QCheckBox" name="chkSharpenEnable">
+          <property name="text">
+           <string>シャープネス効果を有効にする</string>
+          </property>
+         </widget>
+        </item>
+        <item>
          <widget class="QLabel" name="lblSharpenStrength">
           <property name="text">
-           <string>✨ シャープネス適用強度:</string>
+           <string>シャープネス適用強度:</string>
           </property>
          </widget>
         </item>
@@ -377,7 +527,6 @@
         </item>
        </layout>
       </widget>
-      <!-- 4. 背景削除ページ -->
       <widget class="QWidget" name="pageRemoveBg">
        <layout class="QVBoxLayout" name="layoutRemoveBgSettings">
         <property name="spacing">
@@ -396,9 +545,16 @@
          <number>4</number>
         </property>
         <item>
+         <widget class="QCheckBox" name="chkRemoveBgEnable">
+          <property name="text">
+           <string>クロマキー透過を有効にする</string>
+          </property>
+         </widget>
+        </item>
+        <item>
          <widget class="QLabel" name="lblRemoveBgKeyColor">
           <property name="text">
-           <string>🎨 透過対象の色 (Key Color):</string>
+           <string>透過対象の色 (Key Color):</string>
           </property>
          </widget>
         </item>
@@ -438,7 +594,7 @@
         <item>
          <widget class="QLabel" name="lblRemoveBgTolerance">
           <property name="text">
-           <string>🎯 透過許容値 (Tolerance):</string>
+           <string>透過許容値 (Tolerance):</string>
           </property>
          </widget>
         </item>
@@ -466,7 +622,7 @@
         <item>
          <widget class="QLabel" name="lblRemoveBgFeather">
           <property name="text">
-           <string>💨 境界のぼかし量 (Feather):</string>
+           <string>境界のぼかし量 (Feather):</string>
           </property>
          </widget>
         </item>
@@ -506,7 +662,6 @@
         </item>
        </layout>
       </widget>
-      <!-- 5. カラー化ページ -->
       <widget class="QWidget" name="pageColorize">
        <layout class="QVBoxLayout" name="layoutColorizeSettings">
         <property name="spacing">
@@ -525,9 +680,37 @@
          <number>4</number>
         </property>
         <item>
+         <widget class="QCheckBox" name="chkColorizeEnable">
+          <property name="text">
+           <string>AI自動カラー化を有効にする</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="layoutColorizeModel">
+          <item>
+           <widget class="QLabel" name="labelColorizeModel">
+            <property name="text">
+             <string>使用するAIモデル:</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QComboBox" name="comboColorizeModel">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
          <widget class="QLabel" name="lblColorizeHue">
           <property name="text">
-           <string>🌈 色相 (Hue):</string>
+           <string>色相 (Hue):</string>
           </property>
          </widget>
         </item>
@@ -561,7 +744,7 @@
         <item>
          <widget class="QLabel" name="lblColorizeSaturation">
           <property name="text">
-           <string>🎨 彩度 (Saturation):</string>
+           <string>彩度 (Saturation):</string>
           </property>
          </widget>
         </item>
@@ -595,7 +778,7 @@
         <item>
          <widget class="QLabel" name="lblColorizeLightness">
           <property name="text">
-           <string>☀️ 明度 (Lightness):</string>
+           <string>明度 (Lightness):</string>
           </property>
          </widget>
         </item>
@@ -647,6 +830,98 @@
        <string>リアルタイム加工プレビュー</string>
       </property>
       <layout class="QVBoxLayout" name="layoutProcessPreview">
+
+        <item>
+
+         <layout class="QHBoxLayout" name="layoutZoomControls">
+
+          <item>
+
+           <widget class="QCheckBox" name="chkZoomFit">
+
+            <property name="text">
+
+             <string>ウィンドウに合わせる</string>
+
+            </property>
+
+            <property name="checked">
+
+             <bool>true</bool>
+
+            </property>
+
+           </widget>
+
+          </item>
+
+          <item>
+
+           <widget class="QSlider" name="sliderZoom">
+
+            <property name="minimum">
+
+             <number>10</number>
+
+            </property>
+
+            <property name="maximum">
+
+             <number>500</number>
+
+            </property>
+
+            <property name="value">
+
+             <number>100</number>
+
+            </property>
+
+            <property name="orientation">
+
+             <enum>Qt::Orientation::Horizontal</enum>
+
+            </property>
+
+           </widget>
+
+          </item>
+
+          <item>
+
+           <widget class="QSpinBox" name="spinZoom">
+
+            <property name="minimum">
+
+             <number>10</number>
+
+            </property>
+
+            <property name="maximum">
+
+             <number>500</number>
+
+            </property>
+
+            <property name="value">
+
+             <number>100</number>
+
+            </property>
+
+            <property name="suffix">
+
+             <string>%</string>
+
+            </property>
+
+           </widget>
+
+          </item>
+
+         </layout>
+
+        </item>
        <item>
         <widget class="QGraphicsView" name="graphicsViewPreview">
          <property name="toolTip">
@@ -705,4 +980,7 @@
    </hints>
   </connection>
  </connections>
+ <buttongroups>
+  <buttongroup name="buttonGroupTools"/>
+ </buttongroups>
 </ui>

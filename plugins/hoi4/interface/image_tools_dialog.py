@@ -14,6 +14,14 @@ try:
 except ImportError:
     HAS_PIL = False
 
+try:
+    import cv2
+    HAS_CV2 = True
+except ImportError:
+    HAS_CV2 = False
+
+import urllib.request
+
 tr = QCoreApplication.translate
 
 class ImageToolsDialog(QDialog):
@@ -42,8 +50,6 @@ class ImageToolsDialog(QDialog):
         if not self.ui:
             raise RuntimeError(f"Failed to load UI file: {ui_path}")
 
-        # The .ui root is a QDialog. Reparent it as an embedded widget so the
-        # controls are painted inside this controller dialog on all platforms.
         self.setWindowTitle(self.ui.windowTitle() or self.windowTitle())
         self.resize(self.ui.size())
         self.ui.setParent(self)
@@ -55,13 +61,10 @@ class ImageToolsDialog(QDialog):
         
         # シーンとビューのセットアップ
         self.scene = QGraphicsScene(self)
-        
-        # シーン全体の背景はすっきりとしたダークグレーにし、画像の境界をはっきりさせる
         self.scene.setBackgroundBrush(QBrush(QColor(50, 50, 50)))
-        
         self.ui.graphicsViewPreview.setScene(self.scene)
         
-        # 透過画像背後用のチェッカーボード（市松模様）パターンアイテムを作成
+        # 透過画像背後用のチェッカーボードパターン
         tile_size = 8
         checker_pixmap = QPixmap(tile_size * 2, tile_size * 2)
         checker_pixmap.fill(Qt.GlobalColor.white)
@@ -74,12 +77,12 @@ class ImageToolsDialog(QDialog):
         self.background_checker_item = QGraphicsRectItem()
         self.background_checker_item.setPen(QPen(Qt.PenStyle.NoPen))
         self.background_checker_item.setBrush(QBrush(checker_pixmap))
-        self.background_checker_item.setZValue(-1) # 画像の背後に配置
+        self.background_checker_item.setZValue(-1)
         self.background_checker_item.setVisible(False)
         self.scene.addItem(self.background_checker_item)
         
         self.pixmap_item = QGraphicsPixmapItem()
-        self.pixmap_item.setZValue(0) # 手前に配置
+        self.pixmap_item.setZValue(0)
         self.scene.addItem(self.pixmap_item)
         
         # トリミング枠のセットアップ
@@ -95,10 +98,10 @@ class ImageToolsDialog(QDialog):
         # 編集モード ("crop" または "effect")
         self.mode = "crop"
         
-        # デバウンス用のタイマー（プレビュー処理の負荷軽減）
+        # デバウンス用のタイマー
         self.preview_timer = QTimer(self)
         self.preview_timer.setSingleShot(True)
-        self.preview_timer.setInterval(50) # 50ms 遅延
+        self.preview_timer.setInterval(50)
         self.preview_timer.timeout.connect(self.update_preview_real)
         
         # 画像の読み込み
@@ -112,19 +115,15 @@ class ImageToolsDialog(QDialog):
         self.update_preview()
 
     def load_image(self, path: str) -> QImage:
-        # Pillow (PIL) をメインの画像ローダーとし、DDS/TGA/PNG等の読み込み挙動を完全に統一する
         if HAS_PIL:
             try:
                 pil_img = Image.open(path)
                 pil_img = pil_img.convert("RGBA")
                 data = pil_img.tobytes("raw", "RGBA")
-                # QImage を作成し、内部バッファにデータをコピーして安全に取得
                 qimg = QImage(data, pil_img.size[0], pil_img.size[1], QImage.Format.Format_RGBA8888)
                 return qimg.copy()
             except Exception as e:
                 print(f"Pillow failed to load image ({path}): {e}. Retrying with native QImage...")
-                
-        # Pillow が未インストール、または読み込みエラー時の最終フォールバック
         return QImage(path)
 
     def bind_controls(self):
@@ -165,30 +164,77 @@ class ImageToolsDialog(QDialog):
         
         self.ui.btnSelectKeyColor.clicked.connect(self.select_key_color)
 
+        # カラー化コントロールのバインド
+        self.ui.sliderColorizeHue.valueChanged.connect(self.ui.spinColorizeHue.setValue)
+        self.ui.spinColorizeHue.valueChanged.connect(self.ui.sliderColorizeHue.setValue)
+        self.ui.sliderColorizeHue.valueChanged.connect(self.trigger_preview_update)
+        
+        self.ui.sliderColorizeSaturation.valueChanged.connect(self.ui.spinColorizeSaturation.setValue)
+        self.ui.spinColorizeSaturation.valueChanged.connect(self.ui.sliderColorizeSaturation.setValue)
+        self.ui.sliderColorizeSaturation.valueChanged.connect(self.trigger_preview_update)
+        
+        self.ui.sliderColorizeLightness.valueChanged.connect(self.ui.spinColorizeLightness.setValue)
+        self.ui.spinColorizeLightness.valueChanged.connect(self.ui.sliderColorizeLightness.setValue)
+        self.ui.sliderColorizeLightness.valueChanged.connect(self.trigger_preview_update)
+
+        # 有効化チェックボックスのバインド
+        self.ui.chkBlurEnable.toggled.connect(self.on_blur_enable_toggled)
+        self.ui.chkSharpenEnable.toggled.connect(self.on_sharpen_enable_toggled)
+        self.ui.chkRemoveBgEnable.toggled.connect(self.on_remove_bg_enable_toggled)
+        self.ui.chkColorizeEnable.toggled.connect(self.on_colorize_enable_toggled)
+
         # OK / Cancel の接続
         self.ui.buttonBox.accepted.connect(self.on_accept)
         self.ui.buttonBox.rejected.connect(self.reject)
 
     def init_ui_states(self):
-        # 初期状態の設定
         self.ui.stackedWidgetSettings.setCurrentIndex(0)
         self.ui.comboCropPreset.setCurrentIndex(0)
         
-        # ぼかし初期値
+        # ぼかし初期化（有効化依存）
+        self.ui.chkBlurEnable.setChecked(False)
+        self.ui.sliderBlurRadius.setEnabled(False)
+        self.ui.spinBlurRadius.setEnabled(False)
+        self.ui.sliderBlurThreshold.setEnabled(False)
+        self.ui.spinBlurThreshold.setEnabled(False)
+        
         self.ui.sliderBlurRadius.setValue(1)
         self.ui.spinBlurRadius.setValue(1)
         self.ui.sliderBlurThreshold.setValue(30)
         self.ui.spinBlurThreshold.setValue(30)
         
-        # シャープネス初期値
+        # シャープネス初期化（有効化依存）
+        self.ui.chkSharpenEnable.setChecked(False)
+        self.ui.sliderSharpenStrength.setEnabled(False)
+        self.ui.spinSharpenStrength.setEnabled(False)
+        
         self.ui.sliderSharpenStrength.setValue(0)
         self.ui.spinSharpenStrength.setValue(0)
+        
+        # 背景削除初期化（有効化依存）
+        self.ui.chkRemoveBgEnable.setChecked(False)
+        self.ui.sliderRemoveBgTolerance.setEnabled(False)
+        self.ui.spinRemoveBgTolerance.setEnabled(False)
+        self.ui.sliderRemoveBgFeather.setEnabled(False)
+        self.ui.spinRemoveBgFeather.setEnabled(False)
+        self.ui.btnSelectKeyColor.setEnabled(False)
         
         self.ui.sliderRemoveBgTolerance.setValue(30)
         self.ui.spinRemoveBgTolerance.setValue(30)
         self.ui.sliderRemoveBgFeather.setValue(5)
         self.ui.spinRemoveBgFeather.setValue(5)
         self.update_key_color_preview()
+
+        # AIカラー化初期化
+        self.ui.chkColorizeEnable.setChecked(False)
+        self.ui.sliderColorizeHue.setValue(0)
+        self.ui.spinColorizeHue.setValue(0)
+        self.ui.sliderColorizeSaturation.setValue(0)
+        self.ui.spinColorizeSaturation.setValue(0)
+        self.ui.sliderColorizeLightness.setValue(0)
+        self.ui.spinColorizeLightness.setValue(0)
+        
+        self.init_colorize_models()
         
         # トリミング枠の初期位置
         if self.original_image and not self.original_image.isNull():
@@ -196,8 +242,6 @@ class ImageToolsDialog(QDialog):
             h = min(60, self.original_image.height())
             self.ui.spinCropWidth.setValue(w)
             self.ui.spinCropHeight.setValue(h)
-            
-            # 中央に配置
             x = (self.original_image.width() - w) / 2
             y = (self.original_image.height() - h) / 2
             self.crop_rect_item.setPos(x, y)
@@ -208,7 +252,6 @@ class ImageToolsDialog(QDialog):
         self.update_preview()
 
     def on_crop_preset_changed(self, index: int):
-        # プリセットサイズ連動
         presets = {
             1: (60, 60),    # 国民精神
             2: (82, 82),    # 国家方針
@@ -222,7 +265,6 @@ class ImageToolsDialog(QDialog):
             self.ui.spinCropWidth.setEnabled(False)
             self.ui.spinCropHeight.setEnabled(False)
         else:
-            # 自由選択
             self.ui.spinCropWidth.setEnabled(True)
             self.ui.spinCropHeight.setEnabled(True)
             
@@ -234,27 +276,19 @@ class ImageToolsDialog(QDialog):
     def update_crop_rect_size(self):
         if not self.original_image or self.original_image.isNull():
             return
-            
         w = min(self.ui.spinCropWidth.value(), self.original_image.width())
         h = min(self.ui.spinCropHeight.value(), self.original_image.height())
-        
-        # トリミング枠のサイズ変更
         self.crop_rect_item.setRect(0, 0, w, h)
-        
-        # 範囲外に出ないようにクリップする
         pos = self.crop_rect_item.pos()
         x = max(0, min(pos.x(), self.original_image.width() - w))
         y = max(0, min(pos.y(), self.original_image.height() - h))
         self.crop_rect_item.setPos(x, y)
-        
         self.update_preview()
 
     def trigger_preview_update(self):
-        # デバウンス開始
         self.preview_timer.start()
 
     def update_preview(self):
-        # 即時プレビュー更新（トリミングなど）
         self.update_preview_real()
 
     def update_preview_real(self):
@@ -262,25 +296,17 @@ class ImageToolsDialog(QDialog):
             return
             
         if self.mode == "crop":
-            # トリミング位置調整モード：元画像全体＋黄色い枠線を表示
             self.crop_rect_item.setVisible(True)
             self.pixmap_item.setPixmap(QPixmap.fromImage(self.original_image))
-            
-            # 画像と同サイズの背後チェッカーボードを更新
             w = self.original_image.width()
             h = self.original_image.height()
             self.background_checker_item.setRect(0, 0, w, h)
             self.background_checker_item.setPos(0, 0)
             self.background_checker_item.setVisible(True)
-            
-            # 画像サイズに合わせてビューポートを調整
             self.scene.setSceneRect(0, 0, w, h)
             self.ui.graphicsViewPreview.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
         else:
-            # エフェクトプレビューモード：トリミング後の画像にエフェクトを適用して表示
             self.crop_rect_item.setVisible(False)
-            
-            # 1. トリミングを適用
             pos = self.crop_rect_item.pos()
             rect = self.crop_rect_item.rect()
             
@@ -291,36 +317,73 @@ class ImageToolsDialog(QDialog):
             
             img = self.original_image.copy(x, y, w, h)
             
-            # 2. カラー化（未実装のためスキップ）
-            
+            # 2. AIカラー化適用
+            if self.ui.chkColorizeEnable.isChecked():
+                img = self.apply_ai_colorization(img)
+                
             # 3. ぼかし適用
-            radius = self.ui.spinBlurRadius.value()
-            threshold = self.ui.spinBlurThreshold.value()
-            if radius > 1:
-                img = self.apply_selective_blur(img, radius, threshold)
-                
+            if self.ui.chkBlurEnable.isChecked():
+                radius = self.ui.spinBlurRadius.value()
+                threshold = self.ui.spinBlurThreshold.value()
+                if radius > 1:
+                    img = self.apply_selective_blur(img, radius, threshold)
+                    
             # 4. シャープネス適用
-            strength = self.ui.spinSharpenStrength.value()
-            if strength > 0:
-                img = self.apply_sharpen(img, strength)
-                
-            # 5. 背景削除（透過）適用
-            tolerance = self.ui.spinRemoveBgTolerance.value()
-            feather = self.ui.spinRemoveBgFeather.value()
-            if tolerance > 0:
-                img = self.apply_remove_background(img, tolerance, feather)
+            if self.ui.chkSharpenEnable.isChecked():
+                strength = self.ui.spinSharpenStrength.value()
+                if strength > 0:
+                    img = self.apply_sharpen(img, strength)
+                    
+            # 5. 背景削除適用
+            if self.ui.chkRemoveBgEnable.isChecked():
+                tolerance = self.ui.spinRemoveBgTolerance.value()
+                feather = self.ui.spinRemoveBgFeather.value()
+                if tolerance > 0:
+                    img = self.apply_remove_background(img, tolerance, feather)
             
             self.processed_image = img
             self.pixmap_item.setPixmap(QPixmap.fromImage(self.processed_image))
-            
-            # 加工後画像サイズに合わせて背後チェッカーボードを更新
             self.background_checker_item.setRect(0, 0, w, h)
             self.background_checker_item.setPos(0, 0)
             self.background_checker_item.setVisible(True)
-            
-            # シーンの境界を加工後画像サイズにセット
             self.scene.setSceneRect(0, 0, w, h)
             self.ui.graphicsViewPreview.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+
+    def on_blur_enable_toggled(self, checked: bool):
+        self.ui.sliderBlurRadius.setEnabled(checked)
+        self.ui.spinBlurRadius.setEnabled(checked)
+        self.ui.sliderBlurThreshold.setEnabled(checked)
+        self.ui.spinBlurThreshold.setEnabled(checked)
+        self.trigger_preview_update()
+
+    def on_sharpen_enable_toggled(self, checked: bool):
+        self.ui.sliderSharpenStrength.setEnabled(checked)
+        self.ui.spinSharpenStrength.setEnabled(checked)
+        self.trigger_preview_update()
+
+    def on_remove_bg_enable_toggled(self, checked: bool):
+        self.ui.sliderRemoveBgTolerance.setEnabled(checked)
+        self.ui.spinRemoveBgTolerance.setEnabled(checked)
+        self.ui.sliderRemoveBgFeather.setEnabled(checked)
+        self.ui.spinRemoveBgFeather.setEnabled(checked)
+        self.ui.btnSelectKeyColor.setEnabled(checked)
+        self.trigger_preview_update()
+
+    def on_colorize_enable_toggled(self, checked: bool):
+        self.ui.labelColorizeModel.setEnabled(checked)
+        self.ui.comboColorizeModel.setEnabled(checked)
+        self.ui.sliderColorizeHue.setEnabled(checked)
+        self.ui.spinColorizeHue.setEnabled(checked)
+        self.ui.sliderColorizeSaturation.setEnabled(checked)
+        self.ui.spinColorizeSaturation.setEnabled(checked)
+        self.ui.sliderColorizeLightness.setEnabled(checked)
+        self.ui.spinColorizeLightness.setEnabled(checked)
+        
+        if checked:
+            if self.ensure_model_files():
+                self.trigger_preview_update()
+        else:
+            self.trigger_preview_update()
 
     def apply_selective_blur(self, img: QImage, radius: int, threshold: int) -> QImage:
         img = img.convertToFormat(QImage.Format.Format_ARGB32)
@@ -358,11 +421,9 @@ class ImageToolsDialog(QDialog):
                         b = qBlue(pixel)
                         a = qAlpha(pixel)
                         
-                        # 輝度/色差（最大チャンネル差）としきい値を比較
                         max_diff = max(abs(r - r0), abs(g - g0), abs(b - b0))
                         
                         if max_diff <= threshold:
-                            # 距離に基づく逆二乗の重み付け
                             weight = 1.0 / (1.0 + dist_sq * 0.5)
                             sum_r += r * weight
                             sum_g += g * weight
@@ -386,7 +447,6 @@ class ImageToolsDialog(QDialog):
         width = img.width()
         height = img.height()
         out = QImage(width, height, QImage.Format.Format_ARGB32)
-        
         factor = strength / 100.0
         
         for y in range(height):
@@ -401,7 +461,6 @@ class ImageToolsDialog(QDialog):
                 b0 = qBlue(center)
                 a0 = qAlpha(center)
                 
-                # 3x3 ラプラシアン畳み込み (4 * Center - Up - Down - Left - Right)
                 up = img.pixel(x, y - 1)
                 down = img.pixel(x, y + 1)
                 left = img.pixel(x - 1, y)
@@ -420,7 +479,6 @@ class ImageToolsDialog(QDialog):
         return out
 
     def apply_remove_background(self, img: QImage, tolerance: int, feather: int) -> QImage:
-        """手動で選択された基準背景色としきい値、ぼかしを適用して透過する（未選択時は透過しない）"""
         if not self.remove_bg_key_color:
             return img
             
@@ -441,18 +499,14 @@ class ImageToolsDialog(QDialog):
                 b = qBlue(pixel)
                 a = qAlpha(pixel)
                 
-                # 背景色との差（RGB各チャンネルの最大絶対差）
                 diff = max(abs(r - bg_r), abs(g - bg_g), abs(b - bg_b))
                 
                 if diff <= tolerance:
-                    # 完全透明
                     new_a = 0
                 elif feather > 0 and diff <= (tolerance + feather):
-                    # フェザー（グラデーション透過）領域
                     ratio = (diff - tolerance) / feather
                     new_a = int(a * ratio)
                 else:
-                    # 元のまま
                     new_a = a
                     
                 out.setPixel(x, y, qRgba(r, g, b, new_a))
@@ -460,13 +514,10 @@ class ImageToolsDialog(QDialog):
         return out
 
     def select_key_color(self):
-        """ユーザーが透過対象のカラーを手動で選択できるようにダイアログを起動する"""
-        # 現在のカラーを初期値として設定
         initial_color = QColor(0, 0, 0)
         if self.remove_bg_key_color:
             initial_color = self.remove_bg_key_color
         else:
-            # ダイアログ初期値のフォールバックとして左上ピクセルの色を推薦する
             if self.original_image and not self.original_image.isNull():
                 bg_pixel = self.original_image.pixel(0, 0)
                 if qAlpha(bg_pixel) > 0:
@@ -479,22 +530,259 @@ class ImageToolsDialog(QDialog):
             self.trigger_preview_update()
             
     def update_key_color_preview(self):
-        """カラープレビューフレームの背景色を選択された色で塗りつぶす。未選択時は破線枠にする"""
         if hasattr(self.ui, "frameRemoveBgKeyColor"):
             color = self.remove_bg_key_color
             if color:
-                # スタイルシートを使ってプレビューフレームの背景色を設定
                 self.ui.frameRemoveBgKeyColor.setStyleSheet(
                     f"background-color: rgb({color.red()}, {color.green()}, {color.blue()}); border: 1px solid palette(mid);"
                 )
             else:
-                # 未選択時は透明かつ破線にする
                 self.ui.frameRemoveBgKeyColor.setStyleSheet(
                     "background-color: transparent; border: 1px dashed palette(mid);"
                 )
 
     def on_accept(self):
-        # 現時点ではOKでファイル保存しない。プレビュー結果だけ更新して閉じる。
         self.switch_mode("effect", self.ui.stackedWidgetSettings.currentIndex())
         self.saved_png_path = None
         self.accept()
+
+    # ==========================================
+    # 🌟 AIカラー化モデル定義・ロード・推論ハンドラ群
+    # ==========================================
+    def init_colorize_models(self):
+        self.all_models = []
+        
+        # 1. 内蔵の標準モデルを静的インポート（疎結合）で直接ロード
+        from .colorize.core.eccv2016_model import ECCV2016Model
+        base_dir = os.path.dirname(__file__)
+        eccv2016_json_path = os.path.join(base_dir, "colorize", "definitions", "eccv2016.json")
+        try:
+            import json
+            with open(eccv2016_json_path, "r", encoding="utf-8") as f:
+                eccv2016_metadata = json.load(f)
+            self.all_models.append(ECCV2016Model(eccv2016_metadata))
+        except Exception as e:
+            # 設定JSONから100%駆動するため、例外をそのまま投げて通知
+            raise RuntimeError(f"Failed to load core model config (eccv2016.json): {e}")
+
+        # 2. 外部アドオンモデルを専用ローダーでスキャン＆マージ
+        from .colorize.core.loader import ColorizePluginLoader
+        self.plugin_loader = ColorizePluginLoader(base_dir)
+        external_models = self.plugin_loader.load_plugin_models(reserved_ids=[m.get_id() for m in self.all_models])
+        self.all_models.extend(external_models)
+        
+        self.active_model = self.all_models[0] if self.all_models else None
+        
+        self.ui.comboColorizeModel.clear()
+        for model in self.all_models:
+            self.ui.comboColorizeModel.addItem(model.get_name(), model.get_id())
+            
+        self.ui.labelColorizeModel.setEnabled(False)
+        self.ui.comboColorizeModel.setEnabled(False)
+        self.ui.comboColorizeModel.currentIndexChanged.connect(self.on_colorize_model_changed)
+
+    def on_colorize_model_changed(self, index: int):
+        selected_id = self.ui.comboColorizeModel.itemData(index)
+        for model in self.all_models:
+            if model.get_id() == selected_id:
+                self.active_model = model
+                break
+                
+        if self.ui.chkColorizeEnable.isChecked():
+            if self.ensure_model_files():
+                self.trigger_preview_update()
+
+    def ensure_model_files(self) -> bool:
+        if not hasattr(self, "active_model") or self.active_model is None:
+            return True
+            
+        base_dir = os.path.dirname(__file__)
+        models_dir = os.path.join(base_dir, "colorize", "models")
+        
+        model_sub_dir = os.path.join(models_dir, self.active_model.get_id())
+        os.makedirs(model_sub_dir, exist_ok=True)
+        
+        files = self.active_model.get_files_config()
+        
+        mirrors = {
+            "colorization_release_v2.caffemodel": [
+                "https://dl.opencv.org/models/colorization_release_v2.caffemodel",
+                "https://lms.comp.nus.edu.sg/wp-content/uploads/2018/research/colorization/colorization_release_v2.caffemodel"
+            ]
+        }
+        
+        def check_for_updates(filename: str, url: str) -> bool:
+            path = os.path.join(model_sub_dir, filename)
+            if not os.path.exists(path):
+                return False
+            try:
+                req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'}, method='HEAD')
+                with urllib.request.urlopen(req, timeout=3.0) as response:
+                    server_size = int(response.info().get('Content-Length', 0))
+                    local_size = os.path.getsize(path)
+                    if server_size > 0 and local_size != server_size:
+                        return True
+            except Exception:
+                pass
+            return False
+
+        missing_files = []
+        updated_files = []
+        
+        for filename in files.keys():
+            path = os.path.join(model_sub_dir, filename)
+            if not os.path.exists(path) or os.path.getsize(path) < 1000:
+                missing_files.append(filename)
+                
+        for filename, url in files.items():
+            if filename not in missing_files:
+                if check_for_updates(filename, url):
+                    updated_files.append(filename)
+                    
+        if updated_files:
+            reply = QMessageBox.question(
+                self,
+                "AIモデルファイルの更新検出",
+                f"新しいバージョンのモデルファイルが検出されました：\n{', '.join(updated_files)}\n\n最新バージョンをダウンロードして更新しますか？\n（※「いいえ」を選択した場合は、現在の古いモデルを使い続けます）",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                for filename in updated_files:
+                    path = os.path.join(model_sub_dir, filename)
+                    try:
+                        if os.path.exists(path):
+                            os.remove(path)
+                        missing_files.append(filename)
+                    except Exception:
+                        pass
+
+        if not missing_files:
+            return True
+            
+        if not updated_files:
+            reply = QMessageBox.question(
+                self,
+                "AIカラー化モデルのダウンロード",
+                f"AIモデル（{self.active_model.get_name()}）を利用するには、学習済みモデルファイル等のダウンロードが必要です。\n\nダウンロードを開始しますか？\n（※通信環境によっては完了まで数分かかる場合があります）",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes
+            )
+        else:
+            reply = QMessageBox.StandardButton.Yes
+        
+        if reply == QMessageBox.StandardButton.No:
+            return False
+            
+        from PySide6.QtWidgets import QProgressDialog
+        progress = QProgressDialog("モデルファイルをダウンロード中...", "キャンセル", 0, 100, self)
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.setValue(0)
+        
+        def download_progress(block_num, block_size, total_size):
+            if progress.wasCanceled():
+                raise Exception("Download canceled by user")
+            if total_size > 0:
+                percent = int(block_num * block_size * 100 / total_size)
+                progress.setValue(min(100, percent))
+                QCoreApplication.processEvents()
+                
+        try:
+            for filename in missing_files:
+                path = os.path.join(model_sub_dir, filename)
+                progress.setLabelText(f"{filename} をダウンロード中...")
+                progress.setValue(0)
+                QCoreApplication.processEvents()
+                
+                urls_to_try = mirrors.get(filename, [files[filename]])
+                success = False
+                last_err = None
+                
+                for url in urls_to_try:
+                    try:
+                        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                        with urllib.request.urlopen(req) as response, open(path, 'wb') as out_file:
+                            total_size = int(response.info().get('Content-Length', 0))
+                            block_size = 8192
+                            downloaded = 0
+                            while True:
+                                block = response.read(block_size)
+                                if not block:
+                                    break
+                                out_file.write(block)
+                                downloaded += len(block)
+                                download_progress(downloaded // block_size + 1, block_size, total_size)
+                        success = True
+                        break
+                    except Exception as e:
+                        last_err = e
+                        if os.path.exists(path):
+                            os.remove(path)
+                        continue
+                        
+                if not success:
+                    raise last_err or Exception(f"Failed to download {filename}")
+                    
+            progress.setValue(100)
+            QMessageBox.information(self, "完了", "AIモデルファイルのダウンロードが完了しました。")
+            return True
+            
+        except Exception as e:
+            progress.close()
+            return False
+
+    def apply_ai_colorization(self, img: QImage) -> QImage:
+        if not HAS_CV2 or not hasattr(self, "active_model") or self.active_model is None:
+            return img
+            
+        try:
+            img_format = img.format()
+            if img_format != QImage.Format.Format_ARGB32 and img_format != QImage.Format.Format_RGB32:
+                img = img.convertToFormat(QImage.Format.Format_ARGB32)
+                
+            width, height = img.width(), img.height()
+            
+            ptr = img.bits()
+            import numpy as np
+            import cv2
+            bgra = np.array(ptr).reshape((height, width, 4)).copy()
+            bgr = bgra[:, :, :3]
+            
+            if not hasattr(self.active_model, "net") or self.active_model.net is None:
+                base_dir = os.path.dirname(__file__)
+                models_dir = os.path.join(base_dir, "colorize", "models")
+                print(f"[AI Colorize] Dynamically loading network for model: {self.active_model.get_id()}")
+                self.active_model.load_network(models_dir)
+                
+            result_bgr = self.active_model.predict(bgr)
+            
+            h_shift = self.ui.sliderColorizeHue.value()
+            s_shift = self.ui.sliderColorizeSaturation.value()
+            l_shift = self.ui.sliderColorizeLightness.value()
+            
+            if h_shift != 0 or s_shift != 0 or l_shift != 0:
+                result_bgr = self.apply_hsl_adjustment(result_bgr, h_shift, s_shift, l_shift)
+            
+            result_rgba = cv2.cvtColor(result_bgr, cv2.COLOR_BGR2RGBA)
+            rgba_contiguous = np.ascontiguousarray(result_rgba)
+            
+            qimg = QImage(rgba_contiguous.data, width, height, QImage.Format.Format_RGBA8888)
+            return qimg.copy()
+            
+        except Exception as e:
+            print(f"[AI Colorize] Inference error: {e}")
+            return img
+
+    def apply_hsl_adjustment(self, bgr_img, h_shift, s_shift, l_shift) -> np.ndarray:
+        import cv2
+        import numpy as np
+        hls = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2HLS).astype("float32")
+        if h_shift != 0:
+            hls[:, :, 0] = (hls[:, :, 0] + h_shift) % 180
+        if s_shift != 0:
+            hls[:, :, 2] = np.clip(hls[:, :, 2] + s_shift, 0, 255)
+        if l_shift != 0:
+            hls[:, :, 1] = np.clip(hls[:, :, 1] + l_shift, 0, 255)
+        adjusted_bgr = cv2.cvtColor(hls.astype("uint8"), cv2.COLOR_HLS2BGR)
+        return adjusted_bgr

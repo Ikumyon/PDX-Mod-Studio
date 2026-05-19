@@ -1668,9 +1668,9 @@
         </widget>
        </item>
        <item>
-        <layout class="QHBoxLayout" name="horizontalLayout">
+        <layout class="QHBoxLayout" name="layoutBottomButtons">
          <item>
-          <widget class="QPushButton" name="pushButton">
+          <widget class="QPushButton" name="btnMoreItems">
            <property name="text">
             <string>さらなる項目</string>
            </property>

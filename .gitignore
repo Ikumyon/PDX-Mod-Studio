@@ -23,3 +23,6 @@ plugins_registry.json
 # OS
 .DS_Store
 Thumbs.db
+
+# AI Models
+plugins/hoi4/interface/models/

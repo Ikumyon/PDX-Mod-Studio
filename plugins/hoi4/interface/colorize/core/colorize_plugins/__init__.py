@@ -1,0 +1,1 @@
+# Colorize external plugins package
