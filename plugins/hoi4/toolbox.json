@@ -54,6 +54,23 @@
                             }
                         }
                     ]
+                },
+                {
+                    "id": "gfx",
+                    "label": "GFX",
+                    "icon": "pencil.svg",
+                    "items": [
+                        {
+                            "id": "create_gfx",
+                            "label": "＋ 新規GFX定義を作成...",
+                            "action": "open_untitled_tab",
+                            "pinnable": true,
+                            "params": {
+                                "name": "New GFX",
+                                "editor_id": "gfx_editor"
+                            }
+                        }
+                    ]
                 }
             ]
         },

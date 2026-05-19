@@ -37,8 +37,6 @@
      <property name="handleWidth">
       <number>4</number>
      </property>
-     
-     <!-- 1. 左ペイン (定義・アセット一覧) -->
      <widget class="QWidget" name="widgetLeftPane">
       <property name="minimumSize">
        <size>
@@ -87,38 +85,36 @@
        </item>
        <item>
         <widget class="QPushButton" name="btnNewNode">
-         <property name="text">
-          <string>📄 新規定義を作成</string>
-         </property>
          <property name="toolTip">
           <string>新しい空のGFX定義ノードをリストに追加します。</string>
+         </property>
+         <property name="text">
+          <string>📄 新規定義を作成</string>
          </property>
         </widget>
        </item>
        <item>
         <widget class="QPushButton" name="btnDuplicateNode">
-         <property name="text">
-          <string>👯 選択定義を複製</string>
-         </property>
          <property name="toolTip">
           <string>選択している定義ノードのパラメータを丸ごとコピーして複製します。</string>
+         </property>
+         <property name="text">
+          <string>👯 選択定義を複製</string>
          </property>
         </widget>
        </item>
        <item>
         <widget class="QPushButton" name="btnDeleteNode">
-         <property name="text">
-          <string>🗑️ 選択定義を削除</string>
-         </property>
          <property name="toolTip">
           <string>選択している定義ノードをリストから削除します。</string>
+         </property>
+         <property name="text">
+          <string>🗑️ 選択定義を削除</string>
          </property>
         </widget>
        </item>
       </layout>
      </widget>
-     
-     <!-- 2. 中央ペイン (定義選択 & パラメータ編集フォーム) -->
      <widget class="QWidget" name="widgetCenterPane">
       <property name="minimumSize">
        <size>
@@ -139,8 +135,6 @@
        <property name="bottomMargin">
         <number>6</number>
        </property>
-       
-       <!-- 定義＆アセット管理 コントロールタワーヘッダー -->
        <item>
         <widget class="QFrame" name="frameTypeSelect">
          <property name="frameShape">
@@ -231,12 +225,8 @@
          </layout>
         </widget>
        </item>
-       
-       <!-- 動的フォームスタック -->
        <item>
         <widget class="QStackedWidget" name="stackedEditor">
-         
-         <!-- ページ 1: spriteType -->
          <widget class="QWidget" name="pageSpriteType">
           <layout class="QVBoxLayout" name="layoutSprite">
            <property name="leftMargin">
@@ -253,11 +243,34 @@
            </property>
            <item>
             <widget class="QScrollArea" name="scrollSprite">
+             <property name="frameShape">
+              <enum>QFrame::Shape::NoFrame</enum>
+             </property>
              <property name="widgetResizable">
               <bool>true</bool>
              </property>
              <widget class="QWidget" name="scrollSpriteInner">
+              <property name="geometry">
+               <rect>
+                <x>0</x>
+                <y>0</y>
+                <width>584</width>
+                <height>590</height>
+               </rect>
+              </property>
               <layout class="QVBoxLayout" name="layScrollSprite">
+               <property name="leftMargin">
+                <number>0</number>
+               </property>
+               <property name="topMargin">
+                <number>0</number>
+               </property>
+               <property name="rightMargin">
+                <number>0</number>
+               </property>
+               <property name="bottomMargin">
+                <number>0</number>
+               </property>
                <item>
                 <widget class="QGroupBox" name="groupSpriteBasic">
                  <property name="title">
@@ -273,7 +286,6 @@
                   </item>
                   <item row="0" column="1">
                    <widget class="QLineEdit" name="editSpriteName"/>
-                  </item>
                   </item>
                   <item row="1" column="0">
                    <widget class="QLabel" name="lblSpriteTexture">
@@ -376,8 +388,6 @@
                  </layout>
                 </widget>
                </item>
-               
-               <!-- アニメーション設定 -->
                <item>
                 <widget class="QGroupBox" name="groupSpriteAnim">
                  <property name="title">
@@ -436,10 +446,10 @@
                   <item row="2" column="1">
                    <widget class="QDoubleSpinBox" name="spinSpriteAnimRotation">
                     <property name="minimum">
-                     <double>-360.0</double>
+                     <double>-360.000000000000000</double>
                     </property>
                     <property name="maximum">
-                     <double>360.0</double>
+                     <double>360.000000000000000</double>
                     </property>
                    </widget>
                   </item>
@@ -584,8 +594,6 @@
            </item>
           </layout>
          </widget>
-         
-         <!-- ページ 2: frameAnimatedSpriteType -->
          <widget class="QWidget" name="pageFrameAnimated">
           <layout class="QVBoxLayout" name="layoutFrameAnimated">
            <property name="leftMargin">
@@ -606,6 +614,14 @@
               <bool>true</bool>
              </property>
              <widget class="QWidget" name="scrollFrameAnimatedInner">
+              <property name="geometry">
+               <rect>
+                <x>0</x>
+                <y>0</y>
+                <width>420</width>
+                <height>322</height>
+               </rect>
+              </property>
               <layout class="QVBoxLayout" name="layScrollFrameAnimated">
                <item>
                 <widget class="QGroupBox" name="groupFrameAnim">
@@ -750,8 +766,6 @@
            </item>
           </layout>
          </widget>
-         
-         <!-- ページ 3: progressbartype -->
          <widget class="QWidget" name="pageProgressBar">
           <layout class="QVBoxLayout" name="layoutProgressBar">
            <property name="leftMargin">
@@ -772,6 +786,14 @@
               <bool>true</bool>
              </property>
              <widget class="QWidget" name="scrollProgressBarInner">
+              <property name="geometry">
+               <rect>
+                <x>0</x>
+                <y>0</y>
+                <width>432</width>
+                <height>337</height>
+               </rect>
+              </property>
               <layout class="QVBoxLayout" name="layScrollProgressBar">
                <item>
                 <widget class="QGroupBox" name="groupProgress">
@@ -958,8 +980,6 @@
            </item>
           </layout>
          </widget>
-         
-         <!-- ページ 4: corneredTileSpriteType -->
          <widget class="QWidget" name="pageCorneredTile">
           <layout class="QVBoxLayout" name="layoutCorneredTile">
            <property name="leftMargin">
@@ -980,6 +1000,14 @@
               <bool>true</bool>
              </property>
              <widget class="QWidget" name="scrollCorneredTileInner">
+              <property name="geometry">
+               <rect>
+                <x>0</x>
+                <y>0</y>
+                <width>437</width>
+                <height>267</height>
+               </rect>
+              </property>
               <layout class="QVBoxLayout" name="layScrollCorneredTile">
                <item>
                 <widget class="QGroupBox" name="groupCornered">
@@ -1138,8 +1166,6 @@
            </item>
           </layout>
          </widget>
-         
-         <!-- ページ 5: maskedShieldType -->
          <widget class="QWidget" name="pageMaskedShield">
           <layout class="QVBoxLayout" name="layoutMaskedShield">
            <property name="leftMargin">
@@ -1160,6 +1186,14 @@
               <bool>true</bool>
              </property>
              <widget class="QWidget" name="scrollMaskedShieldInner">
+              <property name="geometry">
+               <rect>
+                <x>0</x>
+                <y>0</y>
+                <width>341</width>
+                <height>179</height>
+               </rect>
+              </property>
               <layout class="QVBoxLayout" name="layScrollMaskedShield">
                <item>
                 <widget class="QGroupBox" name="groupShield">
@@ -1249,8 +1283,6 @@
            </item>
           </layout>
          </widget>
-         
-         <!-- ページ 6: bitmapfont -->
          <widget class="QWidget" name="pageBitmapFont">
           <layout class="QVBoxLayout" name="layoutBitmapFont">
            <property name="leftMargin">
@@ -1271,6 +1303,14 @@
               <bool>true</bool>
              </property>
              <widget class="QWidget" name="scrollBitmapFontInner">
+              <property name="geometry">
+               <rect>
+                <x>0</x>
+                <y>0</y>
+                <width>410</width>
+                <height>169</height>
+               </rect>
+              </property>
               <layout class="QVBoxLayout" name="layScrollBitmapFont">
                <item>
                 <widget class="QGroupBox" name="groupFont">
@@ -1373,8 +1413,6 @@
            </item>
           </layout>
          </widget>
-         
-         <!-- ページ 7: bitmapfont_override -->
          <widget class="QWidget" name="pageFontOverride">
           <layout class="QVBoxLayout" name="layoutFontOverride">
            <property name="leftMargin">
@@ -1395,6 +1433,14 @@
               <bool>true</bool>
              </property>
              <widget class="QWidget" name="scrollFontOverrideInner">
+              <property name="geometry">
+               <rect>
+                <x>0</x>
+                <y>0</y>
+                <width>305</width>
+                <height>143</height>
+               </rect>
+              </property>
               <layout class="QVBoxLayout" name="layScrollFontOverride">
                <item>
                 <widget class="QGroupBox" name="groupFontOverride">
@@ -1483,8 +1529,6 @@
            </item>
           </layout>
          </widget>
-         
-         <!-- ページ 8: animatedmaptext -->
          <widget class="QWidget" name="pageMapText">
           <layout class="QVBoxLayout" name="layoutMapText">
            <property name="leftMargin">
@@ -1505,6 +1549,14 @@
               <bool>true</bool>
              </property>
              <widget class="QWidget" name="scrollMapTextInner">
+              <property name="geometry">
+               <rect>
+                <x>0</x>
+                <y>0</y>
+                <width>435</width>
+                <height>195</height>
+               </rect>
+              </property>
               <layout class="QVBoxLayout" name="layScrollMapText">
                <item>
                 <widget class="QGroupBox" name="groupMapText">
@@ -1613,13 +1665,28 @@
            </item>
           </layout>
          </widget>
-         
         </widget>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="horizontalLayout">
+         <item>
+          <widget class="QPushButton" name="pushButton">
+           <property name="text">
+            <string>さらなる項目</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QDialogButtonBox" name="buttonBox">
+           <property name="standardButtons">
+            <set>QDialogButtonBox::StandardButton::Cancel|QDialogButtonBox::StandardButton::Ok</set>
+           </property>
+          </widget>
+         </item>
+        </layout>
        </item>
       </layout>
      </widget>
-     
-     <!-- 3. 右ペイン (画像プレビュー & 高機能フィルターボタン & アニメーションコントロール) -->
      <widget class="QWidget" name="widgetRightPane">
       <property name="minimumSize">
        <size>
@@ -1640,8 +1707,6 @@
        <property name="bottomMargin">
         <number>6</number>
        </property>
-       
-       <!-- DDS/PNG プレビュー & ドラッグ＆ドロップエリア -->
        <item>
         <widget class="QGroupBox" name="groupPreview">
          <property name="title">
@@ -1658,8 +1723,6 @@
          </layout>
         </widget>
        </item>
-       
-       <!-- 🎨 画像の調整・加工 (フィルター & リサイズ) ダイアログ起動ボタン -->
        <item>
         <widget class="QPushButton" name="btnOpenImageTools">
          <property name="font">
@@ -1667,16 +1730,14 @@
            <bold>true</bold>
           </font>
          </property>
-         <property name="text">
-          <string>🎨 画像の調整・加工 (フィルター &amp; リサイズ)...</string>
-         </property>
          <property name="toolTip">
           <string>画像の高度な寸法リサイズ（拡大縮小）や、複数種類のフィルター効果（モノクロ, 反転, セピア, ぼかし, モザイク等）を適用する別ダイアログを起動します。</string>
          </property>
+         <property name="text">
+          <string>🎨 画像の調整・加工 (フィルター &amp; リサイズ)...</string>
+         </property>
         </widget>
        </item>
-       
-       <!-- プレビュー再生 / アニメーション制御コントロール -->
        <item>
         <widget class="QGroupBox" name="groupPreviewControl">
          <property name="title">
@@ -1700,10 +1761,8 @@
          </layout>
         </widget>
        </item>
-       
       </layout>
      </widget>
-     
     </widget>
    </item>
   </layout>

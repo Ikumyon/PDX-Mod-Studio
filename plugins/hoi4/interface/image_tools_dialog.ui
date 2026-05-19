@@ -83,7 +83,7 @@
       <item>
        <widget class="QToolButton" name="toolButtonRemoveBg">
         <property name="text">
-         <string>背景削除</string>
+         <string>クロマキー透過</string>
         </property>
        </widget>
       </item>
@@ -395,6 +395,46 @@
         <property name="bottomMargin">
          <number>4</number>
         </property>
+        <item>
+         <widget class="QLabel" name="lblRemoveBgKeyColor">
+          <property name="text">
+           <string>🎨 透過対象の色 (Key Color):</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="layoutRemoveBgKeyColor">
+          <item>
+           <widget class="QFrame" name="frameRemoveBgKeyColor">
+            <property name="minimumSize">
+             <size>
+              <width>40</width>
+              <height>24</height>
+             </size>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>40</width>
+              <height>24</height>
+             </size>
+            </property>
+            <property name="frameShape">
+             <enum>QFrame::Shape::StyledPanel</enum>
+            </property>
+            <property name="frameShadow">
+             <enum>QFrame::Shadow::Sunken</enum>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="btnSelectKeyColor">
+            <property name="text">
+             <string>色を選択...</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
         <item>
          <widget class="QLabel" name="lblRemoveBgTolerance">
           <property name="text">
