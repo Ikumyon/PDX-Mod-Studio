@@ -1,0 +1,128 @@
+{
+  "schema_name": "hoi4_gfx",
+  "file_scope": "interface",
+  "root_pattern": "nested_named_block",
+  "id_rule": {
+    "source": "inner_property",
+    "property_name": "name",
+    "type": "identifier",
+    "role": "sprite_id"
+  },
+  "unknown_keys": "warn",
+  "fields": {
+    "name": {
+      "type": "identifier",
+      "required": true
+    },
+    "texturefile": {
+      "type": "string"
+    },
+    "textureFile1": {
+      "type": "string"
+    },
+    "textureFile2": {
+      "type": "string"
+    },
+    "noOfFrames": {
+      "type": "integer"
+    },
+    "effectFile": {
+      "type": "string"
+    },
+    "allwaystransparent": {
+      "type": "boolean",
+      "allowed_values": ["yes", "no"]
+    },
+    "legacy_lazy_load": {
+      "type": "boolean",
+      "allowed_values": ["yes", "no"]
+    },
+    "transparencecheck": {
+      "type": "boolean",
+      "allowed_values": ["yes", "no"]
+    },
+    "animation_rate_fps": {
+      "type": "float"
+    },
+    "looping": {
+      "type": "boolean",
+      "allowed_values": ["yes", "no"]
+    },
+    "play_on_show": {
+      "type": "boolean",
+      "allowed_values": ["yes", "no"]
+    },
+    "pause_on_loop": {
+      "type": "boolean",
+      "allowed_values": ["yes", "no"]
+    },
+    "horizontal": {
+      "type": "boolean",
+      "allowed_values": ["yes", "no"]
+    },
+    "steps": {
+      "type": "integer"
+    },
+    "tilingCenter": {
+      "type": "boolean",
+      "allowed_values": ["yes", "no"]
+    },
+    "size": {
+      "type": "object"
+    },
+    "borderSize": {
+      "type": "object"
+    },
+    "color": {
+      "type": "object"
+    },
+    "colortwo": {
+      "type": "object"
+    },
+    "animation": {
+      "type": "object",
+      "multiple": true,
+      "schema": "gfx_animation"
+    }
+  },
+  "sub_schemas": {
+    "gfx_animation": {
+      "fields": {
+        "animationmaskfile": {
+          "type": "string"
+        },
+        "animationtexturefile": {
+          "type": "string"
+        },
+        "animationrotation": {
+          "type": "float"
+        },
+        "animationlooping": {
+          "type": "boolean",
+          "allowed_values": ["yes", "no"]
+        },
+        "animationtime": {
+          "type": "float"
+        },
+        "animationdelay": {
+          "type": "float"
+        },
+        "animationblendmode": {
+          "type": "string"
+        },
+        "animationtype": {
+          "type": "string"
+        },
+        "animationrotationoffset": {
+          "type": "object"
+        },
+        "animationscalejointto": {
+          "type": "string"
+        },
+        "animationframes": {
+          "type": "object"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,76 @@
+{
+  "spriteType": {
+    "key_order": [
+      "name",
+      "texturefile",
+      "noOfFrames",
+      "effectFile",
+      "legacy_lazy_load",
+      "allwaystransparent",
+      "transparencecheck",
+      "",
+      "animation"
+    ]
+  },
+  "animation": {
+    "key_order": [
+      "animationmaskfile",
+      "animationtexturefile",
+      "animationrotation",
+      "animationlooping",
+      "animationtime",
+      "animationdelay",
+      "animationblendmode",
+      "animationtype",
+      "animationrotationoffset",
+      "animationscalejointto",
+      "animationframes"
+    ]
+  },
+  "frameAnimatedType": {
+    "key_order": [
+      "name",
+      "texturefile",
+      "noOfFrames",
+      "effectFile",
+      "animation_rate_fps",
+      "looping",
+      "play_on_show",
+      "pause_on_loop",
+      "allwaystransparent"
+    ]
+  },
+  "progressbartype": {
+    "key_order": [
+      "name",
+      "color",
+      "colortwo",
+      "textureFile1",
+      "textureFile2",
+      "size",
+      "effectFile",
+      "horizontal",
+      "steps"
+    ]
+  },
+  "corneredTileSpriteType": {
+    "key_order": [
+      "name",
+      "texturefile",
+      "noOfFrames",
+      "size",
+      "borderSize",
+      "effectFile",
+      "allwaystransparent",
+      "tilingCenter"
+    ]
+  },
+  "maskedShieldType": {
+    "key_order": [
+      "name",
+      "textureFile1",
+      "textureFile2",
+      "effectFile"
+    ]
+  }
+}

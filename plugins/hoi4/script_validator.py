@@ -84,6 +84,8 @@ class ScriptValidator:
             schema_path = os.path.join(self.plugin_path, "events", "event_schema.json")
         elif "decisions" in norm_path:
             schema_path = os.path.join(self.plugin_path, "decisions", "decision_schema.json")
+        elif "interface" in norm_path:
+            schema_path = os.path.join(self.plugin_path, "interface", "gfx_schema.json")
         else:
             schema_path = None
             
@@ -208,7 +210,7 @@ class ScriptValidator:
         elif isinstance(node, ObjectNode):
             # 空のコードブロックの検知 ({})
             # 内部に実質的な代入 (AssignmentNode) または 比較 (ComparisonNode) が一つもない場合
-            if not any(isinstance(x, (AssignmentNode, ComparisonNode)) for x in node.items):
+            if not any(isinstance(x, (AssignmentNode, ComparisonNode, ScalarNode, ObjectNode)) for x in node.items):
                 diagnostic_range = delete_range or node.range
                 errors.append(Diagnostic(
                     severity="warning",
@@ -223,9 +225,53 @@ class ScriptValidator:
                     self._validate_node(item, schema, context_type, errors)
 
     def _check_value_type(self, val_node: AstNode, key: str, rule: dict, errors: list[Diagnostic], assignment_range=None):
-        expected_type = rule.get("type")
-        if not expected_type:
+        expected_types = rule.get("type")
+        if not expected_types:
             return
+            
+        # リスト形式に統一する
+        if isinstance(expected_types, str):
+            expected_types = [expected_types]
+            
+        diagnostic_range = assignment_range or val_node.range
+
+        # 各候補型でのエラーを格納する一時リストのリスト
+        all_type_errors = []
+        
+        for expected_type in expected_types:
+            type_errors = []
+            self._check_single_value_type(val_node, key, expected_type, rule, type_errors, assignment_range)
+            
+            # いずれかの型でエラーが発生しなかった場合、検証成功として即座に終了
+            if len(type_errors) == 0:
+                return
+                
+            all_type_errors.append(type_errors)
+            
+        # すべての型でエラーが検出された場合のみ、もっとも適切なエラーを報告
+        # ユーザーにどの型が許容されているかを分かりやすく表示する
+        type_names_map = {
+            "integer": "整数",
+            "float": "数値",
+            "boolean": "真偽値(yes/no)",
+            "country": "国タグ",
+            "tag": "国タグ",
+            "variable": "変数",
+            "object": "オブジェクトブロック"
+        }
+        
+        expected_names = [type_names_map.get(t, t) for t in expected_types]
+        types_str = " または ".join(expected_names)
+        
+        errors.append(Diagnostic(
+            severity="error",
+            message=make_error_html("型ミスマッチ", f"<b>{key}</b> の値には <b>{types_str}</b> を指定する必要があります。"),
+            range=diagnostic_range,
+            code="type-mismatch",
+            source="hoi4-linter"
+        ))
+
+    def _check_single_value_type(self, val_node: AstNode, key: str, expected_type: str, rule: dict, errors: list[Diagnostic], assignment_range=None):
         diagnostic_range = assignment_range or val_node.range
 
         def add_type_diagnostic(severity: str, message: str, code: str, actions=None):
@@ -316,7 +362,7 @@ class ScriptValidator:
                             "invalid-value",
                         )
                         
-            elif expected_type == "country":
+            elif expected_type in ("country", "tag"):
                 val_str = str(val_node.value).strip()
                 if val_type != "identifier" or len(val_str) != 3:
                     add_type_diagnostic(
