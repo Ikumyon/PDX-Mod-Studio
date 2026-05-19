@@ -21,6 +21,7 @@ except ImportError:
     HAS_CV2 = False
 
 import urllib.request
+import numpy as np
 
 tr = QCoreApplication.translate
 
@@ -135,7 +136,7 @@ class ImageToolsDialog(QDialog):
         self.ui.toolButtonColorize.clicked.connect(lambda: self.switch_mode("effect", 4))
         
         # トリミングコントロールのバインド
-        self.ui.comboCropPreset.currentIndexChanged.connect(self.on_crop_preset_changed)
+        self.ui.comboMainPreset.currentIndexChanged.connect(self.on_crop_preset_changed)
         self.ui.spinCropWidth.valueChanged.connect(self.on_crop_spin_changed)
         self.ui.spinCropHeight.valueChanged.connect(self.on_crop_spin_changed)
         
@@ -187,9 +188,53 @@ class ImageToolsDialog(QDialog):
         self.ui.buttonBox.accepted.connect(self.on_accept)
         self.ui.buttonBox.rejected.connect(self.reject)
 
+    def load_masks(self):
+        """masks/ ディレクトリ直下のJSONファイルおよびローカライズ定義を読み込み、コンボボックスに追加する"""
+        import json
+        
+        base_dir = os.path.dirname(__file__)
+        masks_dir = os.path.normpath(os.path.join(base_dir, "masks"))
+        
+        # 1. ローカライズ定義の読み込み
+        loc_data = {}
+        # 日本語を最優先、無ければ英語をフォールバック
+        for lang in ["ja-jp", "en-us"]:
+            loc_path = os.path.join(masks_dir, "localisation", f"{lang}.json")
+            if os.path.exists(loc_path):
+                try:
+                    with open(loc_path, "r", encoding="utf-8") as f:
+                        loc_data = json.load(f)
+                    break
+                except Exception as e:
+                    print(f"Failed to load localization {lang}.json: {e}")
+                    
+        # 2. コンボボックスのクリアと「選択なし」の追加
+        self.ui.comboMaskImage.clear()
+        no_mask_label = loc_data.get("NO_MASK", "選択なし")
+        self.ui.comboMaskImage.addItem(no_mask_label, None)
+        
+        # 3. マスクJSONファイルの検索とロード
+        if os.path.exists(masks_dir):
+            for file_name in os.listdir(masks_dir):
+                if file_name.endswith(".json"):
+                    file_path = os.path.join(masks_dir, file_name)
+                    try:
+                        with open(file_path, "r", encoding="utf-8") as f:
+                            mask_config = json.load(f)
+                            
+                        mask_id = mask_config.get("id")
+                        name_key = mask_config.get("name_key")
+                        # ローカライズ名を取得
+                        display_name = loc_data.get(name_key, mask_id or file_name)
+                        
+                        # コンボボックスに追加 (itemData に mask_config を設定)
+                        self.ui.comboMaskImage.addItem(display_name, mask_config)
+                    except Exception as e:
+                        print(f"Failed to load mask config {file_name}: {e}")
+
     def init_ui_states(self):
         self.ui.stackedWidgetSettings.setCurrentIndex(0)
-        self.ui.comboCropPreset.setCurrentIndex(0)
+        self.ui.comboMainPreset.setCurrentIndex(0)
         
         # ぼかし初期化（有効化依存）
         self.ui.chkBlurEnable.setChecked(False)
@@ -245,6 +290,9 @@ class ImageToolsDialog(QDialog):
             x = (self.original_image.width() - w) / 2
             y = (self.original_image.height() - h) / 2
             self.crop_rect_item.setPos(x, y)
+            
+        # マスク一覧のロード
+        self.load_masks()
 
     def switch_mode(self, mode: str, index: int):
         self.mode = mode
@@ -744,7 +792,6 @@ class ImageToolsDialog(QDialog):
             width, height = img.width(), img.height()
             
             ptr = img.bits()
-            import numpy as np
             import cv2
             bgra = np.array(ptr).reshape((height, width, 4)).copy()
             bgr = bgra[:, :, :3]
@@ -776,7 +823,6 @@ class ImageToolsDialog(QDialog):
 
     def apply_hsl_adjustment(self, bgr_img, h_shift, s_shift, l_shift) -> np.ndarray:
         import cv2
-        import numpy as np
         hls = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2HLS).astype("float32")
         if h_shift != 0:
             hls[:, :, 0] = (hls[:, :, 0] + h_shift) % 180

@@ -44,21 +44,20 @@ class ColorizePluginLoader:
                     metadata = json.load(f)
                     
                 model_id = metadata.get("id")
-                model_name = metadata.get("name")
                 class_name = metadata.get("class_name")
                 module_path = metadata.get("module_path")
                 
-                if not all([model_id, model_name, class_name, module_path]):
+                if not all([model_id, class_name, module_path]):
                     print(f"[AI Colorize] Invalid JSON metadata in {os.path.basename(json_path)}")
                     continue
                     
                 # コア標準モデル等の ID 重複検知時はスキップ保護
                 if model_id in reserved_ids:
-                    print(f"[AI Colorize] External plugin '{model_name}' skipped: ID '{model_id}' is reserved.")
+                    print(f"[AI Colorize] External plugin ID '{model_id}' skipped: reserved by core.")
                     continue
                     
                 # 外部モジュールを動的ロード
-                print(f"[AI Colorize] Loading external plugin model: {model_name} ({module_path})")
+                print(f"[AI Colorize] Loading external plugin model: {model_id} ({module_path})")
                 module = importlib.import_module(module_path)
                 model_class = getattr(module, class_name)
                 

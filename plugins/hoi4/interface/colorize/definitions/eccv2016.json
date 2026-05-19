@@ -1,6 +1,5 @@
 {
   "id": "eccv2016",
-  "name": "標準モデル (レトロ風)",
   "class_name": "ECCV2016Model",
   "module_path": "plugins.hoi4.interface.colorize.core.eccv2016_model",
   "files": {

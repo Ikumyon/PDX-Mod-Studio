@@ -1,4 +1,7 @@
+import os
+import json
 import numpy as np
+from PySide6.QtCore import QLocale
 
 class ColorizeModelBase:
     """AIカラー化モデルの抽象ベースクラス (すべての標準および外部モデルプラグインの共通親クラス)"""
@@ -12,8 +15,30 @@ class ColorizeModelBase:
         return self.metadata.get("id", "")
         
     def get_name(self) -> str:
-        """UIのコンボボックスに表示するモデルの日本語名"""
-        return self.metadata.get("name", "")
+        """UIのコンボボックスに表示するモデルの表示名 (localisation/*.json から動的に辞書ロード・翻訳)"""
+        # 1. 現在の言語コードを取得 (例: "ja-jp", "en-us")
+        lang = QLocale.system().name().replace('_', '-').lower()
+        
+        # 2. 翻訳JSONファイルの配置パスを計算
+        base_dir = os.path.dirname(os.path.dirname(__file__)) # .../colorize/
+        local_json_path = os.path.join(base_dir, "localisation", f"{lang}.json")
+        
+        # 3. 言語ファイルが見つからない場合は英語 ("en-us") に自動フォールバック
+        if not os.path.exists(local_json_path):
+            local_json_path = os.path.join(base_dir, "localisation", "en-us.json")
+            
+        if os.path.exists(local_json_path):
+            try:
+                with open(local_json_path, "r", encoding="utf-8") as f:
+                    translations = json.load(f)
+                # 一意なキー "[モデルID].name" で辞書引き
+                key = f"{self.get_id()}.name"
+                return translations.get(key, self.get_id())
+            except Exception as e:
+                print(f"[AI Colorize Localisation] Error reading {local_json_path}: {e}")
+                
+        # 4. 万が一翻訳辞書ファイルが全滅している場合のフォールバックとしてIDを返す
+        return self.metadata.get("name", self.get_id())
 
     def get_files_config(self) -> dict:
         """

@@ -25,4 +25,4 @@ plugins_registry.json
 Thumbs.db
 
 # AI Models
-plugins/hoi4/interface/models/
+plugins/hoi4/interface/colorize/models/
