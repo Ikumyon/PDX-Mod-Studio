@@ -85,6 +85,9 @@ class GfxEditorController(BaseEditorController):
         self.preview_scene = None
         self.preview_background_checker = None
         self.preview_pixmap_item = None
+        self.custom_preview_images = {}
+        self.preview_recipes = {}
+        self.image_filter_settings = {}
         
         # UIウィジェットの参照
         self.list_gfx_nodes = None
@@ -482,30 +485,56 @@ class GfxEditorController(BaseEditorController):
                     
             self.update_image_preview(file_path)
 
-    def update_image_preview(self, path: str):
-        """指定されたパス of 画像ファイルをプレビュー画面に表示する"""
-        if not path or not os.path.exists(path) or not self.preview_scene:
+    def show_qimage_preview(self, qimg):
+        """QImageオブジェクトをプレビュー画面に表示する"""
+        if not qimg or qimg.isNull() or not self.preview_scene:
             return
             
-        qimg = load_qimage(path)
-        if not qimg.isNull():
-            pixmap = QPixmap.fromImage(qimg)
-            if self.preview_pixmap_item:
-                self.preview_pixmap_item.setPixmap(pixmap)
+        pixmap = QPixmap.fromImage(qimg)
+        if self.preview_pixmap_item:
+            self.preview_pixmap_item.setPixmap(pixmap)
+            
+            # 画像の背後のチェッカーボードサイズを画像サイズに合わせる
+            if self.preview_background_checker:
+                self.preview_background_checker.setRect(0, 0, pixmap.width(), pixmap.height())
+                self.preview_background_checker.setVisible(True)
                 
-                # 画像の背後のチェッカーボードサイズを画像サイズに合わせる
-                if self.preview_background_checker:
-                    self.preview_background_checker.setRect(0, 0, pixmap.width(), pixmap.height())
-                    self.preview_background_checker.setVisible(True)
-                    
-                self.preview_scene.setSceneRect(0, 0, pixmap.width(), pixmap.height())
-                if self.graphics_texture_view:
-                    self.graphics_texture_view.fitInView(self.preview_scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
-        else:
-            clear_preview(self.preview_pixmap_item, self.preview_background_checker)
+            self.preview_scene.setSceneRect(0, 0, pixmap.width(), pixmap.height())
+            if self.graphics_texture_view:
+                self.graphics_texture_view.fitInView(self.preview_scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+
+    def update_image_preview(self, path: str):
+        """指定されたパスの画像ファイルをプレビュー画面に表示する"""
+        if not path or not os.path.exists(path) or not self.preview_scene:
+            return
+
+        image_key = self.image_filter_key(path)
+        if image_key in self.image_filter_settings:
+            qimg = ImageToolsDialog.render_preview_from_settings(
+                path,
+                self.image_filter_settings[image_key],
+                self.widget,
+            )
+            if qimg and not qimg.isNull():
+                self.show_qimage_preview(qimg)
+                return
+
+        qimg = load_qimage(path)
+        self.show_qimage_preview(qimg)
+
+    def image_filter_key(self, path: str) -> str:
+        return os.path.normcase(os.path.abspath(path))
+
+    def clear_filter_settings_for_dds_export(self, path: str):
+        self.image_filter_settings.pop(self.image_filter_key(path), None)
+
+    # DDS保存処理を追加する時の想定:
+    # if save_as_dds_bc3_dxt5(source_path, output_path):
+    #     self.clear_filter_settings_for_dds_export(source_path)
 
     def auto_update_preview(self, ach):
         """選択されているアセットのテクスチャパスを解決して自動プレビューする"""
+        recipe_key = ach.id if ach else "_temp_source"
         _, texture_rel = first_texture_property(ach)
         if not texture_rel:
             clear_preview(self.preview_pixmap_item, self.preview_background_checker)
@@ -517,6 +546,24 @@ class GfxEditorController(BaseEditorController):
         if abs_path and os.path.exists(abs_path):
             if self.edit_source_path:
                 self.edit_source_path.setText(abs_path)
+            image_key = self.image_filter_key(abs_path)
+            if image_key in self.image_filter_settings:
+                self.update_image_preview(abs_path)
+                return
+            if recipe_key in self.preview_recipes and self.preview_recipes[recipe_key].get("source_path") == abs_path:
+                recipe = self.preview_recipes[recipe_key]
+                qimg = ImageToolsDialog.render_preview_from_settings(
+                    recipe["source_path"],
+                    recipe["settings"],
+                    self.widget,
+                )
+                if qimg and not qimg.isNull():
+                    self.show_qimage_preview(qimg)
+                    return
+            if ach and ach.id in self.custom_preview_images:
+                qimg = self.custom_preview_images[ach.id]
+                self.show_qimage_preview(qimg)
+                return
             self.update_image_preview(abs_path)
         else:
             clear_preview(self.preview_pixmap_item, self.preview_background_checker)
@@ -529,12 +576,9 @@ class GfxEditorController(BaseEditorController):
         abs_path = None
 
         if ach:
-            # テクスチャファイル相対パスの特定
             _, texture_rel = first_texture_property(ach)
             abs_path = resolve_texture_path(texture_rel, project_path, active_plugin_path(self.widget))
 
-        # GFX定義が選択されていない場合や、定義パスが解決できない場合は、
-        # プレビュー欄で読み込まれている物理パスから開く。
         source_path = self.edit_source_path.text().strip() if self.edit_source_path else ""
         if (not abs_path or not os.path.exists(abs_path)) and source_path and os.path.exists(source_path):
             abs_path = source_path
@@ -544,15 +588,28 @@ class GfxEditorController(BaseEditorController):
             QMessageBox.warning(
                 self.widget,
                 "画像を開けません",
-                "画像ツールで開く画像が見つかりません。GFX定義を選択するか、「画像読込...」で画像を読み込んでください。"
+                "画像ツールで開く画像が見つかりません。GFX定義を選択するか、「画像読込...」で画像を読み込んでください。",
             )
             return
-            
+
         dialog = ImageToolsDialog(abs_path, self.widget)
-        
-        # exec() または exec_() の双方をサポートし、PySide6のバージョン互換性を確保
+        recipe_key = ach.id if ach else "_temp_source"
+        image_key = self.image_filter_key(abs_path)
+        if image_key in self.image_filter_settings:
+            dialog.apply_filter_settings(self.image_filter_settings[image_key])
+        elif recipe_key in self.preview_recipes:
+            dialog.apply_filter_settings(self.preview_recipes[recipe_key]["settings"])
+
         exec_func = getattr(dialog, "exec", None) or getattr(dialog, "exec_", None)
         if exec_func and exec_func() == QDialog.DialogCode.Accepted:
+            if dialog.filter_settings:
+                self.image_filter_settings[image_key] = dialog.filter_settings
+                self.preview_recipes[recipe_key] = {
+                    "source_path": abs_path,
+                    "settings": dialog.filter_settings,
+                }
+                self.custom_preview_images.pop(recipe_key, None)
+
             # もしPNGフォールバックが行われた場合、プロパティを更新
             if ach and getattr(dialog, "saved_png_path", None) and project_path:
                 rel_png_path = os.path.relpath(dialog.saved_png_path, project_path).replace("\\", "/")
@@ -560,12 +617,23 @@ class GfxEditorController(BaseEditorController):
                 texture_property, _ = first_texture_property(ach)
                 if texture_property:
                     self.replace_property(texture_property, rel_png_path)
-                    
+
             # UIとテキストのリフレッシュ
             if ach:
                 self.refresh_on_edit(ach.id)
             else:
-                self.update_image_preview(abs_path)
+                if "_temp_source" in self.preview_recipes:
+                    recipe = self.preview_recipes["_temp_source"]
+                    qimg = ImageToolsDialog.render_preview_from_settings(
+                        recipe["source_path"],
+                        recipe["settings"],
+                        self.widget,
+                    )
+                    self.show_qimage_preview(qimg)
+                elif "_temp_source" in self.custom_preview_images:
+                    self.show_qimage_preview(self.custom_preview_images["_temp_source"])
+                else:
+                    self.update_image_preview(abs_path)
 
     def refresh(self):
         self.updating = True

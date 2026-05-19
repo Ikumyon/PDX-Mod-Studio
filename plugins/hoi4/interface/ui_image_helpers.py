@@ -11,16 +11,41 @@ except ImportError:
     HAS_PIL = False
 
 
+def load_pil_image(path: str):
+    if not HAS_PIL:
+        return None
+
+    try:
+        return Image.open(path).convert("RGBA")
+    except Exception as e:
+        print(f"Pillow failed to load image ({path}): {e}.")
+        return None
+
+
+def pil_to_qimage(pil_img) -> QImage:
+    pil_img = pil_img.convert("RGBA")
+    data = pil_img.tobytes("raw", "RGBA")
+    qimg = QImage(data, pil_img.size[0], pil_img.size[1], QImage.Format.Format_RGBA8888)
+    return qimg.copy()
+
+
+def qimage_to_pil(qimg: QImage):
+    if not HAS_PIL:
+        return None
+
+    qimg = qimg.convertToFormat(QImage.Format.Format_RGBA8888)
+    width = qimg.width()
+    height = qimg.height()
+    ptr = qimg.bits()
+    data = bytes(ptr[: qimg.sizeInBytes()])
+    return Image.frombytes("RGBA", (width, height), data)
+
+
 def load_qimage(path: str) -> QImage:
     if HAS_PIL:
-        try:
-            pil_img = Image.open(path)
-            pil_img = pil_img.convert("RGBA")
-            data = pil_img.tobytes("raw", "RGBA")
-            qimg = QImage(data, pil_img.size[0], pil_img.size[1], QImage.Format.Format_RGBA8888)
-            return qimg.copy()
-        except Exception as e:
-            print(f"Pillow failed to load image ({path}): {e}. Retrying with native QImage...")
+        pil_img = load_pil_image(path)
+        if pil_img:
+            return pil_to_qimage(pil_img)
     return QImage(path)
 
 

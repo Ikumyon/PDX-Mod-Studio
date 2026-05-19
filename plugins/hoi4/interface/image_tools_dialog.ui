@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>581</width>
-    <height>505</height>
+    <width>598</width>
+    <height>632</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -192,6 +192,25 @@ QToolButton:checked {
         </attribute>
        </widget>
       </item>
+      <item>
+       <widget class="QToolButton" name="toolButtonEdge">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="text">
+         <string>エッジ強調</string>
+        </property>
+        <property name="checkable">
+         <bool>true</bool>
+        </property>
+        <attribute name="buttonGroup">
+         <string notr="true">buttonGroupTools</string>
+        </attribute>
+       </widget>
+      </item>
      </layout>
     </widget>
    </item>
@@ -205,7 +224,7 @@ QToolButton:checked {
      </property>
      <widget class="QStackedWidget" name="stackedWidgetSettings">
       <property name="currentIndex">
-       <number>0</number>
+       <number>5</number>
       </property>
       <widget class="QWidget" name="pageCrop">
        <layout class="QVBoxLayout" name="layoutCropSettings">
@@ -256,6 +275,12 @@ QToolButton:checked {
           </item>
           <item>
            <widget class="QSpinBox" name="spinMaskScale">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
             <property name="minimum">
              <number>1</number>
             </property>
@@ -331,6 +356,12 @@ QToolButton:checked {
           </item>
           <item>
            <widget class="QSpinBox" name="spinScale">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
             <property name="minimum">
              <number>10</number>
             </property>
@@ -369,6 +400,16 @@ QToolButton:checked {
          </layout>
         </item>
         <item>
+         <widget class="QCheckBox" name="chkCropMaskOutside">
+          <property name="text">
+           <string>マスク外側を切り取る</string>
+          </property>
+          <property name="checked">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
          <widget class="QLabel" name="lblCropManual">
           <property name="text">
            <string>手動サイズ調整 (px):</string>
@@ -386,6 +427,12 @@ QToolButton:checked {
           </item>
           <item>
            <widget class="QSpinBox" name="spinCropWidth">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
             <property name="minimum">
              <number>1</number>
             </property>
@@ -406,6 +453,12 @@ QToolButton:checked {
           </item>
           <item>
            <widget class="QSpinBox" name="spinCropHeight">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
             <property name="minimum">
              <number>1</number>
             </property>
@@ -414,6 +467,57 @@ QToolButton:checked {
             </property>
             <property name="value">
              <number>60</number>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="layoutCropPosition">
+          <item>
+           <widget class="QLabel" name="lblCropPosition">
+            <property name="text">
+             <string>トリミング位置 (X, Y):</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="lblCropX">
+            <property name="text">
+             <string>X:</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QSpinBox" name="spinCropX">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="maximum">
+             <number>9999</number>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="lblCropY">
+            <property name="text">
+             <string>Y:</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QSpinBox" name="spinCropY">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="maximum">
+             <number>9999</number>
             </property>
            </widget>
           </item>
@@ -778,114 +882,452 @@ QToolButton:checked {
               <verstretch>0</verstretch>
              </sizepolicy>
             </property>
+            <item>
+             <property name="text">
+              <string>選択してください</string>
+             </property>
+            </item>
            </widget>
           </item>
          </layout>
         </item>
         <item>
-         <widget class="QLabel" name="lblColorizeHue">
-          <property name="text">
-           <string>色相 (Hue):</string>
+         <widget class="QStackedWidget" name="stackedColorize">
+          <property name="currentIndex">
+           <number>1</number>
           </property>
+          <widget class="QWidget" name="pageColorizeEccv2016">
+           <layout class="QVBoxLayout" name="verticalLayout">
+            <property name="leftMargin">
+             <number>0</number>
+            </property>
+            <property name="topMargin">
+             <number>0</number>
+            </property>
+            <property name="rightMargin">
+             <number>0</number>
+            </property>
+            <property name="bottomMargin">
+             <number>0</number>
+            </property>
+            <item>
+             <widget class="QLabel" name="lblColorizeHue">
+              <property name="text">
+               <string>色相 (Hue):</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <layout class="QHBoxLayout" name="layoutColorizeHue">
+              <item>
+               <widget class="QSlider" name="sliderColorizeHue">
+                <property name="minimum">
+                 <number>-180</number>
+                </property>
+                <property name="maximum">
+                 <number>180</number>
+                </property>
+                <property name="orientation">
+                 <enum>Qt::Orientation::Horizontal</enum>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QSpinBox" name="spinColorizeHue">
+                <property name="minimum">
+                 <number>-180</number>
+                </property>
+                <property name="maximum">
+                 <number>180</number>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+            <item>
+             <widget class="QLabel" name="lblColorizeSaturation">
+              <property name="text">
+               <string>彩度 (Saturation):</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <layout class="QHBoxLayout" name="layoutColorizeSaturation">
+              <item>
+               <widget class="QSlider" name="sliderColorizeSaturation">
+                <property name="minimum">
+                 <number>-100</number>
+                </property>
+                <property name="maximum">
+                 <number>100</number>
+                </property>
+                <property name="orientation">
+                 <enum>Qt::Orientation::Horizontal</enum>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QSpinBox" name="spinColorizeSaturation">
+                <property name="minimum">
+                 <number>-100</number>
+                </property>
+                <property name="maximum">
+                 <number>100</number>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+            <item>
+             <widget class="QLabel" name="lblColorizeLightness">
+              <property name="text">
+               <string>明度 (Lightness):</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <layout class="QHBoxLayout" name="layoutColorizeLightness">
+              <item>
+               <widget class="QSlider" name="sliderColorizeLightness">
+                <property name="minimum">
+                 <number>-100</number>
+                </property>
+                <property name="maximum">
+                 <number>100</number>
+                </property>
+                <property name="orientation">
+                 <enum>Qt::Orientation::Horizontal</enum>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QSpinBox" name="spinColorizeLightness">
+                <property name="minimum">
+                 <number>-100</number>
+                </property>
+                <property name="maximum">
+                 <number>100</number>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+           </layout>
+          </widget>
+          <widget class="QWidget" name="pageColorizeNone"/>
          </widget>
-        </item>
-        <item>
-         <layout class="QHBoxLayout" name="layoutColorizeHue">
-          <item>
-           <widget class="QSlider" name="sliderColorizeHue">
-            <property name="minimum">
-             <number>-180</number>
-            </property>
-            <property name="maximum">
-             <number>180</number>
-            </property>
-            <property name="orientation">
-             <enum>Qt::Orientation::Horizontal</enum>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QSpinBox" name="spinColorizeHue">
-            <property name="minimum">
-             <number>-180</number>
-            </property>
-            <property name="maximum">
-             <number>180</number>
-            </property>
-           </widget>
-          </item>
-         </layout>
-        </item>
-        <item>
-         <widget class="QLabel" name="lblColorizeSaturation">
-          <property name="text">
-           <string>彩度 (Saturation):</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <layout class="QHBoxLayout" name="layoutColorizeSaturation">
-          <item>
-           <widget class="QSlider" name="sliderColorizeSaturation">
-            <property name="minimum">
-             <number>-100</number>
-            </property>
-            <property name="maximum">
-             <number>100</number>
-            </property>
-            <property name="orientation">
-             <enum>Qt::Orientation::Horizontal</enum>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QSpinBox" name="spinColorizeSaturation">
-            <property name="minimum">
-             <number>-100</number>
-            </property>
-            <property name="maximum">
-             <number>100</number>
-            </property>
-           </widget>
-          </item>
-         </layout>
-        </item>
-        <item>
-         <widget class="QLabel" name="lblColorizeLightness">
-          <property name="text">
-           <string>明度 (Lightness):</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <layout class="QHBoxLayout" name="layoutColorizeLightness">
-          <item>
-           <widget class="QSlider" name="sliderColorizeLightness">
-            <property name="minimum">
-             <number>-100</number>
-            </property>
-            <property name="maximum">
-             <number>100</number>
-            </property>
-            <property name="orientation">
-             <enum>Qt::Orientation::Horizontal</enum>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QSpinBox" name="spinColorizeLightness">
-            <property name="minimum">
-             <number>-100</number>
-            </property>
-            <property name="maximum">
-             <number>100</number>
-            </property>
-           </widget>
-          </item>
-         </layout>
         </item>
         <item>
          <spacer name="spacerColorize">
+          <property name="orientation">
+           <enum>Qt::Orientation::Vertical</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>20</width>
+            <height>40</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="pageEdge">
+       <layout class="QVBoxLayout" name="layoutEdgeSettings">
+        <property name="spacing">
+         <number>8</number>
+        </property>
+        <property name="leftMargin">
+         <number>4</number>
+        </property>
+        <property name="topMargin">
+         <number>4</number>
+        </property>
+        <property name="rightMargin">
+         <number>4</number>
+        </property>
+        <property name="bottomMargin">
+         <number>4</number>
+        </property>
+        <item>
+         <widget class="QCheckBox" name="chkEdgeEnable">
+          <property name="text">
+           <string>エッジ強調効果を有効にする</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="layoutEdgeMethod">
+          <item>
+           <widget class="QLabel" name="labelEdgeMethod">
+            <property name="text">
+             <string>エッジ検出方式:</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QComboBox" name="comboEdgeMethod">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <item>
+             <property name="text">
+              <string>Canny法</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>Sobelフィルタ</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>Laplacianフィルタ</string>
+             </property>
+            </item>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <widget class="QLabel" name="lblEdgeSmooth">
+          <property name="text">
+           <string>ジャギーの軽減 (Smoothness):</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="layoutEdgeSmooth">
+          <item>
+           <widget class="QSlider" name="sliderEdgeSmooth">
+            <property name="minimum">
+             <number>0</number>
+            </property>
+            <property name="maximum">
+             <number>10</number>
+            </property>
+            <property name="value">
+             <number>1</number>
+            </property>
+            <property name="orientation">
+             <enum>Qt::Orientation::Horizontal</enum>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QSpinBox" name="spinEdgeSmooth">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="minimum">
+             <number>0</number>
+            </property>
+            <property name="maximum">
+             <number>10</number>
+            </property>
+            <property name="value">
+             <number>1</number>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <widget class="QLabel" name="lblEdgeWidth">
+          <property name="text">
+           <string>エッジの太さ (Width):</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="layoutEdgeWidth">
+          <item>
+           <widget class="QSlider" name="sliderEdgeWidth">
+            <property name="minimum">
+             <number>1</number>
+            </property>
+            <property name="maximum">
+             <number>10</number>
+            </property>
+            <property name="value">
+             <number>1</number>
+            </property>
+            <property name="orientation">
+             <enum>Qt::Orientation::Horizontal</enum>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QSpinBox" name="spinEdgeWidth">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="minimum">
+             <number>1</number>
+            </property>
+            <property name="maximum">
+             <number>10</number>
+            </property>
+            <property name="value">
+             <number>1</number>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <widget class="QLabel" name="lblEdgeColor">
+          <property name="text">
+           <string>エッジの色 (Edge Color):</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="layoutEdgeColor">
+          <item>
+           <widget class="QFrame" name="frameEdgeColor">
+            <property name="minimumSize">
+             <size>
+              <width>40</width>
+              <height>24</height>
+             </size>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>40</width>
+              <height>24</height>
+             </size>
+            </property>
+            <property name="frameShape">
+             <enum>QFrame::Shape::StyledPanel</enum>
+            </property>
+            <property name="frameShadow">
+             <enum>QFrame::Shadow::Sunken</enum>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="btnSelectEdgeColor">
+            <property name="text">
+             <string>色を選択...</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <widget class="QLabel" name="lblEdgeThreshold1">
+          <property name="text">
+           <string>検出閾値 1 (Threshold 1):</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="layoutEdgeThreshold1">
+          <item>
+           <widget class="QSlider" name="sliderEdgeThreshold1">
+            <property name="maximum">
+             <number>255</number>
+            </property>
+            <property name="value">
+             <number>50</number>
+            </property>
+            <property name="orientation">
+             <enum>Qt::Orientation::Horizontal</enum>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QSpinBox" name="spinEdgeThreshold1">
+            <property name="maximum">
+             <number>255</number>
+            </property>
+            <property name="value">
+             <number>50</number>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <widget class="QLabel" name="lblEdgeThreshold2">
+          <property name="text">
+           <string>検出閾値 2 (Threshold 2):</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="layoutEdgeThreshold2">
+          <item>
+           <widget class="QSlider" name="sliderEdgeThreshold2">
+            <property name="maximum">
+             <number>255</number>
+            </property>
+            <property name="value">
+             <number>150</number>
+            </property>
+            <property name="orientation">
+             <enum>Qt::Orientation::Horizontal</enum>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QSpinBox" name="spinEdgeThreshold2">
+            <property name="maximum">
+             <number>255</number>
+            </property>
+            <property name="value">
+             <number>150</number>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <widget class="QLabel" name="lblEdgeStrength">
+          <property name="text">
+           <string>エッジ強調重ね合わせ強度 (%):</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="layoutEdgeStrength">
+          <item>
+           <widget class="QSlider" name="sliderEdgeStrength">
+            <property name="maximum">
+             <number>100</number>
+            </property>
+            <property name="value">
+             <number>50</number>
+            </property>
+            <property name="orientation">
+             <enum>Qt::Orientation::Horizontal</enum>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QSpinBox" name="spinEdgeStrength">
+            <property name="maximum">
+             <number>100</number>
+            </property>
+            <property name="value">
+             <number>50</number>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <spacer name="spacerEdge">
           <property name="orientation">
            <enum>Qt::Orientation::Vertical</enum>
           </property>
@@ -905,98 +1347,52 @@ QToolButton:checked {
        <string>リアルタイム加工プレビュー</string>
       </property>
       <layout class="QVBoxLayout" name="layoutProcessPreview">
-
-        <item>
-
-         <layout class="QHBoxLayout" name="layoutZoomControls">
-
-          <item>
-
-           <widget class="QCheckBox" name="chkZoomFit">
-
-            <property name="text">
-
-             <string>ウィンドウに合わせる</string>
-
-            </property>
-
-            <property name="checked">
-
-             <bool>true</bool>
-
-            </property>
-
-           </widget>
-
-          </item>
-
-          <item>
-
-           <widget class="QSlider" name="sliderZoom">
-
-            <property name="minimum">
-
-             <number>10</number>
-
-            </property>
-
-            <property name="maximum">
-
-             <number>500</number>
-
-            </property>
-
-            <property name="value">
-
-             <number>100</number>
-
-            </property>
-
-            <property name="orientation">
-
-             <enum>Qt::Orientation::Horizontal</enum>
-
-            </property>
-
-           </widget>
-
-          </item>
-
-          <item>
-
-           <widget class="QSpinBox" name="spinZoom">
-
-            <property name="minimum">
-
-             <number>10</number>
-
-            </property>
-
-            <property name="maximum">
-
-             <number>500</number>
-
-            </property>
-
-            <property name="value">
-
-             <number>100</number>
-
-            </property>
-
-            <property name="suffix">
-
-             <string>%</string>
-
-            </property>
-
-           </widget>
-
-          </item>
-
-         </layout>
-
-        </item>
+       <item>
+        <layout class="QHBoxLayout" name="layoutZoomControls">
+         <item>
+          <widget class="QCheckBox" name="chkZoomFit">
+           <property name="text">
+            <string>ウィンドウに合わせる</string>
+           </property>
+           <property name="checked">
+            <bool>true</bool>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QSlider" name="sliderZoom">
+           <property name="minimum">
+            <number>10</number>
+           </property>
+           <property name="maximum">
+            <number>500</number>
+           </property>
+           <property name="value">
+            <number>100</number>
+           </property>
+           <property name="orientation">
+            <enum>Qt::Orientation::Horizontal</enum>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QSpinBox" name="spinZoom">
+           <property name="suffix">
+            <string>%</string>
+           </property>
+           <property name="minimum">
+            <number>10</number>
+           </property>
+           <property name="maximum">
+            <number>500</number>
+           </property>
+           <property name="value">
+            <number>100</number>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
        <item>
         <widget class="QGraphicsView" name="graphicsViewPreview">
          <property name="toolTip">
