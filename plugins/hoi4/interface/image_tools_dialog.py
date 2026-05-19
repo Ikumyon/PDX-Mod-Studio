@@ -139,6 +139,10 @@ class ImageToolsDialog(QDialog):
         self.ui.comboMainPreset.currentIndexChanged.connect(self.on_crop_preset_changed)
         self.ui.spinCropWidth.valueChanged.connect(self.on_crop_spin_changed)
         self.ui.spinCropHeight.valueChanged.connect(self.on_crop_spin_changed)
+        self.ui.comboMaskImage.currentIndexChanged.connect(self.trigger_preview_update)
+        self.ui.spinMaskScale.valueChanged.connect(self.trigger_preview_update)
+        self.ui.spinMaskX.valueChanged.connect(self.trigger_preview_update)
+        self.ui.spinMaskY.valueChanged.connect(self.trigger_preview_update)
         
         # ぼかしコントロールのバインド
         self.ui.sliderBlurRadius.valueChanged.connect(self.ui.spinBlurRadius.setValue)
@@ -291,6 +295,10 @@ class ImageToolsDialog(QDialog):
             y = (self.original_image.height() - h) / 2
             self.crop_rect_item.setPos(x, y)
             
+            # マスク位置調整スピンボックスの範囲設定
+            self.ui.spinMaskX.setRange(-self.original_image.width(), self.original_image.width())
+            self.ui.spinMaskY.setRange(-self.original_image.height(), self.original_image.height())
+            
         # マスク一覧のロード
         self.load_masks()
 
@@ -389,12 +397,81 @@ class ImageToolsDialog(QDialog):
                 if tolerance > 0:
                     img = self.apply_remove_background(img, tolerance, feather)
             
+            # 6. マスク画像適用
+            mask_index = self.ui.comboMaskImage.currentIndex()
+            if mask_index > 0: # 0は「選択なし」
+                mask_config = self.ui.comboMaskImage.itemData(mask_index)
+                if mask_config:
+                    base_dir = os.path.dirname(__file__)
+                    mask_path = os.path.normpath(os.path.join(base_dir, "masks", mask_config["file"]))
+                    if os.path.exists(mask_path):
+                        mask_img = QImage(mask_path)
+                        if not mask_img.isNull():
+                            # 1) マスク拡大率に従ってリサイズ
+                            mask_scale = self.ui.spinMaskScale.value()
+                            mask_w = max(1, int(mask_img.width() * mask_scale / 100.0))
+                            mask_h = max(1, int(mask_img.height() * mask_scale / 100.0))
+                            resized_mask = mask_img.scaled(
+                                mask_w, mask_h, 
+                                Qt.AspectRatioMode.KeepAspectRatio, 
+                                Qt.TransformationMode.SmoothTransformation
+                            )
+                            
+                            # 2) 中央揃えの初期位置にスピンボックスの値をオフセットとして適用
+                            x_offset = (img.width() - resized_mask.width()) // 2 + self.ui.spinMaskX.value()
+                            y_offset = (img.height() - resized_mask.height()) // 2 + self.ui.spinMaskY.value()
+                            
+                            # 3) numpyを用いた高速な白黒アルファマスク（白が残す、黒が透明）適用
+                            img = img.convertToFormat(QImage.Format.Format_ARGB32)
+                            img_w, img_h = img.width(), img.height()
+                            
+                            import numpy as np
+                            ptr = img.bits()
+                            img_np = np.array(ptr).reshape((img_h, img_w, 4))
+                            
+                            resized_mask = resized_mask.convertToFormat(QImage.Format.Format_ARGB32)
+                            mask_ptr = resized_mask.bits()
+                            mask_np = np.array(mask_ptr).reshape((resized_mask.height(), resized_mask.width(), 4))
+                            
+                            # Rチャンネルをマスクの白黒強度（0-255）として使用
+                            mask_gray = mask_np[:, :, 2]
+                            
+                            # 重ね合わせ用の空のアルファマスク（元画像と同じサイズ、初期値0=完全透明）
+                            full_mask = np.zeros((img_h, img_w), dtype=np.uint8)
+                            
+                            # 描画対象とマスクのスライス範囲をクリッピング考慮で計算
+                            m_y1 = max(0, -y_offset)
+                            m_x1 = max(0, -x_offset)
+                            m_y2 = min(resized_mask.height(), img_h - y_offset)
+                            m_x2 = min(resized_mask.width(), img_w - x_offset)
+                            
+                            d_y1 = max(0, y_offset)
+                            d_x1 = max(0, x_offset)
+                            d_y2 = min(img_h, y_offset + resized_mask.height())
+                            d_x2 = min(img_w, x_offset + resized_mask.width())
+                            
+                            if m_y2 > m_y1 and m_x2 > m_x1:
+                                full_mask[d_y1:d_y2, d_x1:d_x2] = mask_gray[m_y1:m_y2, m_x1:m_x2]
+                                
+                            # 白が残す（255で元のアルファ維持）、黒が透明（0で透明）
+                            alpha = img_np[:, :, 3].astype(np.float32)
+                            mask_factor = full_mask.astype(np.float32) / 255.0
+                            new_alpha = np.clip(alpha * mask_factor, 0, 255).astype(np.uint8)
+                            
+                            img_np[:, :, 3] = new_alpha
+                            
+                            # QImageへ書き戻し
+                            img = QImage(img_np.data, img_w, img_h, QImage.Format.Format_RGBA8888).copy()
+            
             self.processed_image = img
             self.pixmap_item.setPixmap(QPixmap.fromImage(self.processed_image))
-            self.background_checker_item.setRect(0, 0, w, h)
+            
+            final_w = self.processed_image.width()
+            final_h = self.processed_image.height()
+            self.background_checker_item.setRect(0, 0, final_w, final_h)
             self.background_checker_item.setPos(0, 0)
             self.background_checker_item.setVisible(True)
-            self.scene.setSceneRect(0, 0, w, h)
+            self.scene.setSceneRect(0, 0, final_w, final_h)
             self.ui.graphicsViewPreview.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
 
     def on_blur_enable_toggled(self, checked: bool):
