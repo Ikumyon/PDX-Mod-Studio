@@ -42,10 +42,61 @@ class ColorizeModelBase:
 
     def get_files_config(self) -> dict:
         """
-        モデルに必要な学習済みファイル名とダウンロードURLのマップを返す
-        例: { "filename.caffemodel": "https://...", ... }
+        モデルに必要な学習済みファイル定義を返す。
         """
         return self.metadata.get("files", {})
+
+    def get_file_entries(self) -> dict:
+        """
+        files 定義を検証して返す。
+        必須形式: { "file_id": {"path": "file.bin", "url": "...", "mirrors": [...], "role": "..."} }
+        """
+        entries = {}
+        for file_id, config in self.get_files_config().items():
+            if not isinstance(config, dict):
+                raise ValueError(f"Model file entry must be an object: {file_id}")
+
+            path = config.get("path")
+            url = config.get("url")
+            if not path or not url:
+                raise ValueError(f"Model file entry requires 'path' and 'url': {file_id}")
+
+            mirrors = config.get("mirrors") or [url]
+            entries[file_id] = {
+                **config,
+                "path": path,
+                "url": url,
+                "mirrors": mirrors,
+                "role": config.get("role"),
+            }
+        return entries
+
+    def get_asset_dir_name(self) -> str:
+        """models/ 配下の保存ディレクトリ名を返す。"""
+        asset_dir = self.metadata.get("asset_dir")
+        if not asset_dir:
+            raise ValueError(f"Model definition requires 'asset_dir': {self.get_id()}")
+        return asset_dir
+
+    def get_assets_root(self) -> str:
+        """interface/ から見たモデル保存ルートを返す。"""
+        assets_root = self.metadata.get("assets_root")
+        if not assets_root:
+            raise ValueError(f"Model definition requires 'assets_root': {self.get_id()}")
+        return assets_root
+
+    def get_models_dir(self, interface_dir: str) -> str:
+        return os.path.normpath(os.path.join(interface_dir, self.get_assets_root()))
+
+    def get_file_entry_by_role(self, role: str) -> dict:
+        for entry in self.get_file_entries().values():
+            if entry.get("role") == role:
+                return entry
+        raise KeyError(f"Model file role is not configured: {role}")
+
+    def get_file_path_by_role(self, models_dir: str, role: str) -> str:
+        entry = self.get_file_entry_by_role(role)
+        return os.path.join(models_dir, self.get_asset_dir_name(), entry["path"])
 
     def load_network(self, models_dir: str):
         """

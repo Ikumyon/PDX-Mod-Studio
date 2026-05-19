@@ -1,22 +1,26 @@
 from __future__ import annotations
 import os
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Optional
 import core.api
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QPixmap, QImage, QColor, QBrush, QPainter, QPen
+from PySide6.QtGui import QPixmap, QColor, QBrush
 from PySide6.QtWidgets import (
     QTreeWidget, QTreeWidgetItem, QStackedWidget, QLineEdit, QSpinBox, QDoubleSpinBox, QCheckBox, QComboBox, QGroupBox,
-    QPushButton, QDialog, QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QGraphicsRectItem, QFileDialog
+    QPushButton, QDialog, QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QFileDialog
 )
 from plugins.hoi4.interface.image_tools_dialog import ImageToolsDialog
-from plugins.hoi4.script_parser import (
-    AssignmentNode, ObjectNode, ScalarNode, ParsedEntity
+from plugins.hoi4.interface.texture_paths import (
+    active_plugin_path,
+    first_texture_property,
+    resolve_texture_path,
 )
+from plugins.hoi4.interface.ui_image_helpers import clear_preview, create_checker_item, load_qimage
+from plugins.hoi4.script_parser import ObjectNode, ScalarNode
 from plugins.hoi4.base_editor import (
     BaseDocument, BaseEditorController, BaseParsedEntity, BaseParser,
-    set_line, set_plain, set_spin, set_checked, set_combo,
-    prop_text, prop_bool, block_text
+    set_line, set_spin, set_checked, set_combo,
+    prop_text, prop_bool
 )
 
 TYPE_TO_PAGE = {
@@ -435,21 +439,7 @@ class GfxEditorController(BaseEditorController):
             self.preview_scene.setBackgroundBrush(QBrush(QColor(50, 50, 50)))
             self.graphics_texture_view.setScene(self.preview_scene)
             
-            # 透過画像背後用のチェッカーボード（市松模様）パターンアイテムを作成
-            tile_size = 8
-            checker_pixmap = QPixmap(tile_size * 2, tile_size * 2)
-            checker_pixmap.fill(Qt.GlobalColor.white)
-            painter = QPainter(checker_pixmap)
-            gray_color = QColor(180, 180, 180)
-            painter.fillRect(0, 0, tile_size, tile_size, gray_color)
-            painter.fillRect(tile_size, tile_size, tile_size, tile_size, gray_color)
-            painter.end()
-            
-            self.preview_background_checker = QGraphicsRectItem()
-            self.preview_background_checker.setPen(QPen(Qt.PenStyle.NoPen))
-            self.preview_background_checker.setBrush(QBrush(checker_pixmap))
-            self.preview_background_checker.setZValue(-1) # 画像の背後に配置
-            self.preview_background_checker.setVisible(False)
+            self.preview_background_checker = create_checker_item()
             self.preview_scene.addItem(self.preview_background_checker)
             
             self.preview_pixmap_item = QGraphicsPixmapItem()
@@ -486,12 +476,9 @@ class GfxEditorController(BaseEditorController):
                     except ValueError:
                         pass
                 
-                if prop_text(ach, "texturefile"):
-                    self.replace_property("texturefile", rel_path)
-                elif prop_text(ach, "textureFile1"):
-                    self.replace_property("textureFile1", rel_path)
-                elif prop_text(ach, "textureFile2"):
-                    self.replace_property("textureFile2", rel_path)
+                texture_property, _ = first_texture_property(ach)
+                if texture_property:
+                    self.replace_property(texture_property, rel_path)
                     
             self.update_image_preview(file_path)
 
@@ -500,7 +487,7 @@ class GfxEditorController(BaseEditorController):
         if not path or not os.path.exists(path) or not self.preview_scene:
             return
             
-        qimg = self.load_image_fallback(path)
+        qimg = load_qimage(path)
         if not qimg.isNull():
             pixmap = QPixmap.fromImage(qimg)
             if self.preview_pixmap_item:
@@ -515,68 +502,24 @@ class GfxEditorController(BaseEditorController):
                 if self.graphics_texture_view:
                     self.graphics_texture_view.fitInView(self.preview_scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
         else:
-            if self.preview_pixmap_item:
-                self.preview_pixmap_item.setPixmap(QPixmap())
-            if self.preview_background_checker:
-                self.preview_background_checker.setVisible(False)
-
-    def load_image_fallback(self, path: str) -> QImage:
-        """Pillowを利用して各種画像を安全にロードする"""
-        try:
-            from PIL import Image
-            pil_img = Image.open(path)
-            pil_img = pil_img.convert("RGBA")
-            data = pil_img.tobytes("raw", "RGBA")
-            return QImage(data, pil_img.size[0], pil_img.size[1], QImage.Format.Format_RGBA8888).copy()
-        except Exception as e:
-            print(f"Fallback loading failed for {path}: {e}")
-            return QImage(path)
+            clear_preview(self.preview_pixmap_item, self.preview_background_checker)
 
     def auto_update_preview(self, ach):
         """選択されているアセットのテクスチャパスを解決して自動プレビューする"""
-        texture_rel = prop_text(ach, "texturefile") or prop_text(ach, "textureFile1") or prop_text(ach, "textureFile2")
+        _, texture_rel = first_texture_property(ach)
         if not texture_rel:
-            if self.preview_pixmap_item:
-                self.preview_pixmap_item.setPixmap(QPixmap())
-            if self.preview_background_checker:
-                self.preview_background_checker.setVisible(False)
+            clear_preview(self.preview_pixmap_item, self.preview_background_checker)
             return
             
         project_path = core.api.get_project_path()
-        abs_path = None
-        
-        if project_path:
-            p_path = os.path.normpath(os.path.join(project_path, texture_rel))
-            if os.path.exists(p_path):
-                abs_path = p_path
-                
-        if not abs_path and hasattr(self, "widget") and hasattr(self.widget, "active_plugin"):
-            settings_file = os.path.join(self.widget.active_plugin.path, "settings.json")
-            if os.path.exists(settings_file):
-                try:
-                    import json
-                    with open(settings_file, "r", encoding="utf-8") as f:
-                        settings = json.load(f)
-                    game_path = settings.get("game_path")
-                    if game_path:
-                        g_path = os.path.normpath(os.path.join(game_path, texture_rel))
-                        if os.path.exists(g_path):
-                            abs_path = g_path
-                except Exception:
-                    pass
-                    
-        if not abs_path and project_path:
-            abs_path = os.path.normpath(os.path.join(project_path, texture_rel))
+        abs_path = resolve_texture_path(texture_rel, project_path, active_plugin_path(self.widget))
             
         if abs_path and os.path.exists(abs_path):
             if self.edit_source_path:
                 self.edit_source_path.setText(abs_path)
             self.update_image_preview(abs_path)
         else:
-            if self.preview_pixmap_item:
-                self.preview_pixmap_item.setPixmap(QPixmap())
-            if self.preview_background_checker:
-                self.preview_background_checker.setVisible(False)
+            clear_preview(self.preview_pixmap_item, self.preview_background_checker)
 
     def open_image_tools(self):
         """画像編集ダイアログを表示する"""
@@ -587,34 +530,8 @@ class GfxEditorController(BaseEditorController):
 
         if ach:
             # テクスチャファイル相対パスの特定
-            texture_rel = prop_text(ach, "texturefile") or prop_text(ach, "textureFile1") or prop_text(ach, "textureFile2")
-
-            # パスの解決
-            # 1. プロジェクトルート
-            if texture_rel and project_path:
-                p_path = os.path.normpath(os.path.join(project_path, texture_rel))
-                if os.path.exists(p_path):
-                    abs_path = p_path
-
-            # 2. ゲームディレクトリ (settings.json)
-            if texture_rel and not abs_path and hasattr(self, "widget") and hasattr(self.widget, "active_plugin"):
-                settings_file = os.path.join(self.widget.active_plugin.path, "settings.json")
-                if os.path.exists(settings_file):
-                    try:
-                        import json
-                        with open(settings_file, "r", encoding="utf-8") as f:
-                            settings = json.load(f)
-                        game_path = settings.get("game_path")
-                        if game_path:
-                            g_path = os.path.normpath(os.path.join(game_path, texture_rel))
-                            if os.path.exists(g_path):
-                                abs_path = g_path
-                    except Exception:
-                        pass
-
-            # 3. フォールバック (プロジェクトパス結合)
-            if texture_rel and not abs_path and project_path:
-                abs_path = os.path.normpath(os.path.join(project_path, texture_rel))
+            _, texture_rel = first_texture_property(ach)
+            abs_path = resolve_texture_path(texture_rel, project_path, active_plugin_path(self.widget))
 
         # GFX定義が選択されていない場合や、定義パスが解決できない場合は、
         # プレビュー欄で読み込まれている物理パスから開く。
@@ -640,12 +557,9 @@ class GfxEditorController(BaseEditorController):
             if ach and getattr(dialog, "saved_png_path", None) and project_path:
                 rel_png_path = os.path.relpath(dialog.saved_png_path, project_path).replace("\\", "/")
                 # プロパティ名を特定して更新
-                if prop_text(ach, "texturefile"):
-                    self.replace_property("texturefile", rel_png_path)
-                elif prop_text(ach, "textureFile1"):
-                    self.replace_property("textureFile1", rel_png_path)
-                elif prop_text(ach, "textureFile2"):
-                    self.replace_property("textureFile2", rel_png_path)
+                texture_property, _ = first_texture_property(ach)
+                if texture_property:
+                    self.replace_property(texture_property, rel_png_path)
                     
             # UIとテキストのリフレッシュ
             if ach:

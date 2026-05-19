@@ -1,18 +1,11 @@
 import os
-from PySide6.QtCore import QFile, Qt, QRectF, QTimer, QCoreApplication
-from PySide6.QtGui import QImage, QPixmap, QPen, QColor, QBrush, QPainter, qRed, qGreen, qBlue, qAlpha, qRgb, qRgba
+from PySide6.QtCore import QFile, Qt, QTimer, QCoreApplication
+from PySide6.QtGui import QImage, QPixmap, QPen, QColor, QBrush, qRed, qGreen, qBlue, qAlpha
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QGraphicsScene, QGraphicsPixmapItem, QGraphicsRectItem,
-    QGraphicsItem, QToolButton, QStackedWidget, QComboBox, QSpinBox, QSlider,
-    QMessageBox, QColorDialog
+    QGraphicsItem, QMessageBox, QColorDialog
 )
 from PySide6.QtUiTools import QUiLoader
-
-try:
-    from PIL import Image
-    HAS_PIL = True
-except ImportError:
-    HAS_PIL = False
 
 try:
     import cv2
@@ -20,8 +13,21 @@ try:
 except ImportError:
     HAS_CV2 = False
 
-import urllib.request
 import numpy as np
+from plugins.hoi4.interface.image_effects import (
+    adjust_hsl,
+    apply_alpha_mask,
+    remove_background,
+    selective_blur,
+    sharpen,
+)
+from plugins.hoi4.interface.mask_repository import load_mask_choices, resolve_mask_image_path
+from plugins.hoi4.interface.ui_image_helpers import create_checker_item, load_qimage
+from plugins.hoi4.interface.colorize.core.model_assets import (
+    download_model_assets,
+    inspect_model_assets,
+    remove_model_asset_ids,
+)
 
 tr = QCoreApplication.translate
 
@@ -65,21 +71,7 @@ class ImageToolsDialog(QDialog):
         self.scene.setBackgroundBrush(QBrush(QColor(50, 50, 50)))
         self.ui.graphicsViewPreview.setScene(self.scene)
         
-        # 透過画像背後用のチェッカーボードパターン
-        tile_size = 8
-        checker_pixmap = QPixmap(tile_size * 2, tile_size * 2)
-        checker_pixmap.fill(Qt.GlobalColor.white)
-        painter = QPainter(checker_pixmap)
-        gray_color = QColor(180, 180, 180)
-        painter.fillRect(0, 0, tile_size, tile_size, gray_color)
-        painter.fillRect(tile_size, tile_size, tile_size, tile_size, gray_color)
-        painter.end()
-        
-        self.background_checker_item = QGraphicsRectItem()
-        self.background_checker_item.setPen(QPen(Qt.PenStyle.NoPen))
-        self.background_checker_item.setBrush(QBrush(checker_pixmap))
-        self.background_checker_item.setZValue(-1)
-        self.background_checker_item.setVisible(False)
+        self.background_checker_item = create_checker_item()
         self.scene.addItem(self.background_checker_item)
         
         self.pixmap_item = QGraphicsPixmapItem()
@@ -107,25 +99,13 @@ class ImageToolsDialog(QDialog):
         
         # 画像の読み込み
         if os.path.exists(self.image_path):
-            self.original_image = self.load_image(self.image_path)
+            self.original_image = load_qimage(self.image_path)
             if self.original_image.isNull():
                 print(f"Failed to load image: {self.image_path}")
 
         self.bind_controls()
         self.init_ui_states()
         self.update_preview()
-
-    def load_image(self, path: str) -> QImage:
-        if HAS_PIL:
-            try:
-                pil_img = Image.open(path)
-                pil_img = pil_img.convert("RGBA")
-                data = pil_img.tobytes("raw", "RGBA")
-                qimg = QImage(data, pil_img.size[0], pil_img.size[1], QImage.Format.Format_RGBA8888)
-                return qimg.copy()
-            except Exception as e:
-                print(f"Pillow failed to load image ({path}): {e}. Retrying with native QImage...")
-        return QImage(path)
 
     def bind_controls(self):
         # ツールボタンのバインド
@@ -193,48 +173,11 @@ class ImageToolsDialog(QDialog):
         self.ui.buttonBox.rejected.connect(self.reject)
 
     def load_masks(self):
-        """masks/ ディレクトリ直下のJSONファイルおよびローカライズ定義を読み込み、コンボボックスに追加する"""
-        import json
-        
-        base_dir = os.path.dirname(__file__)
-        masks_dir = os.path.normpath(os.path.join(base_dir, "masks"))
-        
-        # 1. ローカライズ定義の読み込み
-        loc_data = {}
-        # 日本語を最優先、無ければ英語をフォールバック
-        for lang in ["ja-jp", "en-us"]:
-            loc_path = os.path.join(masks_dir, "localisation", f"{lang}.json")
-            if os.path.exists(loc_path):
-                try:
-                    with open(loc_path, "r", encoding="utf-8") as f:
-                        loc_data = json.load(f)
-                    break
-                except Exception as e:
-                    print(f"Failed to load localization {lang}.json: {e}")
-                    
-        # 2. コンボボックスのクリアと「選択なし」の追加
+        """masks/ ディレクトリの定義を読み込み、コンボボックスに追加する"""
         self.ui.comboMaskImage.clear()
-        no_mask_label = loc_data.get("NO_MASK", "選択なし")
-        self.ui.comboMaskImage.addItem(no_mask_label, None)
-        
-        # 3. マスクJSONファイルの検索とロード
-        if os.path.exists(masks_dir):
-            for file_name in os.listdir(masks_dir):
-                if file_name.endswith(".json"):
-                    file_path = os.path.join(masks_dir, file_name)
-                    try:
-                        with open(file_path, "r", encoding="utf-8") as f:
-                            mask_config = json.load(f)
-                            
-                        mask_id = mask_config.get("id")
-                        name_key = mask_config.get("name_key")
-                        # ローカライズ名を取得
-                        display_name = loc_data.get(name_key, mask_id or file_name)
-                        
-                        # コンボボックスに追加 (itemData に mask_config を設定)
-                        self.ui.comboMaskImage.addItem(display_name, mask_config)
-                    except Exception as e:
-                        print(f"Failed to load mask config {file_name}: {e}")
+        base_dir = os.path.dirname(__file__)
+        for choice in load_mask_choices(base_dir):
+            self.ui.comboMaskImage.addItem(choice.label, choice.config)
 
     def init_ui_states(self):
         self.ui.stackedWidgetSettings.setCurrentIndex(0)
@@ -382,20 +325,20 @@ class ImageToolsDialog(QDialog):
                 radius = self.ui.spinBlurRadius.value()
                 threshold = self.ui.spinBlurThreshold.value()
                 if radius > 1:
-                    img = self.apply_selective_blur(img, radius, threshold)
+                    img = selective_blur(img, radius, threshold)
                     
             # 4. シャープネス適用
             if self.ui.chkSharpenEnable.isChecked():
                 strength = self.ui.spinSharpenStrength.value()
                 if strength > 0:
-                    img = self.apply_sharpen(img, strength)
+                    img = sharpen(img, strength)
                     
             # 5. 背景削除適用
             if self.ui.chkRemoveBgEnable.isChecked():
                 tolerance = self.ui.spinRemoveBgTolerance.value()
                 feather = self.ui.spinRemoveBgFeather.value()
                 if tolerance > 0:
-                    img = self.apply_remove_background(img, tolerance, feather)
+                    img = remove_background(img, self.remove_bg_key_color, tolerance, feather)
             
             # 6. マスク画像適用
             mask_index = self.ui.comboMaskImage.currentIndex()
@@ -403,65 +346,16 @@ class ImageToolsDialog(QDialog):
                 mask_config = self.ui.comboMaskImage.itemData(mask_index)
                 if mask_config:
                     base_dir = os.path.dirname(__file__)
-                    mask_path = os.path.normpath(os.path.join(base_dir, "masks", mask_config["file"]))
-                    if os.path.exists(mask_path):
-                        mask_img = QImage(mask_path)
-                        if not mask_img.isNull():
-                            # 1) マスク拡大率に従ってリサイズ
-                            mask_scale = self.ui.spinMaskScale.value()
-                            mask_w = max(1, int(mask_img.width() * mask_scale / 100.0))
-                            mask_h = max(1, int(mask_img.height() * mask_scale / 100.0))
-                            resized_mask = mask_img.scaled(
-                                mask_w, mask_h, 
-                                Qt.AspectRatioMode.KeepAspectRatio, 
-                                Qt.TransformationMode.SmoothTransformation
-                            )
-                            
-                            # 2) 中央揃えの初期位置にスピンボックスの値をオフセットとして適用
-                            x_offset = (img.width() - resized_mask.width()) // 2 + self.ui.spinMaskX.value()
-                            y_offset = (img.height() - resized_mask.height()) // 2 + self.ui.spinMaskY.value()
-                            
-                            # 3) numpyを用いた高速な白黒アルファマスク（白が残す、黒が透明）適用
-                            img = img.convertToFormat(QImage.Format.Format_ARGB32)
-                            img_w, img_h = img.width(), img.height()
-                            
-                            import numpy as np
-                            ptr = img.bits()
-                            img_np = np.array(ptr).reshape((img_h, img_w, 4))
-                            
-                            resized_mask = resized_mask.convertToFormat(QImage.Format.Format_ARGB32)
-                            mask_ptr = resized_mask.bits()
-                            mask_np = np.array(mask_ptr).reshape((resized_mask.height(), resized_mask.width(), 4))
-                            
-                            # Rチャンネルをマスクの白黒強度（0-255）として使用
-                            mask_gray = mask_np[:, :, 2]
-                            
-                            # 重ね合わせ用の空のアルファマスク（元画像と同じサイズ、初期値0=完全透明）
-                            full_mask = np.zeros((img_h, img_w), dtype=np.uint8)
-                            
-                            # 描画対象とマスクのスライス範囲をクリッピング考慮で計算
-                            m_y1 = max(0, -y_offset)
-                            m_x1 = max(0, -x_offset)
-                            m_y2 = min(resized_mask.height(), img_h - y_offset)
-                            m_x2 = min(resized_mask.width(), img_w - x_offset)
-                            
-                            d_y1 = max(0, y_offset)
-                            d_x1 = max(0, x_offset)
-                            d_y2 = min(img_h, y_offset + resized_mask.height())
-                            d_x2 = min(img_w, x_offset + resized_mask.width())
-                            
-                            if m_y2 > m_y1 and m_x2 > m_x1:
-                                full_mask[d_y1:d_y2, d_x1:d_x2] = mask_gray[m_y1:m_y2, m_x1:m_x2]
-                                
-                            # 白が残す（255で元のアルファ維持）、黒が透明（0で透明）
-                            alpha = img_np[:, :, 3].astype(np.float32)
-                            mask_factor = full_mask.astype(np.float32) / 255.0
-                            new_alpha = np.clip(alpha * mask_factor, 0, 255).astype(np.uint8)
-                            
-                            img_np[:, :, 3] = new_alpha
-                            
-                            # QImageへ書き戻し
-                            img = QImage(img_np.data, img_w, img_h, QImage.Format.Format_RGBA8888).copy()
+                    mask_path = resolve_mask_image_path(base_dir, mask_config)
+                    if mask_path:
+                        mask_img = load_qimage(mask_path)
+                        img = apply_alpha_mask(
+                            img,
+                            mask_img,
+                            self.ui.spinMaskScale.value(),
+                            self.ui.spinMaskX.value(),
+                            self.ui.spinMaskY.value(),
+                        )
             
             self.processed_image = img
             self.pixmap_item.setPixmap(QPixmap.fromImage(self.processed_image))
@@ -495,148 +389,13 @@ class ImageToolsDialog(QDialog):
         self.trigger_preview_update()
 
     def on_colorize_enable_toggled(self, checked: bool):
-        self.ui.labelColorizeModel.setEnabled(checked)
-        self.ui.comboColorizeModel.setEnabled(checked)
         self.ui.sliderColorizeHue.setEnabled(checked)
         self.ui.spinColorizeHue.setEnabled(checked)
         self.ui.sliderColorizeSaturation.setEnabled(checked)
         self.ui.spinColorizeSaturation.setEnabled(checked)
         self.ui.sliderColorizeLightness.setEnabled(checked)
         self.ui.spinColorizeLightness.setEnabled(checked)
-        
-        if checked:
-            if self.ensure_model_files():
-                self.trigger_preview_update()
-        else:
-            self.trigger_preview_update()
-
-    def apply_selective_blur(self, img: QImage, radius: int, threshold: int) -> QImage:
-        img = img.convertToFormat(QImage.Format.Format_ARGB32)
-        width = img.width()
-        height = img.height()
-        out = QImage(width, height, QImage.Format.Format_ARGB32)
-        
-        for y in range(height):
-            for x in range(width):
-                center_pixel = img.pixel(x, y)
-                r0 = qRed(center_pixel)
-                g0 = qGreen(center_pixel)
-                b0 = qBlue(center_pixel)
-                a0 = qAlpha(center_pixel)
-                
-                sum_r, sum_g, sum_b, sum_a = 0, 0, 0, 0
-                total_weight = 0
-                
-                for dy in range(-radius, radius + 1):
-                    ny = y + dy
-                    if ny < 0 or ny >= height:
-                        continue
-                    for dx in range(-radius, radius + 1):
-                        nx = x + dx
-                        if nx < 0 or nx >= width:
-                            continue
-                            
-                        dist_sq = dx*dx + dy*dy
-                        if dist_sq > radius*radius:
-                            continue
-                            
-                        pixel = img.pixel(nx, ny)
-                        r = qRed(pixel)
-                        g = qGreen(pixel)
-                        b = qBlue(pixel)
-                        a = qAlpha(pixel)
-                        
-                        max_diff = max(abs(r - r0), abs(g - g0), abs(b - b0))
-                        
-                        if max_diff <= threshold:
-                            weight = 1.0 / (1.0 + dist_sq * 0.5)
-                            sum_r += r * weight
-                            sum_g += g * weight
-                            sum_b += b * weight
-                            sum_a += a * weight
-                            total_weight += weight
-                
-                if total_weight > 0:
-                    new_r = int(sum_r / total_weight)
-                    new_g = int(sum_g / total_weight)
-                    new_b = int(sum_b / total_weight)
-                    new_a = int(sum_a / total_weight)
-                    out.setPixel(x, y, qRgba(new_r, new_g, new_b, new_a))
-                else:
-                    out.setPixel(x, y, center_pixel)
-                    
-        return out
-
-    def apply_sharpen(self, img: QImage, strength: float) -> QImage:
-        img = img.convertToFormat(QImage.Format.Format_ARGB32)
-        width = img.width()
-        height = img.height()
-        out = QImage(width, height, QImage.Format.Format_ARGB32)
-        factor = strength / 100.0
-        
-        for y in range(height):
-            for x in range(width):
-                if x == 0 or x == width - 1 or y == 0 or y == height - 1:
-                    out.setPixel(x, y, img.pixel(x, y))
-                    continue
-                    
-                center = img.pixel(x, y)
-                r0 = qRed(center)
-                g0 = qGreen(center)
-                b0 = qBlue(center)
-                a0 = qAlpha(center)
-                
-                up = img.pixel(x, y - 1)
-                down = img.pixel(x, y + 1)
-                left = img.pixel(x - 1, y)
-                right = img.pixel(x + 1, y)
-                
-                sum_r = 4 * r0 - qRed(up) - qRed(down) - qRed(left) - qRed(right)
-                sum_g = 4 * g0 - qGreen(up) - qGreen(down) - qGreen(left) - qGreen(right)
-                sum_b = 4 * b0 - qBlue(up) - qBlue(down) - qBlue(left) - qBlue(right)
-                
-                new_r = max(0, min(255, int(r0 + sum_r * factor)))
-                new_g = max(0, min(255, int(g0 + sum_g * factor)))
-                new_b = max(0, min(255, int(b0 + sum_b * factor)))
-                
-                out.setPixel(x, y, qRgba(new_r, new_g, new_b, a0))
-                
-        return out
-
-    def apply_remove_background(self, img: QImage, tolerance: int, feather: int) -> QImage:
-        if not self.remove_bg_key_color:
-            return img
-            
-        img = img.convertToFormat(QImage.Format.Format_ARGB32)
-        width = img.width()
-        height = img.height()
-        out = QImage(width, height, QImage.Format.Format_ARGB32)
-        
-        bg_r = self.remove_bg_key_color.red()
-        bg_g = self.remove_bg_key_color.green()
-        bg_b = self.remove_bg_key_color.blue()
-            
-        for y in range(height):
-            for x in range(width):
-                pixel = img.pixel(x, y)
-                r = qRed(pixel)
-                g = qGreen(pixel)
-                b = qBlue(pixel)
-                a = qAlpha(pixel)
-                
-                diff = max(abs(r - bg_r), abs(g - bg_g), abs(b - bg_b))
-                
-                if diff <= tolerance:
-                    new_a = 0
-                elif feather > 0 and diff <= (tolerance + feather):
-                    ratio = (diff - tolerance) / feather
-                    new_a = int(a * ratio)
-                else:
-                    new_a = a
-                    
-                out.setPixel(x, y, qRgba(r, g, b, new_a))
-                
-        return out
+        self.trigger_preview_update()
 
     def select_key_color(self):
         initial_color = QColor(0, 0, 0)
@@ -702,9 +461,9 @@ class ImageToolsDialog(QDialog):
         for model in self.all_models:
             self.ui.comboColorizeModel.addItem(model.get_name(), model.get_id())
             
-        self.ui.labelColorizeModel.setEnabled(False)
-        self.ui.comboColorizeModel.setEnabled(False)
-        self.ui.comboColorizeModel.currentIndexChanged.connect(self.on_colorize_model_changed)
+        self.ui.labelColorizeModel.setEnabled(True)
+        self.ui.comboColorizeModel.setEnabled(True)
+        self.ui.comboColorizeModel.activated.connect(self.on_colorize_model_changed)
 
     def on_colorize_model_changed(self, index: int):
         selected_id = self.ui.comboColorizeModel.itemData(index)
@@ -713,56 +472,18 @@ class ImageToolsDialog(QDialog):
                 self.active_model = model
                 break
                 
-        if self.ui.chkColorizeEnable.isChecked():
-            if self.ensure_model_files():
-                self.trigger_preview_update()
+        if self.ensure_model_files() and self.ui.chkColorizeEnable.isChecked():
+            self.trigger_preview_update()
 
     def ensure_model_files(self) -> bool:
         if not hasattr(self, "active_model") or self.active_model is None:
             return True
             
         base_dir = os.path.dirname(__file__)
-        models_dir = os.path.join(base_dir, "colorize", "models")
-        
-        model_sub_dir = os.path.join(models_dir, self.active_model.get_id())
-        os.makedirs(model_sub_dir, exist_ok=True)
-        
-        files = self.active_model.get_files_config()
-        
-        mirrors = {
-            "colorization_release_v2.caffemodel": [
-                "https://dl.opencv.org/models/colorization_release_v2.caffemodel",
-                "https://lms.comp.nus.edu.sg/wp-content/uploads/2018/research/colorization/colorization_release_v2.caffemodel"
-            ]
-        }
-        
-        def check_for_updates(filename: str, url: str) -> bool:
-            path = os.path.join(model_sub_dir, filename)
-            if not os.path.exists(path):
-                return False
-            try:
-                req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'}, method='HEAD')
-                with urllib.request.urlopen(req, timeout=3.0) as response:
-                    server_size = int(response.info().get('Content-Length', 0))
-                    local_size = os.path.getsize(path)
-                    if server_size > 0 and local_size != server_size:
-                        return True
-            except Exception:
-                pass
-            return False
-
-        missing_files = []
-        updated_files = []
-        
-        for filename in files.keys():
-            path = os.path.join(model_sub_dir, filename)
-            if not os.path.exists(path) or os.path.getsize(path) < 1000:
-                missing_files.append(filename)
-                
-        for filename, url in files.items():
-            if filename not in missing_files:
-                if check_for_updates(filename, url):
-                    updated_files.append(filename)
+        models_dir = self.active_model.get_models_dir(base_dir)
+        status = inspect_model_assets(self.active_model, models_dir)
+        missing_files = list(status.missing_files)
+        updated_files = list(status.updated_files)
                     
         if updated_files:
             reply = QMessageBox.question(
@@ -773,14 +494,8 @@ class ImageToolsDialog(QDialog):
                 QMessageBox.StandardButton.Yes
             )
             if reply == QMessageBox.StandardButton.Yes:
-                for filename in updated_files:
-                    path = os.path.join(model_sub_dir, filename)
-                    try:
-                        if os.path.exists(path):
-                            os.remove(path)
-                        missing_files.append(filename)
-                    except Exception:
-                        pass
+                remove_model_asset_ids(self.active_model, models_dir, updated_files)
+                missing_files.extend(updated_files)
 
         if not missing_files:
             return True
@@ -805,50 +520,19 @@ class ImageToolsDialog(QDialog):
         progress.setMinimumDuration(0)
         progress.setValue(0)
         
-        def download_progress(block_num, block_size, total_size):
+        def download_progress(filename: str, downloaded: int, total_size: int):
             if progress.wasCanceled():
                 raise Exception("Download canceled by user")
+            progress.setLabelText(f"{filename} をダウンロード中...")
             if total_size > 0:
-                percent = int(block_num * block_size * 100 / total_size)
+                percent = int(downloaded * 100 / total_size)
                 progress.setValue(min(100, percent))
-                QCoreApplication.processEvents()
+            else:
+                progress.setValue(0)
+            QCoreApplication.processEvents()
                 
         try:
-            for filename in missing_files:
-                path = os.path.join(model_sub_dir, filename)
-                progress.setLabelText(f"{filename} をダウンロード中...")
-                progress.setValue(0)
-                QCoreApplication.processEvents()
-                
-                urls_to_try = mirrors.get(filename, [files[filename]])
-                success = False
-                last_err = None
-                
-                for url in urls_to_try:
-                    try:
-                        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-                        with urllib.request.urlopen(req) as response, open(path, 'wb') as out_file:
-                            total_size = int(response.info().get('Content-Length', 0))
-                            block_size = 8192
-                            downloaded = 0
-                            while True:
-                                block = response.read(block_size)
-                                if not block:
-                                    break
-                                out_file.write(block)
-                                downloaded += len(block)
-                                download_progress(downloaded // block_size + 1, block_size, total_size)
-                        success = True
-                        break
-                    except Exception as e:
-                        last_err = e
-                        if os.path.exists(path):
-                            os.remove(path)
-                        continue
-                        
-                if not success:
-                    raise last_err or Exception(f"Failed to download {filename}")
-                    
+            download_model_assets(self.active_model, models_dir, missing_files, download_progress)
             progress.setValue(100)
             QMessageBox.information(self, "完了", "AIモデルファイルのダウンロードが完了しました。")
             return True
@@ -875,7 +559,7 @@ class ImageToolsDialog(QDialog):
             
             if not hasattr(self.active_model, "net") or self.active_model.net is None:
                 base_dir = os.path.dirname(__file__)
-                models_dir = os.path.join(base_dir, "colorize", "models")
+                models_dir = self.active_model.get_models_dir(base_dir)
                 print(f"[AI Colorize] Dynamically loading network for model: {self.active_model.get_id()}")
                 self.active_model.load_network(models_dir)
                 
@@ -886,7 +570,7 @@ class ImageToolsDialog(QDialog):
             l_shift = self.ui.sliderColorizeLightness.value()
             
             if h_shift != 0 or s_shift != 0 or l_shift != 0:
-                result_bgr = self.apply_hsl_adjustment(result_bgr, h_shift, s_shift, l_shift)
+                result_bgr = adjust_hsl(result_bgr, h_shift, s_shift, l_shift)
             
             result_rgba = cv2.cvtColor(result_bgr, cv2.COLOR_BGR2RGBA)
             rgba_contiguous = np.ascontiguousarray(result_rgba)
@@ -897,15 +581,3 @@ class ImageToolsDialog(QDialog):
         except Exception as e:
             print(f"[AI Colorize] Inference error: {e}")
             return img
-
-    def apply_hsl_adjustment(self, bgr_img, h_shift, s_shift, l_shift) -> np.ndarray:
-        import cv2
-        hls = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2HLS).astype("float32")
-        if h_shift != 0:
-            hls[:, :, 0] = (hls[:, :, 0] + h_shift) % 180
-        if s_shift != 0:
-            hls[:, :, 2] = np.clip(hls[:, :, 2] + s_shift, 0, 255)
-        if l_shift != 0:
-            hls[:, :, 1] = np.clip(hls[:, :, 1] + l_shift, 0, 255)
-        adjusted_bgr = cv2.cvtColor(hls.astype("uint8"), cv2.COLOR_HLS2BGR)
-        return adjusted_bgr

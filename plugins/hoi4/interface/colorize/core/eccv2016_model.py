@@ -1,4 +1,3 @@
-import os
 import cv2
 import numpy as np
 from .base_model import ColorizeModelBase
@@ -7,11 +6,9 @@ class ECCV2016Model(ColorizeModelBase):
     """標準内蔵モデル (ECCV 2016 / レトロな風合いのカラー化)"""
     
     def load_network(self, models_dir: str):
-        # モデルごとの専用サブフォルダ
-        model_sub_dir = os.path.join(models_dir, self.get_id())
-        proto_path = os.path.join(model_sub_dir, "colorization_deploy_v2.prototxt")
-        model_path = os.path.join(model_sub_dir, "colorization_release_v2.caffemodel")
-        pts_path = os.path.join(model_sub_dir, "pts_in_hull.npy")
+        proto_path = self.get_file_path_by_role(models_dir, "proto")
+        model_path = self.get_file_path_by_role(models_dir, "weights")
+        pts_path = self.get_file_path_by_role(models_dir, "points")
         
         # マルチバイト（日本語）パス対策として、バイナリバッファ経由でメモリから安全にロード
         with open(proto_path, "rb") as f:
