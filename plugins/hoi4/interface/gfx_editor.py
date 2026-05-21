@@ -7,11 +7,30 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QGraphicsPixmapItem,
     QGraphicsScene,
+    QLabel,
+    QSizePolicy,
+    QTreeWidget,
+    QTreeWidgetItem,
     QWidget,
 )
 
 
 EDITOR_NAME = "GFX Editor"
+
+HIDDEN_FORM_NAMES = (
+    "frameTypeSelect",
+    "groupBasic",
+    "groupTexture2",
+    "groupAppearance",
+    "groupFrames",
+    "groupFont",
+    "groupMapText",
+    "groupAnim",
+    "btnMoreAnimItems",
+    "btnMoreItems",
+    "btnOpenImageTools",
+    "groupPreviewControl",
+)
 
 
 def _load_ui_widget(ui_path, parent=None):
@@ -19,139 +38,378 @@ def _load_ui_widget(ui_path, parent=None):
     ui_file = QFile(ui_path)
     if not ui_file.open(QFile.OpenModeFlag.ReadOnly):
         raise FileNotFoundError(ui_path)
-
     try:
         widget = loader.load(ui_file, parent)
     finally:
         ui_file.close()
-
     if widget is None:
         raise RuntimeError(loader.errorString())
-
     return widget
 
 
+def _hide_form_widgets(widget):
+    for name in HIDDEN_FORM_NAMES:
+        target = widget.findChild(QWidget, name)
+        if target is not None:
+            target.hide()
+
+
+def _setup_preview_view(widget):
+    if widget.graphicsTextureView is None:
+        return None
+
+    scene = QGraphicsScene(widget.graphicsTextureView)
+    widget.graphicsTextureView.setScene(scene)
+    widget.graphicsTextureView.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    widget.graphicsTextureView.setResizeAnchor(
+        widget.graphicsTextureView.ViewportAnchor.AnchorViewCenter
+    )
+    widget.graphicsTextureView.setTransformationAnchor(
+        widget.graphicsTextureView.ViewportAnchor.AnchorViewCenter
+    )
+    widget._gfx_preview_scene = scene
+
+    def fit_preview_to_view():
+        if widget._gfx_preview_scene is None:
+            return
+        rect = widget._gfx_preview_scene.sceneRect()
+        if not rect.isNull() and rect.width() > 0 and rect.height() > 0:
+            widget.graphicsTextureView.fitInView(
+                rect, Qt.AspectRatioMode.KeepAspectRatio
+            )
+
+    class PreviewResizeFilter(QObject):
+        def eventFilter(self, watched, event):
+            if (
+                watched == widget.graphicsTextureView.viewport()
+                and event.type() == QEvent.Type.Resize
+            ):
+                fit_preview_to_view()
+            return False
+
+    widget._gfx_preview_resize_filter = PreviewResizeFilter(widget.graphicsTextureView)
+    widget.graphicsTextureView.viewport().installEventFilter(
+        widget._gfx_preview_resize_filter
+    )
+
+    preview_placeholder = QLabel(
+        "定義を追加してプレビューを表示",
+        widget.graphicsTextureView,
+    )
+    preview_placeholder.setObjectName("gfxPreviewPlaceholder")
+    preview_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    preview_placeholder.setWordWrap(True)
+    preview_placeholder.setStyleSheet(
+        "QLabel { color: #9a9a9a; background: transparent; border: none; font-size: 14px; }"
+    )
+    preview_placeholder.setSizePolicy(
+        QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+    )
+    preview_placeholder.setGeometry(widget.graphicsTextureView.viewport().rect())
+    preview_placeholder.raise_()
+    widget._gfx_preview_placeholder = preview_placeholder
+
+    def sync_preview_placeholder_geometry():
+        if widget._gfx_preview_placeholder is None:
+            return
+        widget._gfx_preview_placeholder.setGeometry(
+            widget.graphicsTextureView.viewport().rect()
+        )
+
+    class PreviewViewportFilter(QObject):
+        def eventFilter(self, watched, event):
+            if (
+                watched == widget.graphicsTextureView.viewport()
+                and event.type() == QEvent.Type.Resize
+            ):
+                sync_preview_placeholder_geometry()
+                _update_preview_placeholder_visibility(widget)
+            return False
+
+    widget._gfx_preview_viewport_filter = PreviewViewportFilter(
+        widget.graphicsTextureView.viewport()
+    )
+    widget.graphicsTextureView.viewport().installEventFilter(
+        widget._gfx_preview_viewport_filter
+    )
+    return fit_preview_to_view
+
+
+def _setup_center_placeholder(widget):
+    if widget.widgetCenterPane is None:
+        return
+
+    center_placeholder = QLabel("定義を追加してください", widget.widgetCenterPane)
+    center_placeholder.setObjectName("gfxCenterPlaceholder")
+    center_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    center_placeholder.setWordWrap(True)
+    center_placeholder.setStyleSheet(
+        "QLabel { color: #9a9a9a; background: transparent; border: none; font-size: 16px; font-weight: bold; }"
+    )
+    center_placeholder.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+    center_placeholder.raise_()
+    widget._gfx_center_placeholder = center_placeholder
+
+    def sync_center_placeholder_geometry():
+        if widget._gfx_center_placeholder is None:
+            return
+        widget._gfx_center_placeholder.setGeometry(widget.widgetCenterPane.rect())
+        widget._gfx_center_placeholder.raise_()
+
+    sync_center_placeholder_geometry()
+    widget._gfx_center_placeholder.show()
+
+    class CenterPaneResizeFilter(QObject):
+        def eventFilter(self, watched, event):
+            if watched == widget.widgetCenterPane and event.type() == QEvent.Type.Resize:
+                sync_center_placeholder_geometry()
+            return False
+
+    widget._gfx_center_resize_filter = CenterPaneResizeFilter(widget.widgetCenterPane)
+    widget.widgetCenterPane.installEventFilter(widget._gfx_center_resize_filter)
+
+
+def _update_preview_placeholder_visibility(widget):
+    preview = getattr(widget, "_gfx_preview_placeholder", None)
+    if preview is None:
+        return
+    show_preview = widget._gfx_selected_definition is None and widget._gfx_preview_item is None
+    preview.setVisible(show_preview)
+    if show_preview:
+        preview.raise_()
+
+
+def _set_definition_selected(widget, selected):
+    widget._gfx_selected_definition = selected
+    center = getattr(widget, "_gfx_center_placeholder", None)
+    if center is not None:
+        center.setVisible(not selected)
+        if not selected:
+            center.raise_()
+    _update_preview_placeholder_visibility(widget)
+
+
+def _load_preview_image(widget, path, fit_preview_to_view):
+    if not path:
+        return False
+
+    pixmap = QPixmap(path)
+    if pixmap.isNull():
+        return False
+
+    if widget._gfx_preview_scene is not None:
+        widget._gfx_preview_scene.clear()
+        item = QGraphicsPixmapItem(pixmap)
+        widget._gfx_preview_scene.addItem(item)
+        widget._gfx_preview_scene.setSceneRect(item.boundingRect())
+        widget._gfx_preview_item = item
+        fit_preview_to_view()
+
+    _update_preview_placeholder_visibility(widget)
+    return True
+
+
+def _refresh_definition_list(widget, select_index=None):
+    tree = widget.listGfxNodes
+    if not isinstance(tree, QTreeWidget):
+        return
+
+    tree.clear()
+    for index, definition in enumerate(widget._gfx_definitions):
+        item = QTreeWidgetItem([definition["name"], definition["type"]])
+        item.setData(0, Qt.ItemDataRole.UserRole, index)
+        tree.addTopLevelItem(item)
+        if select_index is not None and index == select_index:
+            tree.setCurrentItem(item)
+
+
+def _get_selected_definition_index(widget):
+    tree = widget.listGfxNodes
+    if not isinstance(tree, QTreeWidget):
+        return None
+    item = tree.currentItem()
+    if item is None:
+        return None
+    index = item.data(0, Qt.ItemDataRole.UserRole)
+    return index if isinstance(index, int) else None
+
+
+def _update_definition_state(widget):
+    has_selection = _get_selected_definition_index(widget) is not None
+    _set_definition_selected(widget, has_selection)
+    if widget.btnDuplicateNode is not None:
+        widget.btnDuplicateNode.setEnabled(has_selection)
+    if widget.btnDeleteNode is not None:
+        widget.btnDeleteNode.setEnabled(has_selection)
+    return has_selection
+
+
+def _create_definition(widget, definition_type=None, name=None, source_path=""):
+    if not isinstance(widget.listGfxNodes, QTreeWidget):
+        return None
+
+    if not name:
+        widget._gfx_definition_counter += 1
+        name = f"new_gfx_{widget._gfx_definition_counter}"
+
+    if definition_type is None and widget.comboGfxType is not None:
+        definition_type = widget.comboGfxType.currentText() or "spriteType"
+
+    definition = {
+        "name": name,
+        "type": definition_type or "spriteType",
+        "source_path": source_path,
+    }
+    widget._gfx_definitions.append(definition)
+    _refresh_definition_list(widget, len(widget._gfx_definitions) - 1)
+    _update_definition_state(widget)
+    widget.is_dirty = True
+    return definition
+
+
+def _duplicate_selected_definition(widget):
+    index = _get_selected_definition_index(widget)
+    if index is None:
+        return
+    source = widget._gfx_definitions[index]
+    copy_index = len(widget._gfx_definitions) + 1
+    _create_definition(
+        widget,
+        name=f"{source['name']}_copy{copy_index}",
+        definition_type=source.get("type", "spriteType"),
+        source_path=source.get("source_path", ""),
+    )
+
+
+def _delete_selected_definition(widget):
+    index = _get_selected_definition_index(widget)
+    if index is None:
+        return
+
+    del widget._gfx_definitions[index]
+    _refresh_definition_list(widget)
+    widget._gfx_selected_definition = None
+
+    if widget._gfx_preview_scene is not None:
+        widget._gfx_preview_scene.clear()
+        widget._gfx_preview_item = None
+
+    preview = getattr(widget, "_gfx_preview_placeholder", None)
+    if preview is not None:
+        preview.show()
+        preview.raise_()
+
+    _update_definition_state(widget)
+    widget.is_dirty = True
+
+
+def _browse_source(widget, file_path, load_preview):
+    start_dir = ""
+    if widget.editSourcePath is not None:
+        current_value = widget.editSourcePath.text().strip()
+        if current_value:
+            start_dir = os.path.dirname(current_value) or current_value
+
+    path, _ = QFileDialog.getOpenFileName(
+        widget,
+        "Select texture image",
+        start_dir or os.path.dirname(file_path or "") or "",
+        "Images (*.png *.jpg *.jpeg *.bmp *.tga *.dds);;All Files (*.*)",
+    )
+    if not path:
+        return
+
+    if widget.editSourcePath is not None:
+        widget.editSourcePath.setText(path)
+    widget.raw_gfx_content = path
+    widget.is_dirty = True
+    _set_definition_selected(widget, True)
+    load_preview(path)
+
+
+def _wire_definition_buttons(widget, load_preview):
+    if isinstance(widget.listGfxNodes, QTreeWidget):
+        widget.listGfxNodes.currentItemChanged.connect(
+            lambda *_: _on_definition_selection_changed(widget, load_preview)
+        )
+
+    if widget.btnDuplicateNode is not None:
+        widget.btnDuplicateNode.clicked.connect(
+            lambda: _duplicate_selected_definition(widget)
+        )
+        widget.btnDuplicateNode.setEnabled(False)
+    if widget.btnDeleteNode is not None:
+        widget.btnDeleteNode.clicked.connect(
+            lambda: _delete_selected_definition(widget)
+        )
+        widget.btnDeleteNode.setEnabled(False)
+    if widget.btnBrowseSource is not None:
+        widget.btnBrowseSource.clicked.connect(
+            lambda: _browse_source(widget, widget.file_path, load_preview)
+        )
+
+
+def _on_definition_selection_changed(widget, load_preview):
+    _update_definition_state(widget)
+    index = _get_selected_definition_index(widget)
+    if index is None:
+        return
+    definition = widget._gfx_definitions[index]
+    widget._gfx_selected_definition = definition
+    if widget.editSourcePath is not None:
+        widget.editSourcePath.setText(definition.get("source_path", ""))
+    _set_definition_selected(widget, True)
+    if definition.get("source_path"):
+        load_preview(definition["source_path"])
+
+
 def setup(widget, file_path, content):
-    """
-    Minimal gfx editor bootstrap.
-
-    This phase only loads and shows the .ui layout so the editor can be opened
-    safely while the rest of the editor logic is being rebuilt.
-    """
-
     widget.file_path = file_path
     widget.content = content
     widget.is_dirty = False
     widget.editor_id = "gfx_editor"
-
-    # Keep a direct reference to the loaded UI so the layout stays alive.
     widget.gfx_ui = widget
-
-    # Make the loaded widget behave like a normal top-level editor surface when
-    # embedded inside the host application.
     widget.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
     widget.setVisible(True)
 
-    # Provide a small amount of metadata to help the host show the tab.
     title = "GFX Editor"
     if file_path:
         title = file_path.split("/")[-1].split("\\")[-1]
     widget.setWindowTitle(title)
 
-    # Collect a few useful child references when they exist. We do not wire the
-    # full editor yet; the goal for this milestone is showing the loaded UI.
     widget.listGfxNodes = widget.findChild(QWidget, "listGfxNodes")
+    if isinstance(widget.listGfxNodes, QTreeWidget):
+        widget.listGfxNodes.setColumnCount(2)
+        widget.listGfxNodes.setHeaderLabels(["定義名 / 画像名", "定義タイプ"])
     widget.comboGfxType = widget.findChild(QWidget, "comboGfxType")
     widget.editSourcePath = widget.findChild(QWidget, "editSourcePath")
     widget.btnBrowseSource = widget.findChild(QWidget, "btnBrowseSource")
+    widget.btnNewNode = widget.findChild(QWidget, "btnNewNode")
+    widget.btnDuplicateNode = widget.findChild(QWidget, "btnDuplicateNode")
+    widget.btnDeleteNode = widget.findChild(QWidget, "btnDeleteNode")
     widget.graphicsTextureView = widget.findChild(QWidget, "graphicsTextureView")
+    widget.widgetCenterPane = widget.findChild(QWidget, "widgetCenterPane")
+    widget.widgetRightPane = widget.findChild(QWidget, "widgetRightPane")
     widget._gfx_preview_scene = None
     widget._gfx_preview_item = None
+    widget._gfx_selected_definition = None
+    widget._gfx_definitions = []
+    widget._gfx_definition_counter = 0
 
-    if widget.graphicsTextureView is not None:
-        scene = QGraphicsScene(widget.graphicsTextureView)
-        widget.graphicsTextureView.setScene(scene)
-        widget.graphicsTextureView.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        widget.graphicsTextureView.setResizeAnchor(
-            widget.graphicsTextureView.ViewportAnchor.AnchorViewCenter
-        )
-        widget.graphicsTextureView.setTransformationAnchor(
-            widget.graphicsTextureView.ViewportAnchor.AnchorViewCenter
-        )
-        widget._gfx_preview_scene = scene
+    _hide_form_widgets(widget)
+    fit_preview_to_view = _setup_preview_view(widget)
+    _setup_center_placeholder(widget)
 
-        def _fit_preview_to_view():
-            if widget._gfx_preview_scene is None:
-                return
-            rect = widget._gfx_preview_scene.sceneRect()
-            if not rect.isNull() and rect.width() > 0 and rect.height() > 0:
-                widget.graphicsTextureView.fitInView(
-                    rect, Qt.AspectRatioMode.KeepAspectRatio
-                )
+    def load_preview(path):
+        return _load_preview_image(widget, path, fit_preview_to_view or (lambda: None))
 
-        class _PreviewResizeFilter(QObject):
-            def eventFilter(self, watched, event):
-                if (
-                    watched == widget.graphicsTextureView.viewport()
-                    and event.type() == QEvent.Type.Resize
-                ):
-                    _fit_preview_to_view()
-                return False
-
-        widget._gfx_preview_resize_filter = _PreviewResizeFilter(widget.graphicsTextureView)
-        widget.graphicsTextureView.viewport().installEventFilter(
-            widget._gfx_preview_resize_filter
-        )
-
-    def load_image(path):
-        if not path:
-            return False
-        pixmap = QPixmap(path)
-        if pixmap.isNull():
-            return False
-
-        if widget._gfx_preview_scene is not None:
-            widget._gfx_preview_scene.clear()
-            item = QGraphicsPixmapItem(pixmap)
-            widget._gfx_preview_scene.addItem(item)
-            widget._gfx_preview_scene.setSceneRect(item.boundingRect())
-            widget._gfx_preview_item = item
-            _fit_preview_to_view()
-        return True
-
-    def browse_source():
-        start_dir = ""
-        if widget.editSourcePath is not None:
-            current_value = widget.editSourcePath.text().strip()
-            if current_value:
-                start_dir = os.path.dirname(current_value)
-                if not start_dir:
-                    start_dir = current_value
-
-        path, _ = QFileDialog.getOpenFileName(
-            widget,
-            "Select texture image",
-            start_dir or os.path.dirname(file_path or "") or "",
-            "Images (*.png *.jpg *.jpeg *.bmp *.tga *.dds);;All Files (*.*)",
-        )
-        if not path:
-            return
-
-        if widget.editSourcePath is not None:
-            widget.editSourcePath.setText(path)
-        widget.raw_gfx_content = path
-        widget.is_dirty = True
-        load_image(path)
-
-    if widget.btnBrowseSource is not None:
-        widget.btnBrowseSource.clicked.connect(browse_source)
+    _wire_definition_buttons(widget, load_preview)
+    _set_definition_selected(widget, False)
 
     if widget.editSourcePath is not None:
         initial_path = widget.editSourcePath.text().strip()
         if initial_path:
-            load_image(initial_path)
-            if widget._gfx_preview_scene is not None:
-                _fit_preview_to_view()
+            _set_definition_selected(widget, True)
+            load_preview(initial_path)
 
-    # Store the original file content for later parser work.
     widget.raw_gfx_content = content
