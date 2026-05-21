@@ -41,6 +41,12 @@ DEFAULT_SETTINGS = {
     "achievement_loc_file_format": "{lang}/achievements_l_{lang}.yml",
     "achievement_unique_id_format": "{file}_{number}",
     "achievement_id_format": "{unique_id}_{number}",
+    "graphic_definition_name_format": "{file}",
+    "pinned_ids": [
+        "create_decision",
+        "create_event",
+        "create_focus"
+    ],
     "display_language": "l_japanese",
     "save_empty_localisation": False,
     "explicit_no_export": False
@@ -59,7 +65,8 @@ VARIABLE_DEFINITIONS = {
     "decision_loc_file_format": ["{id}", "{category}", "{lang}", "{file}"],
     "achievement_loc_file_format": ["{id}", "{lang}", "{file}"],
     "achievement_unique_id_format": ["{file}", "{number}", "{a-z}"],
-    "achievement_id_format": ["{unique_id}", "{number}", "{a-z}"]
+    "achievement_id_format": ["{unique_id}", "{number}", "{a-z}"],
+    "graphic_definition_name_format": ["{file}", "{number}", "{a-z}"]
 }
 
 class VariableSelectorDialog(QDialog):
@@ -224,7 +231,8 @@ def setup_settings_controls(widget, plugin, project_path):
         "decisionLocFileFormatEdit": "decision_loc_file_format",
         "achievementLocFileFormatEdit": "achievement_loc_file_format",
         "achievementUniqueIdFormatEdit": "achievement_unique_id_format",
-        "achievementIdFormatEdit": "achievement_id_format"
+        "achievementIdFormatEdit": "achievement_id_format",
+        "graphicDefinitionNameFormatEdit": "graphic_definition_name_format"
     }
 
     # 各入力欄とBrowseボタン（鉛筆アイコン）の自動紐付け

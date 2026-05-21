@@ -185,12 +185,13 @@ class ScriptValidator:
             else:
                 next_context = None
                 next_schema = None
+                field_def = None
                 
                 if schema:
                     fields = schema.get("fields", {})
                     sub_schemas = schema.get("sub_schemas", {})
                     
-                    field_def = fields.get(key)
+                    field_def = self._schema_field(schema, key)
                     if field_def:
                         f_type = field_def.get("type")
                         if f_type in ("effect_block", "trigger_block"):
@@ -198,13 +199,17 @@ class ScriptValidator:
                         elif f_type == "object" and "schema" in field_def:
                             sub_name = field_def["schema"]
                             next_schema = sub_schemas.get(sub_name) or schema
-                        elif f_type == "object":
-                            next_schema = schema
                 
                 # スキーマを解決しながら再帰走査
                 if isinstance(val_node, ObjectNode):
-                    self._validate_node(val_node, next_schema or schema, next_context, errors, node.range)
+                    object_schema = self._schema_for_object_key(schema, key) or next_schema
+                    if object_schema is None and field_def is None:
+                        object_schema = schema
+                    self._validate_schema_fields(key, val_node, object_schema, errors, node.range)
+                    self._validate_node(val_node, object_schema, next_context, errors, node.range)
                 else:
+                    if field_def and not schema.get("validate_fields"):
+                        self._check_value_type(val_node, key, field_def, errors, node.range)
                     self._validate_node(val_node, schema, next_context, errors)
                     
         elif isinstance(node, ObjectNode):
@@ -223,6 +228,132 @@ class ScriptValidator:
             else:
                 for item in node.items:
                     self._validate_node(item, schema, context_type, errors)
+
+    def _normalize_schema_key(self, schema: Optional[dict], key: str) -> str:
+        if schema and schema.get("case_insensitive_keys"):
+            return key.lower()
+        return key
+
+    def _schema_field(self, schema: Optional[dict], key: str) -> Optional[dict]:
+        if not schema:
+            return None
+
+        fields = schema.get("fields", {})
+        if key in fields:
+            return fields[key]
+
+        normalized_key = self._normalize_schema_key(schema, key)
+        if normalized_key == key:
+            return None
+
+        for field_key, field_def in fields.items():
+            if field_key.lower() == normalized_key:
+                return field_def
+        return None
+
+    def _schema_type(self, schema: Optional[dict], key: str) -> Optional[dict]:
+        if not schema:
+            return None
+
+        types = schema.get("types", {})
+        if key in types:
+            type_schema = types[key]
+        else:
+            normalized_key = self._normalize_schema_key(schema, key)
+            type_schema = None
+            for type_key, candidate in types.items():
+                if type_key.lower() == normalized_key:
+                    type_schema = candidate
+                    break
+
+        if type_schema and schema.get("case_insensitive_keys"):
+            type_schema = dict(type_schema)
+            type_schema["case_insensitive_keys"] = True
+            type_schema["sub_schemas"] = schema.get("sub_schemas", {})
+        return type_schema
+
+    def _schema_for_object_key(self, schema: Optional[dict], key: str) -> Optional[dict]:
+        if not schema:
+            return None
+
+        type_schema = self._schema_type(schema, key)
+        if type_schema:
+            return type_schema
+
+        field_def = self._schema_field(schema, key)
+        if field_def and field_def.get("type") == "object" and "schema" in field_def:
+            sub_schema = schema.get("sub_schemas", {}).get(field_def["schema"])
+            if sub_schema:
+                if schema.get("case_insensitive_keys"):
+                    sub_schema = dict(sub_schema)
+                    sub_schema["case_insensitive_keys"] = True
+                    sub_schema["sub_schemas"] = schema.get("sub_schemas", {})
+                return sub_schema
+        return None
+
+    def _validate_schema_fields(
+        self,
+        key: str,
+        node: ObjectNode,
+        schema: Optional[dict],
+        errors: list[Diagnostic],
+        assignment_range: Optional[SourceRange] = None,
+    ):
+        if not schema or not schema.get("validate_fields"):
+            return
+
+        fields = schema.get("fields", {})
+        case_insensitive = schema.get("case_insensitive_keys", False)
+
+        def normalize(value: str) -> str:
+            return value.lower() if case_insensitive else value
+
+        present = {
+            normalize(item.key)
+            for item in node.items
+            if isinstance(item, AssignmentNode)
+        }
+        field_by_normalized = {
+            normalize(field_key): (field_key, field_def)
+            for field_key, field_def in fields.items()
+        }
+
+        for normalized_field, (field_key, field_def) in field_by_normalized.items():
+            if field_def.get("usage") == "required" and normalized_field not in present:
+                errors.append(Diagnostic(
+                    severity="error",
+                    message=make_error_html(
+                        "必須項目がありません",
+                        f"<b>{key}</b> には <b>{field_key}</b> が必要です。",
+                    ),
+                    range=assignment_range or node.range,
+                    code="missing-required-property",
+                    source="hoi4-linter",
+                ))
+
+        if schema.get("unknown_keys") == "ignore":
+            return
+
+        for item in node.items:
+            if not isinstance(item, AssignmentNode):
+                continue
+            normalized_key = normalize(item.key)
+            if normalized_key not in field_by_normalized:
+                errors.append(Diagnostic(
+                    severity="warning",
+                    message=make_warning_html(
+                        "不要な項目",
+                        f"<b>{key}</b> では <b>{item.key}</b> は使用しません。",
+                    ),
+                    range=item.key_range,
+                    code="disallowed-property",
+                    source="hoi4-linter",
+                ))
+                continue
+
+            _, field_def = field_by_normalized[normalized_key]
+            if field_def.get("type") != "object" or not isinstance(item.value, ObjectNode):
+                self._check_value_type(item.value, item.key, field_def, errors, item.range)
 
     def _check_value_type(self, val_node: AstNode, key: str, rule: dict, errors: list[Diagnostic], assignment_range=None):
         expected_types = rule.get("type")

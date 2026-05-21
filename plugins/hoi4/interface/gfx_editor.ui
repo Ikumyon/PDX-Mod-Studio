@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>1280</width>
-    <height>720</height>
+    <height>431</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -70,6 +70,36 @@
         </widget>
        </item>
        <item>
+        <widget class="QPushButton" name="btnNewNode">
+         <property name="toolTip">
+          <string>新しい空のGFX定義ノードをリストに追加します。</string>
+         </property>
+         <property name="text">
+          <string>新規定義を作成</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="btnDuplicateNode">
+         <property name="toolTip">
+          <string>選択している定義ノードのパラメータを丸ごとコピーして複製します。</string>
+         </property>
+         <property name="text">
+          <string>選択定義を複製</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="btnDeleteNode">
+         <property name="toolTip">
+          <string>選択している定義ノードをリストから削除します。</string>
+         </property>
+         <property name="text">
+          <string>選択定義を削除</string>
+         </property>
+        </widget>
+       </item>
+       <item>
         <widget class="QTreeWidget" name="listGfxNodes">
          <column>
           <property name="text">
@@ -81,36 +111,6 @@
            <string>定義タイプ</string>
           </property>
          </column>
-        </widget>
-       </item>
-       <item>
-        <widget class="QPushButton" name="btnNewNode">
-         <property name="toolTip">
-          <string>新しい空のGFX定義ノードをリストに追加します。</string>
-         </property>
-         <property name="text">
-          <string>📄 新規定義を作成</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QPushButton" name="btnDuplicateNode">
-         <property name="toolTip">
-          <string>選択している定義ノードのパラメータを丸ごとコピーして複製します。</string>
-         </property>
-         <property name="text">
-          <string>👯 選択定義を複製</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QPushButton" name="btnDeleteNode">
-         <property name="toolTip">
-          <string>選択している定義ノードをリストから削除します。</string>
-         </property>
-         <property name="text">
-          <string>🗑️ 選択定義を削除</string>
-         </property>
         </widget>
        </item>
       </layout>
@@ -226,9 +226,23 @@
         </widget>
        </item>
        <item>
-        <widget class="QStackedWidget" name="stackedEditor">
-         <widget class="QWidget" name="pageSpriteType">
-          <layout class="QVBoxLayout" name="layoutSprite">
+        <widget class="QScrollArea" name="scrollGfxProps">
+         <property name="frameShape">
+          <enum>QFrame::Shape::NoFrame</enum>
+         </property>
+         <property name="widgetResizable">
+          <bool>true</bool>
+         </property>
+         <widget class="QWidget" name="scrollGfxPropsInner">
+          <property name="geometry">
+           <rect>
+            <x>0</x>
+            <y>0</y>
+            <width>571</width>
+            <height>1417</height>
+           </rect>
+          </property>
+          <layout class="QVBoxLayout" name="layScrollGfxProps">
            <property name="leftMargin">
             <number>0</number>
            </property>
@@ -242,1426 +256,774 @@
             <number>0</number>
            </property>
            <item>
-            <widget class="QScrollArea" name="scrollSprite">
-             <property name="frameShape">
-              <enum>QFrame::Shape::NoFrame</enum>
+            <widget class="QGroupBox" name="groupBasic">
+             <property name="title">
+              <string>基本設定</string>
              </property>
-             <property name="widgetResizable">
-              <bool>true</bool>
-             </property>
-             <widget class="QWidget" name="scrollSpriteInner">
-              <property name="geometry">
-               <rect>
-                <x>0</x>
-                <y>0</y>
-                <width>584</width>
-                <height>590</height>
-               </rect>
-              </property>
-              <layout class="QVBoxLayout" name="layScrollSprite">
-               <property name="leftMargin">
-                <number>0</number>
-               </property>
-               <property name="topMargin">
-                <number>0</number>
-               </property>
-               <property name="rightMargin">
-                <number>0</number>
-               </property>
-               <property name="bottomMargin">
-                <number>0</number>
-               </property>
-               <item>
-                <widget class="QGroupBox" name="groupSpriteBasic">
-                 <property name="title">
-                  <string>基本設定</string>
-                 </property>
-                 <layout class="QFormLayout" name="formSpriteBasic">
-                  <item row="0" column="0">
-                   <widget class="QLabel" name="lblSpriteName">
-                    <property name="text">
-                     <string>定義名 (name)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="0" column="1">
-                   <widget class="QLineEdit" name="editSpriteName"/>
-                  </item>
-                  <item row="1" column="0">
-                   <widget class="QLabel" name="lblSpriteTexture">
-                    <property name="text">
-                     <string>テクスチャファイルパス (texturefile)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="1" column="1">
-                   <layout class="QHBoxLayout" name="laySpriteTexture">
-                    <item>
-                     <widget class="QLineEdit" name="editSpriteTexture"/>
-                    </item>
-                    <item>
-                     <widget class="QPushButton" name="btnSelectSpriteTexture">
-                      <property name="text">
-                       <string>参照</string>
-                      </property>
-                     </widget>
-                    </item>
-                   </layout>
-                  </item>
-                  <item row="2" column="0">
-                   <widget class="QLabel" name="lblSpriteFrames">
-                    <property name="text">
-                     <string>フレーム数 (noOfFrames)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="2" column="1">
-                   <widget class="QSpinBox" name="spinSpriteFrames">
-                    <property name="minimum">
-                     <number>1</number>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="3" column="0">
-                   <widget class="QLabel" name="lblSpriteEffect">
-                    <property name="text">
-                     <string>エフェクトファイル (effectFile)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="3" column="1">
-                   <layout class="QHBoxLayout" name="laySpriteEffect">
-                    <item>
-                     <widget class="QLineEdit" name="editSpriteEffect"/>
-                    </item>
-                    <item>
-                     <widget class="QPushButton" name="btnSelectSpriteEffect">
-                      <property name="text">
-                       <string>参照</string>
-                      </property>
-                     </widget>
-                    </item>
-                   </layout>
-                  </item>
-                  <item row="4" column="0">
-                   <widget class="QLabel" name="lblSpriteTransparent">
-                    <property name="text">
-                     <string>常に透過処理</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="4" column="1">
-                   <widget class="QCheckBox" name="checkSpriteTransparent">
-                    <property name="text">
-                     <string>allwaystransparent = yes</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="5" column="0">
-                   <widget class="QLabel" name="lblSpriteLazyLoad">
-                    <property name="text">
-                     <string>遅延読み込み</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="5" column="1">
-                   <widget class="QCheckBox" name="checkSpriteLazyLoad">
-                    <property name="text">
-                     <string>legacy_lazy_load = yes</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="6" column="0">
-                   <widget class="QLabel" name="lblSpriteTransparenceCheck">
-                    <property name="text">
-                     <string>透過度クリック判定</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="6" column="1">
-                   <widget class="QCheckBox" name="checkSpriteTransparenceCheck">
-                    <property name="text">
-                     <string>transparencecheck = yes</string>
-                    </property>
-                   </widget>
-                  </item>
-                 </layout>
-                </widget>
-               </item>
-               <item>
-                <widget class="QGroupBox" name="groupSpriteAnim">
-                 <property name="title">
-                  <string>アニメーション設定 (animation)</string>
-                 </property>
-                 <layout class="QFormLayout" name="formSpriteAnim">
-                  <item row="0" column="0">
-                   <widget class="QLabel" name="lblSpriteAnimMask">
-                    <property name="text">
-                     <string>アニメマスクファイル (animationmaskfile)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="0" column="1">
-                   <layout class="QHBoxLayout" name="laySpriteAnimMask">
-                    <item>
-                     <widget class="QLineEdit" name="editSpriteAnimMask"/>
-                    </item>
-                    <item>
-                     <widget class="QPushButton" name="btnSelectSpriteAnimMask">
-                      <property name="text">
-                       <string>参照</string>
-                      </property>
-                     </widget>
-                    </item>
-                   </layout>
-                  </item>
-                  <item row="1" column="0">
-                   <widget class="QLabel" name="lblSpriteAnimTexture">
-                    <property name="text">
-                     <string>アニメテクスチャファイル (animationtexturefile)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="1" column="1">
-                   <layout class="QHBoxLayout" name="laySpriteAnimTexture">
-                    <item>
-                     <widget class="QLineEdit" name="editSpriteAnimTexture"/>
-                    </item>
-                    <item>
-                     <widget class="QPushButton" name="btnSelectSpriteAnimTexture">
-                      <property name="text">
-                       <string>参照</string>
-                      </property>
-                     </widget>
-                    </item>
-                   </layout>
-                  </item>
-                  <item row="2" column="0">
-                   <widget class="QLabel" name="lblSpriteAnimRotation">
-                    <property name="text">
-                     <string>回転角度 (animationrotation)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="2" column="1">
-                   <widget class="QDoubleSpinBox" name="spinSpriteAnimRotation">
-                    <property name="minimum">
-                     <double>-360.000000000000000</double>
-                    </property>
-                    <property name="maximum">
-                     <double>360.000000000000000</double>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="3" column="0">
-                   <widget class="QLabel" name="lblSpriteAnimLooping">
-                    <property name="text">
-                     <string>ループ再生</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="3" column="1">
-                   <widget class="QCheckBox" name="checkSpriteAnimLooping">
-                    <property name="text">
-                     <string>animationlooping = yes</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="4" column="0">
-                   <widget class="QLabel" name="lblSpriteAnimTime">
-                    <property name="text">
-                     <string>再生時間 (animationtime)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="4" column="1">
-                   <widget class="QDoubleSpinBox" name="spinSpriteAnimTime"/>
-                  </item>
-                  <item row="5" column="0">
-                   <widget class="QLabel" name="lblSpriteAnimDelay">
-                    <property name="text">
-                     <string>再生遅延 (animationdelay)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="5" column="1">
-                   <widget class="QDoubleSpinBox" name="spinSpriteAnimDelay"/>
-                  </item>
-                  <item row="6" column="0">
-                   <widget class="QLabel" name="lblSpriteAnimBlend">
-                    <property name="text">
-                     <string>ブレンドモード (animationblendmode)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="6" column="1">
-                   <widget class="QComboBox" name="comboSpriteAnimBlend">
-                    <item>
-                     <property name="text">
-                      <string>加算 (add)</string>
-                     </property>
-                    </item>
-                    <item>
-                     <property name="text">
-                      <string>乗算 (multiply)</string>
-                     </property>
-                    </item>
-                    <item>
-                     <property name="text">
-                      <string>オーバーレイ (overlay)</string>
-                     </property>
-                    </item>
-                   </widget>
-                  </item>
-                  <item row="7" column="0">
-                   <widget class="QLabel" name="lblSpriteAnimRotOffset">
-                    <property name="text">
-                     <string>回転中心オフセット (animationrotationoffset)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="7" column="1">
-                   <layout class="QHBoxLayout" name="laySpriteAnimRotOffset">
-                    <item>
-                     <widget class="QLabel" name="lblRotX">
-                      <property name="text">
-                       <string>X</string>
-                      </property>
-                     </widget>
-                    </item>
-                    <item>
-                     <widget class="QDoubleSpinBox" name="spinSpriteAnimRotX"/>
-                    </item>
-                    <item>
-                     <widget class="QLabel" name="lblRotY">
-                      <property name="text">
-                       <string>Y</string>
-                      </property>
-                     </widget>
-                    </item>
-                    <item>
-                     <widget class="QDoubleSpinBox" name="spinSpriteAnimRotY"/>
-                    </item>
-                   </layout>
-                  </item>
-                  <item row="8" column="0">
-                   <widget class="QLabel" name="lblSpriteAnimScale">
-                    <property name="text">
-                     <string>テクスチャスケール (animationtexturescale)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="8" column="1">
-                   <layout class="QHBoxLayout" name="laySpriteAnimScale">
-                    <item>
-                     <widget class="QLabel" name="lblScaleX">
-                      <property name="text">
-                       <string>X</string>
-                      </property>
-                     </widget>
-                    </item>
-                    <item>
-                     <widget class="QDoubleSpinBox" name="spinSpriteAnimScaleX"/>
-                    </item>
-                    <item>
-                     <widget class="QLabel" name="lblScaleY">
-                      <property name="text">
-                       <string>Y</string>
-                      </property>
-                     </widget>
-                    </item>
-                    <item>
-                     <widget class="QDoubleSpinBox" name="spinSpriteAnimScaleY"/>
-                    </item>
-                   </layout>
-                  </item>
-                  <item row="9" column="0">
-                   <widget class="QLabel" name="lblSpriteAnimType">
-                    <property name="text">
-                     <string>アニメタイプ (animationtype)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="9" column="1">
-                   <widget class="QLineEdit" name="editSpriteAnimType"/>
-                  </item>
-                 </layout>
-                </widget>
-               </item>
-              </layout>
-             </widget>
+             <layout class="QFormLayout" name="formBasic">
+              <item row="0" column="0">
+               <widget class="QLabel" name="lblName">
+                <property name="text">
+                 <string>定義名 (name)</string>
+                </property>
+               </widget>
+              </item>
+              <item row="0" column="1">
+               <widget class="QLineEdit" name="editName"/>
+              </item>
+              <item row="1" column="0">
+               <widget class="QLabel" name="lblTexture">
+                <property name="text">
+                 <string>テクスチャファイルパス (texturefile)</string>
+                </property>
+               </widget>
+              </item>
+              <item row="1" column="1">
+               <layout class="QHBoxLayout" name="layTexture">
+                <item>
+                 <widget class="QLineEdit" name="editTexture"/>
+                </item>
+                <item>
+                 <widget class="QPushButton" name="btnSelectTexture">
+                  <property name="text">
+                   <string>参照</string>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </item>
+              <item row="2" column="0">
+               <widget class="QLabel" name="lblEffect">
+                <property name="text">
+                 <string>エフェクトファイル (effectFile)</string>
+                </property>
+               </widget>
+              </item>
+              <item row="2" column="1">
+               <layout class="QHBoxLayout" name="layEffect">
+                <item>
+                 <widget class="QLineEdit" name="editEffect"/>
+                </item>
+                <item>
+                 <widget class="QPushButton" name="btnSelectEffect">
+                  <property name="text">
+                   <string>参照</string>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </item>
+             </layout>
             </widget>
            </item>
-          </layout>
-         </widget>
-         <widget class="QWidget" name="pageFrameAnimated">
-          <layout class="QVBoxLayout" name="layoutFrameAnimated">
-           <property name="leftMargin">
-            <number>0</number>
-           </property>
-           <property name="topMargin">
-            <number>0</number>
-           </property>
-           <property name="rightMargin">
-            <number>0</number>
-           </property>
-           <property name="bottomMargin">
-            <number>0</number>
-           </property>
            <item>
-            <widget class="QScrollArea" name="scrollFrameAnimated">
-             <property name="widgetResizable">
-              <bool>true</bool>
+            <widget class="QGroupBox" name="groupTexture2">
+             <property name="title">
+              <string>拡張テクスチャ設定</string>
              </property>
-             <widget class="QWidget" name="scrollFrameAnimatedInner">
-              <property name="geometry">
-               <rect>
-                <x>0</x>
-                <y>0</y>
-                <width>420</width>
-                <height>322</height>
-               </rect>
-              </property>
-              <layout class="QVBoxLayout" name="layScrollFrameAnimated">
-               <item>
-                <widget class="QGroupBox" name="groupFrameAnim">
-                 <property name="title">
-                  <string>コマ送りアニメ設定</string>
-                 </property>
-                 <layout class="QFormLayout" name="formFrameAnim">
-                  <item row="0" column="0">
-                   <widget class="QLabel" name="lblFrameAnimName">
-                    <property name="text">
-                     <string>定義名 (name)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="0" column="1">
-                   <widget class="QLineEdit" name="editFrameAnimName"/>
-                  </item>
-                  <item row="1" column="0">
-                   <widget class="QLabel" name="lblFrameAnimTexture">
-                    <property name="text">
-                     <string>テクスチャファイルパス (texturefile)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="1" column="1">
-                   <layout class="QHBoxLayout" name="layFrameAnimTexture">
-                    <item>
-                     <widget class="QLineEdit" name="editFrameAnimTexture"/>
-                    </item>
-                    <item>
-                     <widget class="QPushButton" name="btnSelectFrameAnimTexture">
-                      <property name="text">
-                       <string>参照</string>
-                      </property>
-                     </widget>
-                    </item>
-                   </layout>
-                  </item>
-                  <item row="2" column="0">
-                   <widget class="QLabel" name="lblFrameAnimFrames">
-                    <property name="text">
-                     <string>フレーム数 (noOfFrames)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="2" column="1">
-                   <widget class="QSpinBox" name="spinFrameAnimFrames">
-                    <property name="minimum">
-                     <number>1</number>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="3" column="0">
-                   <widget class="QLabel" name="lblFrameAnimRate">
-                    <property name="text">
-                     <string>フレームレート (animation_rate_fps)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="3" column="1">
-                   <widget class="QDoubleSpinBox" name="spinFrameAnimRate"/>
-                  </item>
-                  <item row="4" column="0">
-                   <widget class="QLabel" name="lblFrameAnimEffect">
-                    <property name="text">
-                     <string>エフェクトファイル (effectFile)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="4" column="1">
-                   <layout class="QHBoxLayout" name="layFrameAnimEffect">
-                    <item>
-                     <widget class="QLineEdit" name="editFrameAnimEffect"/>
-                    </item>
-                    <item>
-                     <widget class="QPushButton" name="btnSelectFrameAnimEffect">
-                      <property name="text">
-                       <string>参照</string>
-                      </property>
-                     </widget>
-                    </item>
-                   </layout>
-                  </item>
-                  <item row="5" column="0">
-                   <widget class="QLabel" name="lblFrameAnimLooping">
-                    <property name="text">
-                     <string>ループ再生</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="5" column="1">
-                   <widget class="QCheckBox" name="checkFrameAnimLooping">
-                    <property name="text">
-                     <string>looping = yes</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="6" column="0">
-                   <widget class="QLabel" name="lblFrameAnimPlay">
-                    <property name="text">
-                     <string>表示時自動再生</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="6" column="1">
-                   <widget class="QCheckBox" name="checkFrameAnimPlay">
-                    <property name="text">
-                     <string>play_on_show = yes</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="7" column="0">
-                   <widget class="QLabel" name="lblFrameAnimPause">
-                    <property name="text">
-                     <string>ループ時の一時停止時間 (pause_on_loop)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="7" column="1">
-                   <widget class="QDoubleSpinBox" name="spinFrameAnimPause"/>
-                  </item>
-                  <item row="8" column="0">
-                   <widget class="QLabel" name="lblFrameAnimTransparent">
-                    <property name="text">
-                     <string>常に透過処理</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="8" column="1">
-                   <widget class="QCheckBox" name="checkFrameAnimTransparent">
-                    <property name="text">
-                     <string>allwaystransparent = yes</string>
-                    </property>
-                   </widget>
-                  </item>
-                 </layout>
-                </widget>
-               </item>
-              </layout>
-             </widget>
+             <layout class="QFormLayout" name="formTexture2">
+              <item row="0" column="0">
+               <widget class="QLabel" name="lblTexture1">
+                <property name="text">
+                 <string>テクスチャ1 (textureFile1)</string>
+                </property>
+               </widget>
+              </item>
+              <item row="0" column="1">
+               <layout class="QHBoxLayout" name="layTexture1">
+                <item>
+                 <widget class="QLineEdit" name="editTexture1"/>
+                </item>
+                <item>
+                 <widget class="QPushButton" name="btnSelectTexture1">
+                  <property name="text">
+                   <string>参照</string>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </item>
+              <item row="1" column="0">
+               <widget class="QLabel" name="lblTexture2">
+                <property name="text">
+                 <string>テクスチャ2 (textureFile2)</string>
+                </property>
+               </widget>
+              </item>
+              <item row="1" column="1">
+               <layout class="QHBoxLayout" name="layTexture2">
+                <item>
+                 <widget class="QLineEdit" name="editTexture2"/>
+                </item>
+                <item>
+                 <widget class="QPushButton" name="btnSelectTexture2">
+                  <property name="text">
+                   <string>参照</string>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </item>
+              <item row="2" column="0">
+               <widget class="QLabel" name="lblMask">
+                <property name="text">
+                 <string>マスクファイル (maskFile)</string>
+                </property>
+               </widget>
+              </item>
+              <item row="2" column="1">
+               <layout class="QHBoxLayout" name="layMask">
+                <item>
+                 <widget class="QLineEdit" name="editMask"/>
+                </item>
+                <item>
+                 <widget class="QPushButton" name="btnSelectMask">
+                  <property name="text">
+                   <string>参照</string>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </item>
+             </layout>
             </widget>
            </item>
-          </layout>
-         </widget>
-         <widget class="QWidget" name="pageProgressBar">
-          <layout class="QVBoxLayout" name="layoutProgressBar">
-           <property name="leftMargin">
-            <number>0</number>
-           </property>
-           <property name="topMargin">
-            <number>0</number>
-           </property>
-           <property name="rightMargin">
-            <number>0</number>
-           </property>
-           <property name="bottomMargin">
-            <number>0</number>
-           </property>
            <item>
-            <widget class="QScrollArea" name="scrollProgressBar">
-             <property name="widgetResizable">
-              <bool>true</bool>
+            <widget class="QGroupBox" name="groupAppearance">
+             <property name="title">
+              <string>外観・サイズ設定</string>
              </property>
-             <widget class="QWidget" name="scrollProgressBarInner">
-              <property name="geometry">
-               <rect>
-                <x>0</x>
-                <y>0</y>
-                <width>432</width>
-                <height>337</height>
-               </rect>
-              </property>
-              <layout class="QVBoxLayout" name="layScrollProgressBar">
-               <item>
-                <widget class="QGroupBox" name="groupProgress">
-                 <property name="title">
-                  <string>進捗バーゲージ設定</string>
-                 </property>
-                 <layout class="QFormLayout" name="formProgress">
-                  <item row="0" column="0">
-                   <widget class="QLabel" name="lblProgressName">
-                    <property name="text">
-                     <string>定義名 (name)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="0" column="1">
-                   <widget class="QLineEdit" name="editProgressName"/>
-                  </item>
-                  <item row="1" column="0">
-                   <widget class="QLabel" name="lblProgressTextureOne">
-                    <property name="text">
-                     <string>ゲージ用テクスチャ (textureFile1)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="1" column="1">
-                   <layout class="QHBoxLayout" name="layProgressTextureOne">
-                    <item>
-                     <widget class="QLineEdit" name="editProgressTextureOne"/>
-                    </item>
-                    <item>
-                     <widget class="QPushButton" name="btnSelectProgressTextureOne">
-                      <property name="text">
-                       <string>参照</string>
-                      </property>
-                     </widget>
-                    </item>
-                   </layout>
-                  </item>
-                  <item row="2" column="0">
-                   <widget class="QLabel" name="lblProgressTextureTwo">
-                    <property name="text">
-                     <string>背景用テクスチャ (textureFile2)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="2" column="1">
-                   <layout class="QHBoxLayout" name="layProgressTextureTwo">
-                    <item>
-                     <widget class="QLineEdit" name="editProgressTextureTwo"/>
-                    </item>
-                    <item>
-                     <widget class="QPushButton" name="btnSelectProgressTextureTwo">
-                      <property name="text">
-                       <string>参照</string>
-                      </property>
-                     </widget>
-                    </item>
-                   </layout>
-                  </item>
-                  <item row="3" column="0">
-                   <widget class="QLabel" name="lblProgressColorOne">
-                    <property name="text">
-                     <string>ゲージカラー 1 (color)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="3" column="1">
-                   <layout class="QHBoxLayout" name="layProgressColorOne">
-                    <item>
-                     <widget class="QLineEdit" name="editProgressColorOne"/>
-                    </item>
-                    <item>
-                     <widget class="QPushButton" name="btnSelectProgressColorOne">
-                      <property name="text">
-                       <string>色選択</string>
-                      </property>
-                     </widget>
-                    </item>
-                   </layout>
-                  </item>
-                  <item row="4" column="0">
-                   <widget class="QLabel" name="lblProgressColorTwo">
-                    <property name="text">
-                     <string>ゲージカラー 2 (colortwo)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="4" column="1">
-                   <layout class="QHBoxLayout" name="layProgressColorTwo">
-                    <item>
-                     <widget class="QLineEdit" name="editProgressColorTwo"/>
-                    </item>
-                    <item>
-                     <widget class="QPushButton" name="btnSelectProgressColorTwo">
-                      <property name="text">
-                       <string>色選択</string>
-                      </property>
-                     </widget>
-                    </item>
-                   </layout>
-                  </item>
-                  <item row="5" column="0">
-                   <widget class="QLabel" name="lblProgressSize">
-                    <property name="text">
-                     <string>ゲージサイズ (size)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="5" column="1">
-                   <layout class="QHBoxLayout" name="layProgressSize">
-                    <item>
-                     <widget class="QLabel" name="lblProgressSizeW">
-                      <property name="text">
-                       <string>幅 (W)</string>
-                      </property>
-                     </widget>
-                    </item>
-                    <item>
-                     <widget class="QSpinBox" name="spinProgressSizeW"/>
-                    </item>
-                    <item>
-                     <widget class="QLabel" name="lblProgressSizeH">
-                      <property name="text">
-                       <string>高さ (H)</string>
-                      </property>
-                     </widget>
-                    </item>
-                    <item>
-                     <widget class="QSpinBox" name="spinProgressSizeH"/>
-                    </item>
-                   </layout>
-                  </item>
-                  <item row="6" column="0">
-                   <widget class="QLabel" name="lblProgressEffect">
-                    <property name="text">
-                     <string>エフェクトファイル (effectFile)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="6" column="1">
-                   <layout class="QHBoxLayout" name="layProgressEffect">
-                    <item>
-                     <widget class="QLineEdit" name="editProgressEffect"/>
-                    </item>
-                    <item>
-                     <widget class="QPushButton" name="btnSelectProgressEffect">
-                      <property name="text">
-                       <string>参照</string>
-                      </property>
-                     </widget>
-                    </item>
-                   </layout>
-                  </item>
-                  <item row="7" column="0">
-                   <widget class="QLabel" name="lblProgressHorizontal">
-                    <property name="text">
-                     <string>水平表示</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="7" column="1">
-                   <widget class="QCheckBox" name="checkProgressHorizontal">
-                    <property name="text">
-                     <string>horizontal = yes</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="8" column="0">
-                   <widget class="QLabel" name="lblProgressSteps">
-                    <property name="text">
-                     <string>ステップ数 (steps)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="8" column="1">
-                   <widget class="QSpinBox" name="spinProgressSteps"/>
-                  </item>
-                 </layout>
-                </widget>
-               </item>
-              </layout>
-             </widget>
+             <layout class="QFormLayout" name="formAppearance">
+              <item row="0" column="0">
+               <widget class="QLabel" name="lblSize">
+                <property name="text">
+                 <string>サイズ (size)</string>
+                </property>
+               </widget>
+              </item>
+              <item row="0" column="1">
+               <layout class="QHBoxLayout" name="laySize">
+                <item>
+                 <widget class="QLabel" name="lblSizeW">
+                  <property name="text">
+                   <string>W</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QDoubleSpinBox" name="spinSizeW">
+                  <property name="maximum">
+                   <double>9999.000000000000000</double>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QLabel" name="lblSizeH">
+                  <property name="text">
+                   <string>H</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QDoubleSpinBox" name="spinSizeH">
+                  <property name="maximum">
+                   <double>9999.000000000000000</double>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </item>
+              <item row="1" column="0">
+               <widget class="QLabel" name="lblBorderSize">
+                <property name="text">
+                 <string>ボーダーサイズ (borderSize)</string>
+                </property>
+               </widget>
+              </item>
+              <item row="1" column="1">
+               <layout class="QHBoxLayout" name="layBorderSize">
+                <item>
+                 <widget class="QLabel" name="lblBorderX">
+                  <property name="text">
+                   <string>X</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QSpinBox" name="spinBorderX">
+                  <property name="maximum">
+                   <number>9999</number>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QLabel" name="lblBorderY">
+                  <property name="text">
+                   <string>Y</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QSpinBox" name="spinBorderY">
+                  <property name="maximum">
+                   <number>9999</number>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </item>
+              <item row="2" column="0">
+               <widget class="QLabel" name="lblColor">
+                <property name="text">
+                 <string>カラー (color)</string>
+                </property>
+               </widget>
+              </item>
+              <item row="2" column="1">
+               <widget class="QLineEdit" name="editColor"/>
+              </item>
+              <item row="3" column="0">
+               <widget class="QLabel" name="lblColorTwo">
+                <property name="text">
+                 <string>カラー2 (colortwo)</string>
+                </property>
+               </widget>
+              </item>
+              <item row="3" column="1">
+               <widget class="QLineEdit" name="editColorTwo"/>
+              </item>
+              <item row="4" column="0">
+               <widget class="QLabel" name="lblHorizontal">
+                <property name="text">
+                 <string>水平表示</string>
+                </property>
+               </widget>
+              </item>
+              <item row="4" column="1">
+               <widget class="QCheckBox" name="checkHorizontal">
+                <property name="text">
+                 <string>horizontal = yes</string>
+                </property>
+               </widget>
+              </item>
+              <item row="5" column="0">
+               <widget class="QLabel" name="lblTransparent">
+                <property name="text">
+                 <string>常に透過処理</string>
+                </property>
+               </widget>
+              </item>
+              <item row="5" column="1">
+               <widget class="QCheckBox" name="checkTransparent">
+                <property name="text">
+                 <string>allwaystransparent = yes</string>
+                </property>
+               </widget>
+              </item>
+              <item row="6" column="0">
+               <widget class="QLabel" name="lblLazyLoad">
+                <property name="text">
+                 <string>遅延読み込み</string>
+                </property>
+               </widget>
+              </item>
+              <item row="6" column="1">
+               <widget class="QCheckBox" name="checkLazyLoad">
+                <property name="text">
+                 <string>legacy_lazy_load = yes</string>
+                </property>
+               </widget>
+              </item>
+              <item row="7" column="0">
+               <widget class="QLabel" name="lblTransparenceCheck">
+                <property name="text">
+                 <string>透過度クリック判定</string>
+                </property>
+               </widget>
+              </item>
+              <item row="7" column="1">
+               <widget class="QCheckBox" name="checkTransparenceCheck">
+                <property name="text">
+                 <string>transparencecheck = yes</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
             </widget>
            </item>
-          </layout>
-         </widget>
-         <widget class="QWidget" name="pageCorneredTile">
-          <layout class="QVBoxLayout" name="layoutCorneredTile">
-           <property name="leftMargin">
-            <number>0</number>
-           </property>
-           <property name="topMargin">
-            <number>0</number>
-           </property>
-           <property name="rightMargin">
-            <number>0</number>
-           </property>
-           <property name="bottomMargin">
-            <number>0</number>
-           </property>
            <item>
-            <widget class="QScrollArea" name="scrollCorneredTile">
-             <property name="widgetResizable">
-              <bool>true</bool>
+            <widget class="QGroupBox" name="groupFrames">
+             <property name="title">
+              <string>フレーム・再生設定</string>
              </property>
-             <widget class="QWidget" name="scrollCorneredTileInner">
-              <property name="geometry">
-               <rect>
-                <x>0</x>
-                <y>0</y>
-                <width>437</width>
-                <height>267</height>
-               </rect>
-              </property>
-              <layout class="QVBoxLayout" name="layScrollCorneredTile">
-               <item>
-                <widget class="QGroupBox" name="groupCornered">
-                 <property name="title">
-                  <string>9スライス枠・枠パネル設定</string>
-                 </property>
-                 <layout class="QFormLayout" name="formCornered">
-                  <item row="0" column="0">
-                   <widget class="QLabel" name="lblCorneredName">
-                    <property name="text">
-                     <string>定義名 (name)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="0" column="1">
-                   <widget class="QLineEdit" name="editCorneredName"/>
-                  </item>
-                  <item row="1" column="0">
-                   <widget class="QLabel" name="lblCorneredTexture">
-                    <property name="text">
-                     <string>テクスチャファイルパス (texturefile)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="1" column="1">
-                   <layout class="QHBoxLayout" name="layCorneredTexture">
-                    <item>
-                     <widget class="QLineEdit" name="editCorneredTexture"/>
-                    </item>
-                    <item>
-                     <widget class="QPushButton" name="btnSelectCorneredTexture">
-                      <property name="text">
-                       <string>参照</string>
-                      </property>
-                     </widget>
-                    </item>
-                   </layout>
-                  </item>
-                  <item row="2" column="0">
-                   <widget class="QLabel" name="lblCorneredSize">
-                    <property name="text">
-                     <string>枠サイズ (size)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="2" column="1">
-                   <layout class="QHBoxLayout" name="layCorneredSize">
-                    <item>
-                     <widget class="QLabel" name="lblCorneredSizeW">
-                      <property name="text">
-                       <string>幅 (W)</string>
-                      </property>
-                     </widget>
-                    </item>
-                    <item>
-                     <widget class="QSpinBox" name="spinCorneredSizeW"/>
-                    </item>
-                    <item>
-                     <widget class="QLabel" name="lblCorneredSizeH">
-                      <property name="text">
-                       <string>高さ (H)</string>
-                      </property>
-                     </widget>
-                    </item>
-                    <item>
-                     <widget class="QSpinBox" name="spinCorneredSizeH"/>
-                    </item>
-                   </layout>
-                  </item>
-                  <item row="3" column="0">
-                   <widget class="QLabel" name="lblCorneredBorderSize">
-                    <property name="text">
-                     <string>枠ボーダーサイズ (borderSize)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="3" column="1">
-                   <layout class="QHBoxLayout" name="layCorneredBorderSize">
-                    <item>
-                     <widget class="QLabel" name="lblBorderX">
-                      <property name="text">
-                       <string>X</string>
-                      </property>
-                     </widget>
-                    </item>
-                    <item>
-                     <widget class="QSpinBox" name="spinCorneredBorderX"/>
-                    </item>
-                    <item>
-                     <widget class="QLabel" name="lblBorderY">
-                      <property name="text">
-                       <string>Y</string>
-                      </property>
-                     </widget>
-                    </item>
-                    <item>
-                     <widget class="QSpinBox" name="spinCorneredBorderY"/>
-                    </item>
-                   </layout>
-                  </item>
-                  <item row="4" column="0">
-                   <widget class="QLabel" name="lblCorneredEffect">
-                    <property name="text">
-                     <string>エフェクトファイル (effectFile)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="4" column="1">
-                   <layout class="QHBoxLayout" name="layCorneredEffect">
-                    <item>
-                     <widget class="QLineEdit" name="editCorneredEffect"/>
-                    </item>
-                    <item>
-                     <widget class="QPushButton" name="btnSelectCorneredEffect">
-                      <property name="text">
-                       <string>参照</string>
-                      </property>
-                     </widget>
-                    </item>
-                   </layout>
-                  </item>
-                  <item row="5" column="0">
-                   <widget class="QLabel" name="lblCorneredTransparent">
-                    <property name="text">
-                     <string>常に透過処理</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="5" column="1">
-                   <widget class="QCheckBox" name="checkCorneredTransparent">
-                    <property name="text">
-                     <string>allwaystransparent = yes</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="6" column="0">
-                   <widget class="QLabel" name="lblCorneredTilingCenter">
-                    <property name="text">
-                     <string>中央をタイル状に配置</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="6" column="1">
-                   <widget class="QCheckBox" name="checkCorneredTilingCenter">
-                    <property name="text">
-                     <string>tilingCenter = yes</string>
-                    </property>
-                   </widget>
-                  </item>
-                 </layout>
-                </widget>
-               </item>
-              </layout>
-             </widget>
+             <layout class="QFormLayout" name="formFrames">
+              <item row="0" column="0">
+               <widget class="QLabel" name="lblFrames">
+                <property name="text">
+                 <string>フレーム数 (noOfFrames)</string>
+                </property>
+               </widget>
+              </item>
+              <item row="0" column="1">
+               <widget class="QSpinBox" name="spinFrames">
+                <property name="minimum">
+                 <number>1</number>
+                </property>
+               </widget>
+              </item>
+              <item row="1" column="0">
+               <widget class="QLabel" name="lblRate">
+                <property name="text">
+                 <string>フレームレート (animation_rate_fps)</string>
+                </property>
+               </widget>
+              </item>
+              <item row="1" column="1">
+               <widget class="QDoubleSpinBox" name="spinRate"/>
+              </item>
+              <item row="2" column="0">
+               <widget class="QLabel" name="lblLooping">
+                <property name="text">
+                 <string>ループ再生</string>
+                </property>
+               </widget>
+              </item>
+              <item row="2" column="1">
+               <widget class="QCheckBox" name="checkLooping">
+                <property name="text">
+                 <string>looping = yes</string>
+                </property>
+               </widget>
+              </item>
+              <item row="3" column="0">
+               <widget class="QLabel" name="lblPlayOnShow">
+                <property name="text">
+                 <string>表示時自動再生</string>
+                </property>
+               </widget>
+              </item>
+              <item row="3" column="1">
+               <widget class="QCheckBox" name="checkPlayOnShow">
+                <property name="text">
+                 <string>play_on_show = yes</string>
+                </property>
+               </widget>
+              </item>
+              <item row="4" column="0">
+               <widget class="QLabel" name="lblPauseOnLoop">
+                <property name="text">
+                 <string>一時停止時間 (pause_on_loop)</string>
+                </property>
+               </widget>
+              </item>
+              <item row="4" column="1">
+               <widget class="QDoubleSpinBox" name="spinPauseOnLoop"/>
+              </item>
+             </layout>
             </widget>
            </item>
-          </layout>
-         </widget>
-         <widget class="QWidget" name="pageMaskedShield">
-          <layout class="QVBoxLayout" name="layoutMaskedShield">
-           <property name="leftMargin">
-            <number>0</number>
-           </property>
-           <property name="topMargin">
-            <number>0</number>
-           </property>
-           <property name="rightMargin">
-            <number>0</number>
-           </property>
-           <property name="bottomMargin">
-            <number>0</number>
-           </property>
            <item>
-            <widget class="QScrollArea" name="scrollMaskedShield">
-             <property name="widgetResizable">
-              <bool>true</bool>
+            <widget class="QGroupBox" name="groupFont">
+             <property name="title">
+              <string>フォント設定</string>
              </property>
-             <widget class="QWidget" name="scrollMaskedShieldInner">
-              <property name="geometry">
-               <rect>
-                <x>0</x>
-                <y>0</y>
-                <width>341</width>
-                <height>179</height>
-               </rect>
-              </property>
-              <layout class="QVBoxLayout" name="layScrollMaskedShield">
-               <item>
-                <widget class="QGroupBox" name="groupShield">
-                 <property name="title">
-                  <string>マスク付き旗・シールド設定</string>
+             <layout class="QFormLayout" name="formFont">
+              <item row="0" column="0">
+               <widget class="QLabel" name="lblFontPath">
+                <property name="text">
+                 <string>フォントパス (path)</string>
+                </property>
+               </widget>
+              </item>
+              <item row="0" column="1">
+               <widget class="QLineEdit" name="editFontPath"/>
+              </item>
+              <item row="1" column="0">
+               <widget class="QLabel" name="lblFontColor">
+                <property name="text">
+                 <string>フォントカラー (color)</string>
+                </property>
+               </widget>
+              </item>
+              <item row="1" column="1">
+               <widget class="QLineEdit" name="editFontColor"/>
+              </item>
+              <item row="2" column="0">
+               <widget class="QLabel" name="lblCursorOffset">
+                <property name="text">
+                 <string>カーソルオフセット (cursor_offset)</string>
+                </property>
+               </widget>
+              </item>
+              <item row="2" column="1">
+               <layout class="QHBoxLayout" name="layCursorOffset">
+                <item>
+                 <widget class="QLabel" name="lblCursorX">
+                  <property name="text">
+                   <string>X</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QSpinBox" name="spinCursorX"/>
+                </item>
+                <item>
+                 <widget class="QLabel" name="lblCursorY">
+                  <property name="text">
+                   <string>Y</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QSpinBox" name="spinCursorY"/>
+                </item>
+               </layout>
+              </item>
+              <item row="3" column="0">
+               <widget class="QLabel" name="lblOverrideFont">
+                <property name="text">
+                 <string>上書き先フォント (font)</string>
+                </property>
+               </widget>
+              </item>
+              <item row="3" column="1">
+               <widget class="QLineEdit" name="editOverrideFont"/>
+              </item>
+              <item row="4" column="0">
+               <widget class="QLabel" name="lblOverrideLang">
+                <property name="text">
+                 <string>対象言語 (language)</string>
+                </property>
+               </widget>
+              </item>
+              <item row="4" column="1">
+               <widget class="QComboBox" name="comboOverrideLang">
+                <item>
+                 <property name="text">
+                  <string>JAPANESE</string>
                  </property>
-                 <layout class="QFormLayout" name="formShield">
-                  <item row="0" column="0">
-                   <widget class="QLabel" name="lblShieldName">
-                    <property name="text">
-                     <string>定義名 (name)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="0" column="1">
-                   <widget class="QLineEdit" name="editShieldName"/>
-                  </item>
-                  <item row="1" column="0">
-                   <widget class="QLabel" name="lblShieldTexture">
-                    <property name="text">
-                     <string>テクスチャファイルパス (texturefile)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="1" column="1">
-                   <layout class="QHBoxLayout" name="layShieldTexture">
-                    <item>
-                     <widget class="QLineEdit" name="editShieldTexture"/>
-                    </item>
-                    <item>
-                     <widget class="QPushButton" name="btnSelectShieldTexture">
-                      <property name="text">
-                       <string>参照</string>
-                      </property>
-                     </widget>
-                    </item>
-                   </layout>
-                  </item>
-                  <item row="2" column="0">
-                   <widget class="QLabel" name="lblShieldMask">
-                    <property name="text">
-                     <string>アルファマスクファイル (maskfile)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="2" column="1">
-                   <layout class="QHBoxLayout" name="layShieldMask">
-                    <item>
-                     <widget class="QLineEdit" name="editShieldMask"/>
-                    </item>
-                    <item>
-                     <widget class="QPushButton" name="btnSelectShieldMask">
-                      <property name="text">
-                       <string>参照</string>
-                      </property>
-                     </widget>
-                    </item>
-                   </layout>
-                  </item>
-                  <item row="3" column="0">
-                   <widget class="QLabel" name="lblShieldEffect">
-                    <property name="text">
-                     <string>エフェクトファイル (effectFile)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="3" column="1">
-                   <layout class="QHBoxLayout" name="layShieldEffect">
-                    <item>
-                     <widget class="QLineEdit" name="editShieldEffect"/>
-                    </item>
-                    <item>
-                     <widget class="QPushButton" name="btnSelectShieldEffect">
-                      <property name="text">
-                       <string>参照</string>
-                      </property>
-                     </widget>
-                    </item>
-                   </layout>
-                  </item>
-                 </layout>
-                </widget>
-               </item>
-              </layout>
-             </widget>
+                </item>
+                <item>
+                 <property name="text">
+                  <string>ENGLISH</string>
+                 </property>
+                </item>
+               </widget>
+              </item>
+             </layout>
             </widget>
            </item>
-          </layout>
-         </widget>
-         <widget class="QWidget" name="pageBitmapFont">
-          <layout class="QVBoxLayout" name="layoutBitmapFont">
-           <property name="leftMargin">
-            <number>0</number>
-           </property>
-           <property name="topMargin">
-            <number>0</number>
-           </property>
-           <property name="rightMargin">
-            <number>0</number>
-           </property>
-           <property name="bottomMargin">
-            <number>0</number>
-           </property>
            <item>
-            <widget class="QScrollArea" name="scrollBitmapFont">
-             <property name="widgetResizable">
-              <bool>true</bool>
+            <widget class="QGroupBox" name="groupMapText">
+             <property name="title">
+              <string>マップテキスト設定</string>
              </property>
-             <widget class="QWidget" name="scrollBitmapFontInner">
-              <property name="geometry">
-               <rect>
-                <x>0</x>
-                <y>0</y>
-                <width>410</width>
-                <height>169</height>
-               </rect>
-              </property>
-              <layout class="QVBoxLayout" name="layScrollBitmapFont">
-               <item>
-                <widget class="QGroupBox" name="groupFont">
-                 <property name="title">
-                  <string>ビットマップフォント設定</string>
-                 </property>
-                 <layout class="QFormLayout" name="formFont">
-                  <item row="0" column="0">
-                   <widget class="QLabel" name="lblFontName">
-                    <property name="text">
-                     <string>定義名 (name)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="0" column="1">
-                   <widget class="QLineEdit" name="editFontName"/>
-                  </item>
-                  <item row="1" column="0">
-                   <widget class="QLabel" name="lblFontPath">
-                    <property name="text">
-                     <string>フォントファイルパス (path)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="1" column="1">
-                   <layout class="QHBoxLayout" name="layFontPath">
-                    <item>
-                     <widget class="QLineEdit" name="editFontPath"/>
-                    </item>
-                    <item>
-                     <widget class="QPushButton" name="btnSelectFontPath">
-                      <property name="text">
-                       <string>参照</string>
-                      </property>
-                     </widget>
-                    </item>
-                   </layout>
-                  </item>
-                  <item row="2" column="0">
-                   <widget class="QLabel" name="lblFontColor">
-                    <property name="text">
-                     <string>フォントカラーリスト (color)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="2" column="1">
-                   <widget class="QLineEdit" name="editFontColor"/>
-                  </item>
-                  <item row="3" column="0">
-                   <widget class="QLabel" name="lblFontCursorOffset">
-                    <property name="text">
-                     <string>カーソルオフセット (cursor_offset)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="3" column="1">
-                   <layout class="QHBoxLayout" name="layFontCursorOffset">
-                    <item>
-                     <widget class="QLabel" name="lblFontCursorX">
-                      <property name="text">
-                       <string>X</string>
-                      </property>
-                     </widget>
-                    </item>
-                    <item>
-                     <widget class="QSpinBox" name="spinFontCursorX">
-                      <property name="minimum">
-                       <number>-9999</number>
-                      </property>
-                      <property name="maximum">
-                       <number>9999</number>
-                      </property>
-                     </widget>
-                    </item>
-                    <item>
-                     <widget class="QLabel" name="lblFontCursorY">
-                      <property name="text">
-                       <string>Y</string>
-                      </property>
-                     </widget>
-                    </item>
-                    <item>
-                     <widget class="QSpinBox" name="spinFontCursorY">
-                      <property name="minimum">
-                       <number>-9999</number>
-                      </property>
-                      <property name="maximum">
-                       <number>9999</number>
-                      </property>
-                     </widget>
-                    </item>
-                   </layout>
-                  </item>
-                 </layout>
-                </widget>
-               </item>
-              </layout>
-             </widget>
+             <layout class="QFormLayout" name="formMapText">
+              <item row="0" column="0">
+               <widget class="QLabel" name="lblMapTextFont">
+                <property name="text">
+                 <string>フォント名 (font)</string>
+                </property>
+               </widget>
+              </item>
+              <item row="0" column="1">
+               <widget class="QLineEdit" name="editMapTextFont"/>
+              </item>
+              <item row="1" column="0">
+               <widget class="QLabel" name="lblMapTextSpeed">
+                <property name="text">
+                 <string>速度 (speed)</string>
+                </property>
+               </widget>
+              </item>
+              <item row="1" column="1">
+               <widget class="QDoubleSpinBox" name="spinMapTextSpeed"/>
+              </item>
+              <item row="2" column="0">
+               <widget class="QLabel" name="lblMapTextPos">
+                <property name="text">
+                 <string>位置 (position)</string>
+                </property>
+               </widget>
+              </item>
+              <item row="2" column="1">
+               <layout class="QHBoxLayout" name="layMapTextPos">
+                <item>
+                 <widget class="QLabel" name="lblMapTextPosX">
+                  <property name="text">
+                   <string>X</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QDoubleSpinBox" name="spinMapTextPosX"/>
+                </item>
+                <item>
+                 <widget class="QLabel" name="lblMapTextPosY">
+                  <property name="text">
+                   <string>Y</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QDoubleSpinBox" name="spinMapTextPosY"/>
+                </item>
+               </layout>
+              </item>
+             </layout>
             </widget>
            </item>
-          </layout>
-         </widget>
-         <widget class="QWidget" name="pageFontOverride">
-          <layout class="QVBoxLayout" name="layoutFontOverride">
-           <property name="leftMargin">
-            <number>0</number>
-           </property>
-           <property name="topMargin">
-            <number>0</number>
-           </property>
-           <property name="rightMargin">
-            <number>0</number>
-           </property>
-           <property name="bottomMargin">
-            <number>0</number>
-           </property>
            <item>
-            <widget class="QScrollArea" name="scrollFontOverride">
-             <property name="widgetResizable">
-              <bool>true</bool>
+            <widget class="QGroupBox" name="groupAnim">
+             <property name="title">
+              <string>アニメーション設定 (animation)</string>
              </property>
-             <widget class="QWidget" name="scrollFontOverrideInner">
-              <property name="geometry">
-               <rect>
-                <x>0</x>
-                <y>0</y>
-                <width>305</width>
-                <height>143</height>
-               </rect>
-              </property>
-              <layout class="QVBoxLayout" name="layScrollFontOverride">
-               <item>
-                <widget class="QGroupBox" name="groupFontOverride">
-                 <property name="title">
-                  <string>言語別フォント上書き設定</string>
-                 </property>
-                 <layout class="QFormLayout" name="formFontOverride">
-                  <item row="0" column="0">
-                   <widget class="QLabel" name="lblOverrideFont">
+             <layout class="QVBoxLayout" name="vlformAnim">
+              <item>
+               <layout class="QFormLayout" name="formAnim">
+                <item row="0" column="0">
+                 <widget class="QLabel" name="lblAnimMask">
+                  <property name="text">
+                   <string>マスクファイル (animationmaskfile)</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="1" column="0">
+                 <widget class="QLabel" name="lblAnimTexture">
+                  <property name="text">
+                   <string>テクスチャファイル (animationtexturefile)</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="0" column="1">
+                 <layout class="QHBoxLayout" name="layAnimMask">
+                  <item>
+                   <widget class="QLineEdit" name="editAnimMask"/>
+                  </item>
+                  <item>
+                   <widget class="QPushButton" name="btnSelectAnimMask">
                     <property name="text">
-                     <string>対象フォント名 (font)</string>
+                     <string>参照</string>
                     </property>
                    </widget>
-                  </item>
-                  <item row="0" column="1">
-                   <widget class="QLineEdit" name="editOverrideFont"/>
-                  </item>
-                  <item row="1" column="0">
-                   <widget class="QLabel" name="lblOverrideLanguage">
-                    <property name="text">
-                     <string>対象言語キー (language)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="1" column="1">
-                   <widget class="QComboBox" name="comboOverrideLanguage">
-                    <item>
-                     <property name="text">
-                      <string>l_japanese</string>
-                     </property>
-                    </item>
-                    <item>
-                     <property name="text">
-                      <string>l_english</string>
-                     </property>
-                    </item>
-                    <item>
-                     <property name="text">
-                      <string>l_russian</string>
-                     </property>
-                    </item>
-                    <item>
-                     <property name="text">
-                      <string>l_german</string>
-                     </property>
-                    </item>
-                    <item>
-                     <property name="text">
-                      <string>l_french</string>
-                     </property>
-                    </item>
-                    <item>
-                     <property name="text">
-                      <string>l_spanish</string>
-                     </property>
-                    </item>
-                   </widget>
-                  </item>
-                  <item row="2" column="0">
-                   <widget class="QLabel" name="lblOverrideFontPath">
-                    <property name="text">
-                     <string>上書きフォントパス (path)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="2" column="1">
-                   <layout class="QHBoxLayout" name="layOverrideFontPath">
-                    <item>
-                     <widget class="QLineEdit" name="editOverrideFontPath"/>
-                    </item>
-                    <item>
-                     <widget class="QPushButton" name="btnSelectOverrideFontPath">
-                      <property name="text">
-                       <string>参照</string>
-                      </property>
-                     </widget>
-                    </item>
-                   </layout>
                   </item>
                  </layout>
-                </widget>
-               </item>
-              </layout>
-             </widget>
+                </item>
+                <item row="1" column="1">
+                 <layout class="QHBoxLayout" name="layAnimTexture">
+                  <item>
+                   <widget class="QLineEdit" name="editAnimTexture"/>
+                  </item>
+                  <item>
+                   <widget class="QPushButton" name="btnSelectAnimTexture">
+                    <property name="text">
+                     <string>参照</string>
+                    </property>
+                   </widget>
+                  </item>
+                 </layout>
+                </item>
+                <item row="2" column="0">
+                 <widget class="QLabel" name="lblAnimRotation">
+                  <property name="text">
+                   <string>回転角度 (animationrotation)</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="3" column="0">
+                 <widget class="QLabel" name="lblAnimLooping">
+                  <property name="text">
+                   <string>ループ再生</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="4" column="0">
+                 <widget class="QLabel" name="lblAnimTime">
+                  <property name="text">
+                   <string>再生時間 (animationtime)</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="2" column="1">
+                 <widget class="QDoubleSpinBox" name="spinAnimRotation">
+                  <property name="minimum">
+                   <double>-360.000000000000000</double>
+                  </property>
+                  <property name="maximum">
+                   <double>360.000000000000000</double>
+                  </property>
+                 </widget>
+                </item>
+                <item row="3" column="1">
+                 <widget class="QCheckBox" name="checkAnimLooping">
+                  <property name="text">
+                   <string>animationlooping = yes</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="4" column="1">
+                 <widget class="QDoubleSpinBox" name="spinAnimTime"/>
+                </item>
+                <item row="5" column="0">
+                 <widget class="QLabel" name="lblAnimDelay">
+                  <property name="text">
+                   <string>再生遅延 (animationdelay)</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="5" column="1">
+                 <widget class="QDoubleSpinBox" name="spinAnimDelay"/>
+                </item>
+                <item row="6" column="1">
+                 <widget class="QComboBox" name="comboAnimBlend">
+                  <item>
+                   <property name="text">
+                    <string>加算 (add)</string>
+                   </property>
+                  </item>
+                  <item>
+                   <property name="text">
+                    <string>乗算 (multiply)</string>
+                   </property>
+                  </item>
+                  <item>
+                   <property name="text">
+                    <string>オーバーレイ (overlay)</string>
+                   </property>
+                  </item>
+                 </widget>
+                </item>
+                <item row="6" column="0">
+                 <widget class="QLabel" name="lblAnimBlend">
+                  <property name="text">
+                   <string>ブレンドモード (animationblendmode)</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="7" column="0">
+                 <widget class="QLabel" name="lblAnimRotOffset">
+                  <property name="text">
+                   <string>回転中心オフセット (animationrotationoffset)</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="7" column="1">
+                 <layout class="QHBoxLayout" name="layAnimRotOffset">
+                  <item>
+                   <widget class="QLabel" name="lblAnimRotX">
+                    <property name="text">
+                     <string>X</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QDoubleSpinBox" name="spinAnimRotX">
+                    <property name="sizePolicy">
+                     <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+                      <horstretch>0</horstretch>
+                      <verstretch>0</verstretch>
+                     </sizepolicy>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QLabel" name="lblAnimRotY">
+                    <property name="text">
+                     <string>Y</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QDoubleSpinBox" name="spinAnimRotY">
+                    <property name="sizePolicy">
+                     <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+                      <horstretch>0</horstretch>
+                      <verstretch>0</verstretch>
+                     </sizepolicy>
+                    </property>
+                   </widget>
+                  </item>
+                 </layout>
+                </item>
+                <item row="8" column="0">
+                 <widget class="QLabel" name="lblAnimScale">
+                  <property name="text">
+                   <string>テクスチャスケール (animationtexturescale)</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="8" column="1">
+                 <layout class="QHBoxLayout" name="layAnimScale">
+                  <item>
+                   <widget class="QLabel" name="lblAnimScaleX">
+                    <property name="text">
+                     <string>X</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QDoubleSpinBox" name="spinAnimScaleX">
+                    <property name="sizePolicy">
+                     <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+                      <horstretch>0</horstretch>
+                      <verstretch>0</verstretch>
+                     </sizepolicy>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QLabel" name="lblAnimScaleY">
+                    <property name="text">
+                     <string>Y</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QDoubleSpinBox" name="spinAnimScaleY">
+                    <property name="sizePolicy">
+                     <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+                      <horstretch>0</horstretch>
+                      <verstretch>0</verstretch>
+                     </sizepolicy>
+                    </property>
+                   </widget>
+                  </item>
+                 </layout>
+                </item>
+                <item row="9" column="0">
+                 <widget class="QLabel" name="lblAnimType">
+                  <property name="text">
+                   <string>アニメタイプ (animationtype)</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="9" column="1">
+                 <widget class="QLineEdit" name="editAnimType"/>
+                </item>
+               </layout>
+              </item>
+              <item>
+               <widget class="QPushButton" name="btnMoreAnimItems">
+                <property name="text">
+                 <string>追加の項目</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
             </widget>
            </item>
-          </layout>
-         </widget>
-         <widget class="QWidget" name="pageMapText">
-          <layout class="QVBoxLayout" name="layoutMapText">
-           <property name="leftMargin">
-            <number>0</number>
-           </property>
-           <property name="topMargin">
-            <number>0</number>
-           </property>
-           <property name="rightMargin">
-            <number>0</number>
-           </property>
-           <property name="bottomMargin">
-            <number>0</number>
-           </property>
            <item>
-            <widget class="QScrollArea" name="scrollMapText">
-             <property name="widgetResizable">
-              <bool>true</bool>
+            <spacer name="verticalSpacer">
+             <property name="orientation">
+              <enum>Qt::Orientation::Vertical</enum>
              </property>
-             <widget class="QWidget" name="scrollMapTextInner">
-              <property name="geometry">
-               <rect>
-                <x>0</x>
-                <y>0</y>
-                <width>435</width>
-                <height>195</height>
-               </rect>
-              </property>
-              <layout class="QVBoxLayout" name="layScrollMapText">
-               <item>
-                <widget class="QGroupBox" name="groupMapText">
-                 <property name="title">
-                  <string>マップ上文字表示設定</string>
-                 </property>
-                 <layout class="QFormLayout" name="formMapText">
-                  <item row="0" column="0">
-                   <widget class="QLabel" name="lblMapTextName">
-                    <property name="text">
-                     <string>定義名 (name)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="0" column="1">
-                   <widget class="QLineEdit" name="editMapTextName"/>
-                  </item>
-                  <item row="1" column="0">
-                   <widget class="QLabel" name="lblMapTextFont">
-                    <property name="text">
-                     <string>使用フォント名 (font)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="1" column="1">
-                   <widget class="QLineEdit" name="editMapTextFont"/>
-                  </item>
-                  <item row="2" column="0">
-                   <widget class="QLabel" name="lblMapTextSpeed">
-                    <property name="text">
-                     <string>アニメーション速度 (speed)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="2" column="1">
-                   <widget class="QDoubleSpinBox" name="spinMapTextSpeed"/>
-                  </item>
-                  <item row="3" column="0">
-                   <widget class="QLabel" name="lblMapTextPosition">
-                    <property name="text">
-                     <string>表示座標 (position)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="3" column="1">
-                   <layout class="QHBoxLayout" name="layMapTextPosition">
-                    <item>
-                     <widget class="QLabel" name="lblPosScaleX">
-                      <property name="text">
-                       <string>X</string>
-                      </property>
-                     </widget>
-                    </item>
-                    <item>
-                     <widget class="QDoubleSpinBox" name="spinMapTextPosX"/>
-                    </item>
-                    <item>
-                     <widget class="QLabel" name="lblPosScaleY">
-                      <property name="text">
-                       <string>Y</string>
-                      </property>
-                     </widget>
-                    </item>
-                    <item>
-                     <widget class="QDoubleSpinBox" name="spinMapTextPosY"/>
-                    </item>
-                   </layout>
-                  </item>
-                  <item row="4" column="0">
-                   <widget class="QLabel" name="lblMapTextSize">
-                    <property name="text">
-                     <string>表示サイズ (size)</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="4" column="1">
-                   <layout class="QHBoxLayout" name="layMapTextSize">
-                    <item>
-                     <widget class="QLabel" name="lblSizeScaleW">
-                      <property name="text">
-                       <string>幅 (W)</string>
-                      </property>
-                     </widget>
-                    </item>
-                    <item>
-                     <widget class="QDoubleSpinBox" name="spinMapTextSizeW"/>
-                    </item>
-                    <item>
-                     <widget class="QLabel" name="lblSizeScaleH">
-                      <property name="text">
-                       <string>高さ (H)</string>
-                      </property>
-                     </widget>
-                    </item>
-                    <item>
-                     <widget class="QDoubleSpinBox" name="spinMapTextSizeH"/>
-                    </item>
-                   </layout>
-                  </item>
-                 </layout>
-                </widget>
-               </item>
-              </layout>
-             </widget>
-            </widget>
+             <property name="sizeHint" stdset="0">
+              <size>
+               <width>20</width>
+               <height>40</height>
+              </size>
+             </property>
+            </spacer>
            </item>
           </layout>
          </widget>
@@ -1673,13 +1035,6 @@
           <widget class="QPushButton" name="btnMoreItems">
            <property name="text">
             <string>さらなる項目</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QDialogButtonBox" name="buttonBox">
-           <property name="standardButtons">
-            <set>QDialogButtonBox::StandardButton::Cancel|QDialogButtonBox::StandardButton::Ok</set>
            </property>
           </widget>
          </item>
@@ -1734,7 +1089,7 @@
           <string>画像の高度な寸法リサイズ（拡大縮小）や、複数種類のフィルター効果（モノクロ, 反転, セピア, ぼかし, モザイク等）を適用する別ダイアログを起動します。</string>
          </property>
          <property name="text">
-          <string>🎨 画像の調整・加工 (フィルター &amp; リサイズ)...</string>
+          <string>画像の調整・加工 (フィルター &amp; リサイズ)...</string>
          </property>
         </widget>
        </item>

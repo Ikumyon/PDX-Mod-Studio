@@ -10,10 +10,19 @@ TEXTURE_PROPERTIES = ("texturefile", "textureFile1", "textureFile2")
 
 def first_texture_property(gfx_item) -> tuple[str | None, str]:
     for property_name in TEXTURE_PROPERTIES:
-        value = prop_text(gfx_item, property_name)
+        actual_name = _actual_property_name(gfx_item, property_name)
+        value = prop_text(gfx_item, actual_name) if actual_name else ""
         if value:
-            return property_name, value
+            return actual_name, value
     return None, ""
+
+
+def _actual_property_name(gfx_item, property_name: str) -> str | None:
+    if not gfx_item:
+        return None
+    if hasattr(gfx_item, "actual_key"):
+        return gfx_item.actual_key(property_name)
+    return property_name if gfx_item.first(property_name) else None
 
 
 def active_plugin_path(widget) -> str | None:

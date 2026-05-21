@@ -9,119 +9,151 @@
     "role": "sprite_id"
   },
   "unknown_keys": "warn",
-  "fields": {
-    "name": {
-      "type": "identifier",
-      "required": true
+  "case_insensitive_keys": true,
+  "types": {
+    "SpriteType": {
+      "validate_fields": true,
+      "fields": {
+        "name": { "type": "identifier", "usage": "required" },
+        "texturefile": { "type": "string", "usage": "required" },
+        "size": { "type": "object", "usage": "optional" },
+        "noOfFrames": { "type": "integer", "usage": "optional" },
+        "effectFile": { "type": "string", "usage": "optional" },
+        "allwaystransparent": { "type": "boolean", "allowed_values": ["yes", "no"], "usage": "optional" },
+        "legacy_lazy_load": { "type": "boolean", "allowed_values": ["yes", "no"], "usage": "optional" },
+        "color": { "type": "object", "usage": "optional" },
+        "animation": { "type": "object", "schema": "gfx_animation", "multiple": true, "usage": "optional" }
+      }
     },
-    "texturefile": {
-      "type": "string"
+    "spriteType": {
+      "validate_fields": true,
+      "fields": {
+        "name": { "type": "identifier", "usage": "required" },
+        "texturefile": { "type": "string", "usage": "required" },
+        "size": { "type": "object", "usage": "optional" },
+        "noOfFrames": { "type": "integer", "usage": "optional" },
+        "effectFile": { "type": "string", "usage": "optional" },
+        "allwaystransparent": { "type": "boolean", "allowed_values": ["yes", "no"], "usage": "optional" },
+        "legacy_lazy_load": { "type": "boolean", "allowed_values": ["yes", "no"], "usage": "optional" },
+        "color": { "type": "object", "usage": "optional" },
+        "animation": { "type": "object", "schema": "gfx_animation", "multiple": true, "usage": "optional" }
+      }
     },
-    "textureFile1": {
-      "type": "string"
+    "textSpriteType": {
+      "validate_fields": true,
+      "fields": {
+        "name": { "type": "identifier", "usage": "required" },
+        "texturefile": { "type": "string", "usage": "required" },
+        "size": { "type": "object", "usage": "optional" },
+        "noOfFrames": { "type": "integer", "usage": "optional" },
+        "effectFile": { "type": "string", "usage": "optional" },
+        "allwaystransparent": { "type": "boolean", "allowed_values": ["yes", "no"], "usage": "optional" },
+        "legacy_lazy_load": { "type": "boolean", "allowed_values": ["yes", "no"], "usage": "optional" },
+        "color": { "type": "object", "usage": "optional" },
+        "animation": { "type": "object", "schema": "gfx_animation", "multiple": true, "usage": "optional" }
+      }
     },
-    "textureFile2": {
-      "type": "string"
+    "corneredTileSpriteType": {
+      "validate_fields": true,
+      "fields": {
+        "name": { "type": "identifier", "usage": "required" },
+        "texturefile": { "type": "string", "usage": "required" },
+        "size": { "type": "object", "usage": "optional" },
+        "borderSize": { "type": "object", "usage": "required" },
+        "noOfFrames": { "type": "integer", "usage": "optional" },
+        "effectFile": { "type": "string", "usage": "optional" },
+        "allwaystransparent": { "type": "boolean", "allowed_values": ["yes", "no"], "usage": "optional" },
+        "legacy_lazy_load": { "type": "boolean", "allowed_values": ["yes", "no"], "usage": "optional" },
+        "color": { "type": "object", "usage": "optional" },
+        "animation": { "type": "object", "schema": "gfx_animation", "multiple": true, "usage": "optional" }
+      }
     },
-    "noOfFrames": {
-      "type": "integer"
+    "tileSpriteType": {
+      "validate_fields": true,
+      "fields": {
+        "name": { "type": "identifier", "usage": "required" },
+        "texturefile": { "type": "string", "usage": "required" },
+        "size": { "type": "object", "usage": "optional" },
+        "noOfFrames": { "type": "integer", "usage": "optional" },
+        "effectFile": { "type": "string", "usage": "optional" },
+        "allwaystransparent": { "type": "boolean", "allowed_values": ["yes", "no"], "usage": "optional" },
+        "legacy_lazy_load": { "type": "boolean", "allowed_values": ["yes", "no"], "usage": "optional" },
+        "color": { "type": "object", "usage": "optional" },
+        "animation": { "type": "object", "schema": "gfx_animation", "multiple": true, "usage": "optional" }
+      }
     },
-    "effectFile": {
-      "type": "string"
+    "maskedShieldType": {
+      "validate_fields": true,
+      "fields": {
+        "name": { "type": "identifier", "usage": "required" },
+        "texturefile": { "type": "string", "usage": "required" },
+        "maskFile": { "type": "string", "usage": "required" },
+        "size": { "type": "object", "usage": "optional" },
+        "effectFile": { "type": "string", "usage": "optional" },
+        "allwaystransparent": { "type": "boolean", "allowed_values": ["yes", "no"], "usage": "optional" },
+        "legacy_lazy_load": { "type": "boolean", "allowed_values": ["yes", "no"], "usage": "optional" },
+        "color": { "type": "object", "usage": "optional" },
+        "animation": { "type": "object", "schema": "gfx_animation", "multiple": true, "usage": "optional" }
+      }
     },
-    "allwaystransparent": {
-      "type": "boolean",
-      "allowed_values": ["yes", "no"]
+    "progressbartype": {
+      "validate_fields": true,
+      "fields": {
+        "name": { "type": "identifier", "usage": "required" },
+        "textureFile1": { "type": "string", "usage": "required" },
+        "textureFile2": { "type": "string", "usage": "required" },
+        "size": { "type": "object", "usage": "required" },
+        "effectFile": { "type": "string", "usage": "optional" },
+        "allwaystransparent": { "type": "boolean", "allowed_values": ["yes", "no"], "usage": "optional" },
+        "legacy_lazy_load": { "type": "boolean", "allowed_values": ["yes", "no"], "usage": "optional" },
+        "color": { "type": "object", "usage": "optional" },
+        "colortwo": { "type": "object", "usage": "optional" },
+        "horizontal": { "type": "boolean", "allowed_values": ["yes", "no"], "usage": "optional" }
+      }
     },
-    "legacy_lazy_load": {
-      "type": "boolean",
-      "allowed_values": ["yes", "no"]
+    "frameAnimatedSpriteType": {
+      "validate_fields": true,
+      "fields": {
+        "name": { "type": "identifier", "usage": "required" },
+        "texturefile": { "type": "string", "usage": "required" },
+        "size": { "type": "object", "usage": "optional" },
+        "noOfFrames": { "type": "integer", "usage": "required" },
+        "effectFile": { "type": "string", "usage": "optional" },
+        "allwaystransparent": { "type": "boolean", "allowed_values": ["yes", "no"], "usage": "optional" },
+        "legacy_lazy_load": { "type": "boolean", "allowed_values": ["yes", "no"], "usage": "optional" },
+        "color": { "type": "object", "usage": "optional" },
+        "animation_rate_fps": { "type": "float", "usage": "optional" },
+        "looping": { "type": "boolean", "allowed_values": ["yes", "no"], "usage": "optional" },
+        "play_on_show": { "type": "boolean", "allowed_values": ["yes", "no"], "usage": "optional" },
+        "pause_on_loop": { "type": "float", "usage": "optional" }
+      }
     },
-    "transparencecheck": {
-      "type": "boolean",
-      "allowed_values": ["yes", "no"]
-    },
-    "animation_rate_fps": {
-      "type": "float"
-    },
-    "looping": {
-      "type": "boolean",
-      "allowed_values": ["yes", "no"]
-    },
-    "play_on_show": {
-      "type": "boolean",
-      "allowed_values": ["yes", "no"]
-    },
-    "pause_on_loop": {
-      "type": "boolean",
-      "allowed_values": ["yes", "no"]
-    },
-    "horizontal": {
-      "type": "boolean",
-      "allowed_values": ["yes", "no"]
-    },
-    "steps": {
-      "type": "integer"
-    },
-    "tilingCenter": {
-      "type": "boolean",
-      "allowed_values": ["yes", "no"]
-    },
-    "size": {
-      "type": "object"
-    },
-    "borderSize": {
-      "type": "object"
-    },
-    "color": {
-      "type": "object"
-    },
-    "colortwo": {
-      "type": "object"
-    },
-    "animation": {
-      "type": "object",
-      "multiple": true,
-      "schema": "gfx_animation"
+    "animatedmaptext": {
+      "validate_fields": true,
+      "fields": {
+        "name": { "type": "identifier", "usage": "required" },
+        "texturefile": { "type": "string", "usage": "optional" },
+        "size": { "type": "object", "usage": "optional" },
+        "allwaystransparent": { "type": "boolean", "allowed_values": ["yes", "no"], "usage": "optional" },
+        "color": { "type": "object", "usage": "optional" }
+      }
     }
   },
   "sub_schemas": {
     "gfx_animation": {
+      "validate_fields": true,
       "fields": {
-        "animationmaskfile": {
-          "type": "string"
-        },
-        "animationtexturefile": {
-          "type": "string"
-        },
-        "animationrotation": {
-          "type": "float"
-        },
-        "animationlooping": {
-          "type": "boolean",
-          "allowed_values": ["yes", "no"]
-        },
-        "animationtime": {
-          "type": "float"
-        },
-        "animationdelay": {
-          "type": "float"
-        },
-        "animationblendmode": {
-          "type": "string"
-        },
-        "animationtype": {
-          "type": "string"
-        },
-        "animationrotationoffset": {
-          "type": "object"
-        },
-        "animationscalejointto": {
-          "type": "string"
-        },
-        "animationframes": {
-          "type": "object"
-        }
+        "animationmaskfile": { "type": "string", "usage": "optional" },
+        "animationtexturefile": { "type": "string", "usage": "required" },
+        "animationtype": { "type": "string", "usage": "required" },
+        "animationtime": { "type": "float", "usage": "required" },
+        "animationlooping": { "type": "boolean", "allowed_values": ["yes", "no"], "usage": "optional" },
+        "animationblendmode": { "type": "string", "usage": "optional" },
+        "animationdelay": { "type": "float", "usage": "optional" },
+        "animationrotation": { "type": "float", "usage": "optional" },
+        "animationrotationoffset": { "type": "object", "usage": "optional" },
+        "animationtexturescale": { "type": "object", "usage": "optional" },
+        "animationframes": { "type": "object", "usage": "optional" }
       }
     }
   }

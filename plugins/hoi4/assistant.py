@@ -80,13 +80,29 @@ class AssistantWidget(QWidget):
     def load_settings(self):
         """settings.json からピン留め情報を読み込む"""
         settings_path = os.path.join(self.base_dir, "settings.json")
+        settings = {}
         if os.path.exists(settings_path):
             try:
                 with open(settings_path, 'r', encoding='utf-8') as f:
                     settings = json.load(f)
-                    self.pinned_ids = settings.get("pinned_ids", [])
             except Exception as e:
                 print(f"Failed to load settings: {e}")
+
+        if "pinned_ids" not in settings:
+            settings["pinned_ids"] = [
+                "create_decision",
+                "create_event",
+                "create_focus",
+            ]
+
+        self.pinned_ids = settings.get("pinned_ids", [])
+
+        if not os.path.exists(settings_path):
+            try:
+                with open(settings_path, 'w', encoding='utf-8') as f:
+                    json.dump(settings, f, indent=4, ensure_ascii=False)
+            except Exception as e:
+                print(f"Failed to save settings: {e}")
 
     def save_settings(self):
         """ピン留め情報を settings.json に保存する"""

@@ -439,10 +439,23 @@ class ParsedEntity:
     properties: dict[str, list[AssignmentNode]] = field(default_factory=dict)
     node: Optional[AstNode] = field(default=None)
     source_path: str = ""
+    case_insensitive_keys: bool = False
 
     def first(self, key: str) -> Optional[AssignmentNode]:
-        nodes = self.properties.get(key, [])
+        actual_key = self.actual_key(key)
+        nodes = self.properties.get(actual_key, []) if actual_key else []
         return nodes[0] if nodes else None
+
+    def actual_key(self, key: str) -> Optional[str]:
+        if key in self.properties:
+            return key
+        if not self.case_insensitive_keys:
+            return None
+        key_lower = key.lower()
+        for property_key in self.properties.keys():
+            if property_key.lower() == key_lower:
+                return property_key
+        return None
 
 class SchemaEvaluator:
     def __init__(self, schema: dict):
@@ -451,6 +464,7 @@ class SchemaEvaluator:
         self.root_pattern = schema.get("root_pattern", "named_block")
         self.id_rule = schema.get("id_rule", {})
         self.fields = schema.get("fields", {})
+        self.case_insensitive_keys = bool(schema.get("case_insensitive_keys", False))
 
     def evaluate(self, ast: AstNode, path: str = "") -> list[ParsedEntity]:
         entities: list[ParsedEntity] = []
@@ -509,7 +523,8 @@ class SchemaEvaluator:
             parent_id=entity_parent_id,
             node=node,
             source_path=path,
-            properties={}
+            properties={},
+            case_insensitive_keys=self.case_insensitive_keys
         )
 
         if isinstance(node.value, ObjectNode):

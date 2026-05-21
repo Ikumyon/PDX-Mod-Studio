@@ -43,6 +43,9 @@ class BaseParsedEntity:
     def first(self, key: str) -> Optional[AssignmentNode]:
         return self.entity.first(key)
 
+    def actual_key(self, key: str) -> Optional[str]:
+        return self.entity.actual_key(key)
+
 
 @dataclass
 class BaseDocument:

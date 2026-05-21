@@ -3,11 +3,43 @@
     "key_order": [
       "name",
       "texturefile",
+      "size",
       "noOfFrames",
       "effectFile",
       "legacy_lazy_load",
       "allwaystransparent",
       "transparencecheck",
+      "color",
+      "",
+      "animation"
+    ]
+  },
+  "SpriteType": {
+    "key_order": [
+      "name",
+      "texturefile",
+      "size",
+      "noOfFrames",
+      "effectFile",
+      "legacy_lazy_load",
+      "allwaystransparent",
+      "transparencecheck",
+      "color",
+      "",
+      "animation"
+    ]
+  },
+  "textSpriteType": {
+    "key_order": [
+      "name",
+      "texturefile",
+      "size",
+      "noOfFrames",
+      "effectFile",
+      "legacy_lazy_load",
+      "allwaystransparent",
+      "transparencecheck",
+      "color",
       "",
       "animation"
     ]
@@ -23,21 +55,24 @@
       "animationblendmode",
       "animationtype",
       "animationrotationoffset",
-      "animationscalejointto",
+      "animationtexturescale",
       "animationframes"
     ]
   },
-  "frameAnimatedType": {
+  "frameAnimatedSpriteType": {
     "key_order": [
       "name",
       "texturefile",
       "noOfFrames",
+      "size",
       "effectFile",
+      "legacy_lazy_load",
+      "allwaystransparent",
+      "color",
       "animation_rate_fps",
       "looping",
       "play_on_show",
-      "pause_on_loop",
-      "allwaystransparent"
+      "pause_on_loop"
     ]
   },
   "progressbartype": {
@@ -50,6 +85,8 @@
       "size",
       "effectFile",
       "horizontal",
+      "legacy_lazy_load",
+      "allwaystransparent",
       "steps"
     ]
   },
@@ -57,20 +94,50 @@
     "key_order": [
       "name",
       "texturefile",
-      "noOfFrames",
       "size",
       "borderSize",
+      "noOfFrames",
       "effectFile",
+      "legacy_lazy_load",
       "allwaystransparent",
-      "tilingCenter"
+      "color",
+      "tilingCenter",
+      "animation"
+    ]
+  },
+  "tileSpriteType": {
+    "key_order": [
+      "name",
+      "texturefile",
+      "size",
+      "noOfFrames",
+      "effectFile",
+      "legacy_lazy_load",
+      "allwaystransparent",
+      "color",
+      "animation"
     ]
   },
   "maskedShieldType": {
     "key_order": [
       "name",
-      "textureFile1",
-      "textureFile2",
-      "effectFile"
+      "texturefile",
+      "maskFile",
+      "size",
+      "effectFile",
+      "legacy_lazy_load",
+      "allwaystransparent",
+      "color",
+      "animation"
+    ]
+  },
+  "animatedmaptext": {
+    "key_order": [
+      "name",
+      "texturefile",
+      "size",
+      "allwaystransparent",
+      "color"
     ]
   }
 }
