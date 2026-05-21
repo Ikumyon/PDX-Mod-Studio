@@ -1,3 +1,4 @@
+import json
 import os
 
 from PySide6.QtCore import QFile, Qt, QEvent, QObject
@@ -7,30 +8,15 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QGraphicsPixmapItem,
     QGraphicsScene,
-    QLabel,
-    QSizePolicy,
     QTreeWidget,
     QTreeWidgetItem,
     QWidget,
+    QLabel,
+    QSizePolicy
 )
 
 
 EDITOR_NAME = "GFX Editor"
-
-HIDDEN_FORM_NAMES = (
-    "frameTypeSelect",
-    "groupBasic",
-    "groupTexture2",
-    "groupAppearance",
-    "groupFrames",
-    "groupFont",
-    "groupMapText",
-    "groupAnim",
-    "btnMoreAnimItems",
-    "btnMoreItems",
-    "btnOpenImageTools",
-    "groupPreviewControl",
-)
 
 
 def _load_ui_widget(ui_path, parent=None):
@@ -45,13 +31,6 @@ def _load_ui_widget(ui_path, parent=None):
     if widget is None:
         raise RuntimeError(loader.errorString())
     return widget
-
-
-def _hide_form_widgets(widget):
-    for name in HIDDEN_FORM_NAMES:
-        target = widget.findChild(QWidget, name)
-        if target is not None:
-            target.hide()
 
 
 def _setup_preview_view(widget):
@@ -135,40 +114,6 @@ def _setup_preview_view(widget):
     return fit_preview_to_view
 
 
-def _setup_center_placeholder(widget):
-    if widget.widgetCenterPane is None:
-        return
-
-    center_placeholder = QLabel("定義を追加してください", widget.widgetCenterPane)
-    center_placeholder.setObjectName("gfxCenterPlaceholder")
-    center_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    center_placeholder.setWordWrap(True)
-    center_placeholder.setStyleSheet(
-        "QLabel { color: #9a9a9a; background: transparent; border: none; font-size: 16px; font-weight: bold; }"
-    )
-    center_placeholder.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-    center_placeholder.raise_()
-    widget._gfx_center_placeholder = center_placeholder
-
-    def sync_center_placeholder_geometry():
-        if widget._gfx_center_placeholder is None:
-            return
-        widget._gfx_center_placeholder.setGeometry(widget.widgetCenterPane.rect())
-        widget._gfx_center_placeholder.raise_()
-
-    sync_center_placeholder_geometry()
-    widget._gfx_center_placeholder.show()
-
-    class CenterPaneResizeFilter(QObject):
-        def eventFilter(self, watched, event):
-            if watched == widget.widgetCenterPane and event.type() == QEvent.Type.Resize:
-                sync_center_placeholder_geometry()
-            return False
-
-    widget._gfx_center_resize_filter = CenterPaneResizeFilter(widget.widgetCenterPane)
-    widget.widgetCenterPane.installEventFilter(widget._gfx_center_resize_filter)
-
-
 def _update_preview_placeholder_visibility(widget):
     preview = getattr(widget, "_gfx_preview_placeholder", None)
     if preview is None:
@@ -181,11 +126,8 @@ def _update_preview_placeholder_visibility(widget):
 
 def _set_definition_selected(widget, selected):
     widget._gfx_selected_definition = selected
-    center = getattr(widget, "_gfx_center_placeholder", None)
-    if center is not None:
-        center.setVisible(not selected)
-        if not selected:
-            center.raise_()
+    if widget.widgetCenterPane is not None:
+        widget.widgetCenterPane.setCurrentIndex(0 if selected else 1)
     _update_preview_placeholder_visibility(widget)
 
 
@@ -267,6 +209,39 @@ def _create_definition(widget, definition_type=None, name=None, source_path=""):
     return definition
 
 
+def _create_definition_from_image(widget, load_preview):
+    start_dir = ""
+    if widget.editSourcePath is not None:
+        current_value = widget.editSourcePath.text().strip()
+        if current_value:
+            start_dir = os.path.dirname(current_value) or current_value
+
+    path, _ = QFileDialog.getOpenFileName(
+        widget,
+        "Select texture image for new definition",
+        start_dir or os.path.dirname(widget.file_path or "") or "",
+        "Images (*.png *.jpg *.jpeg *.bmp *.tga *.dds);;All Files (*.*)",
+    )
+    if not path:
+        return
+
+    file_name = os.path.splitext(os.path.basename(path))[0] or "new_gfx"
+    widget._gfx_definition_counter += 1
+    definition = _create_definition(
+        widget,
+        definition_type=widget.comboGfxType.currentText() if widget.comboGfxType is not None else None,
+        source_path=path,
+    )
+    if definition is None:
+        return
+
+    if widget.editSourcePath is not None:
+        widget.editSourcePath.setText(path)
+    widget.raw_gfx_content = path
+    _set_definition_selected(widget, True)
+    load_preview(path)
+
+
 def _duplicate_selected_definition(widget):
     index = _get_selected_definition_index(widget)
     if index is None:
@@ -343,6 +318,10 @@ def _wire_definition_buttons(widget, load_preview):
             lambda: _delete_selected_definition(widget)
         )
         widget.btnDeleteNode.setEnabled(False)
+    if widget.btnNewNode is not None:
+        widget.btnNewNode.clicked.connect(
+            lambda: _create_definition_from_image(widget, load_preview)
+        )
     if widget.btnBrowseSource is not None:
         widget.btnBrowseSource.clicked.connect(
             lambda: _browse_source(widget, widget.file_path, load_preview)
@@ -396,9 +375,7 @@ def setup(widget, file_path, content):
     widget._gfx_definitions = []
     widget._gfx_definition_counter = 0
 
-    _hide_form_widgets(widget)
     fit_preview_to_view = _setup_preview_view(widget)
-    _setup_center_placeholder(widget)
 
     def load_preview(path):
         return _load_preview_image(widget, path, fit_preview_to_view or (lambda: None))
