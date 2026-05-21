@@ -223,11 +223,16 @@ class BaseEditorController(QObject):
         module = sys.modules[self.__class__.__module__]
         module_file = getattr(module, "__file__", "")
         module_dir = os.path.dirname(module_file)
-        if os.path.basename(module_dir) in {"achievement", "decisions", "events", "localisation"}:
+        if os.path.basename(module_dir) in {"achievement", "decisions", "events", "interface", "localisation"}:
             return os.path.dirname(module_dir)
         return module_dir
 
     def get_plugin_settings(self):
+        plugin = self.get_hoi4_plugin()
+        settings = getattr(plugin, "settings", None) if plugin else None
+        if isinstance(settings, dict):
+            return settings
+
         settings_path = os.path.join(self.plugin_root_dir(), "settings.json")
         try:
             if os.path.exists(settings_path):
@@ -263,6 +268,57 @@ class BaseEditorController(QObject):
             for key, value in kwargs.items():
                 result = result.replace(f"{{{key}}}", str(value))
             return result
+
+    def base_format_values(self, number: int = 1, lang: Optional[str] = None, **extra) -> dict[str, Any]:
+        if lang is None:
+            lang = self.get_plugin_settings().get("display_language", "l_japanese")
+
+        letter = chr(ord("a") + (number - 1) % 26)
+        if number > 26:
+            letter += str((number - 1) // 26 + 1)
+
+        display_lang = lang or ""
+        if display_lang.startswith("l_"):
+            display_lang = display_lang[2:]
+
+        file_stem = os.path.splitext(os.path.basename(self.file_path))[0]
+        values = {
+            "file": file_stem,
+            "number": number,
+            "a-z": letter,
+            "lang": display_lang,
+        }
+        values.update(extra)
+        return values
+
+    def generate_unique_formatted_name(
+        self,
+        settings_key: str,
+        default_format: str,
+        existing_names,
+        *,
+        fallback: str = "item",
+        **extra,
+    ) -> str:
+        settings = self.get_plugin_settings()
+        fmt = settings.get(settings_key, default_format) or default_format
+        existing = set(existing_names or [])
+        uses_number = "{number}" in fmt
+
+        counter = 1
+        while counter <= 9999:
+            values = self.base_format_values(number=counter, **extra)
+            candidate = self.apply_format(fmt, **values).strip()
+            if not candidate:
+                candidate = fallback
+            if not uses_number and counter > 1:
+                candidate = f"{candidate}_{counter}"
+            candidate = "_".join(candidate.split())
+            if candidate not in existing:
+                return candidate
+            counter += 1
+
+        return f"{fallback}_{len(existing) + 1}"
 
     def localised_text(self, key: str, fallback: str = "") -> str:
         return self.localisation_value(key, fallback=fallback, allow_empty=False)

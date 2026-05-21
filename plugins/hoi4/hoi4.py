@@ -115,6 +115,28 @@ def save_plugin_settings(path, settings):
     except Exception as e:
         print(f"Failed to save settings to {path}: {e}")
 
+def load_plugin_settings(plugin):
+    settings_file = os.path.join(plugin.path, "settings.json")
+    settings = DEFAULT_SETTINGS.copy()
+    if os.path.exists(settings_file):
+        try:
+            with open(settings_file, 'r', encoding='utf-8') as f:
+                settings.update(json.load(f))
+        except Exception:
+            pass
+
+    updated = False
+    for key, value in DEFAULT_SETTINGS.items():
+        if key not in settings:
+            settings[key] = value
+            updated = True
+
+    if updated or not os.path.exists(settings_file):
+        save_plugin_settings(settings_file, settings)
+
+    plugin.settings = settings
+    return settings
+
 def load_plugin_elements(plugin):
     """Load HoI4 element definitions from each element config.json."""
     plugin.elements.clear()
@@ -171,18 +193,24 @@ def setup_settings_controls(widget, plugin, project_path):
     
     # 現在のテキストカラーを取得
     palette = widget.palette()
+    settings = getattr(plugin, "settings", None)
+    if not isinstance(settings, dict):
+        settings = load_plugin_settings(plugin)
+
+    palette = widget.palette()
     text_color = palette.color(widget.foregroundRole())
 
-    if os.path.exists(settings_file):
+    if False and os.path.exists(settings_file):
         try:
             with open(settings_file, 'r', encoding='utf-8') as f:
-                settings = json.load(f)
+                settings.update(json.load(f))
         except Exception:
-            settings = DEFAULT_SETTINGS.copy()
-    else:
-        settings = DEFAULT_SETTINGS.copy()
+            settings.update(DEFAULT_SETTINGS)
+    if False:
+        settings.update(DEFAULT_SETTINGS)
     
     # 不足しているデフォルト設定を補完
+    updated = False
     updated = False
     for k, v in DEFAULT_SETTINGS.items():
         if k not in settings:
@@ -314,6 +342,7 @@ def initialize(plugin):
     """
     print(f"Initializing HoI4 Plugin: {plugin.name}")
     load_plugin_elements(plugin)
+    load_plugin_settings(plugin)
     
     # アシスタントウィジェットの登録
     from plugins.hoi4.assistant import AssistantWidget
@@ -338,14 +367,9 @@ def initialize(plugin):
         if not project_path:
             return
             
-        settings_file = os.path.join(plugin.path, "settings.json")
-        settings = DEFAULT_SETTINGS.copy()
-        if os.path.exists(settings_file):
-            try:
-                with open(settings_file, 'r', encoding='utf-8') as f:
-                    settings.update(json.load(f))
-            except Exception:
-                pass
+        settings = getattr(plugin, "settings", None)
+        if not isinstance(settings, dict):
+            settings = load_plugin_settings(plugin)
             
         game_path = settings.get("game_path")
         lang = settings.get("display_language", "l_japanese")

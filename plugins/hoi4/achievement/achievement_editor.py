@@ -850,7 +850,7 @@ class AchievementEditorController(BaseEditorController):
         self.preview_items.append(frame)
 
         self.add_centered_preview_text(frame, "Achievement Preview", width / 2, 72, 320, 16, "#f7f3e8", True)
-        self.add_centered_preview_text(frame, "Select or add an achievement to preview it here.", width / 2, 126, 360, 10, "#bdb7a7")
+        self.add_centered_preview_text(frame, "実績を追加してください。", width / 2, 126, 360, 10, "#bdb7a7")
         self.preview_scene.setSceneRect(0, 0, width, height)
 
     def draw_achievement_card(self, parent, achievement, index, x, y, width, height, selected=False):
