@@ -517,14 +517,14 @@ def initialize(plugin):
         if changed:
             if os.path.exists(mod_loc_dir):
                 _setup_watcher(mod_loc_dir)
-            core.api.notify_loc_changed()
+            core.api.emit_event("loc_changed")
 
     _watcher.directoryChanged.connect(on_monitor_event)
     _watcher.fileChanged.connect(on_monitor_event)
     _scan_timer.timeout.connect(process_pending_changes)
 
     # プロジェクトパスが確定・変更されたら自動的にスキャンと監視を開始
-    core.api.register_project_path_handler(lambda path: update_registry())
+    core.api.subscribe_event("project_path_changed", lambda path: update_registry())
     
     # 手動再読込用
     plugin.refresh_localisation = update_registry

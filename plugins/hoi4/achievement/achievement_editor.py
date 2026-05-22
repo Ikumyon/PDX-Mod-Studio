@@ -248,7 +248,7 @@ class AchievementEditorController(BaseEditorController):
         self.refresh()
         
         # ローカリゼーション更新の監視
-        core.api.register_loc_changed_handler(self.refresh)
+        core.api.subscribe_event("loc_changed", self.refresh)
 
 
 

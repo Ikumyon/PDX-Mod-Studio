@@ -500,7 +500,7 @@ class EventEditorController(BaseEditorController):
         self.loc_timer = QTimer()
         self.loc_timer.setSingleShot(True)
         self.loc_timer.timeout.connect(self.update_localisation_ui)
-        core.api.register_loc_changed_handler(self.refresh)
+        core.api.subscribe_event("loc_changed", self.refresh)
         self.chain_node_positions = {}
         self._updating_chain_layout = False
         self._chain_project_signature = None

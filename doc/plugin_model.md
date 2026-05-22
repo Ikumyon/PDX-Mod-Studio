@@ -47,7 +47,9 @@
 - イベント購読API
   プラグインが本体の状態変化を受け取るための入口
 
-たとえば `open_tab()` は要求APIであり、`register_file_saved_handler()` はイベント購読APIである。
+たとえば `open_tab()` は要求APIであり、`subscribe_event("file_saved", ...)` はイベント購読APIである。
+
+イベント購読は、個別の `register_*_handler()` ではなく、hook / event モデルとして `subscribe_event(...)` / `emit_event(...)` に統一する。
 
 ### 2.2 公開フック
 
@@ -197,6 +199,8 @@ helper 関数は便利だが、それ自体が契約ではない。
 - 本体とプラグインの共有ルールで十分表現できるもの
 
 公開APIにするのは、プラグイン側から本体へ要求する明確な必要があるものに限定する。
+
+同様に、状態変化通知は個別の `register_*_handler()` を増やさず、hook / event として整理された形へ統一する。
 
 ## 4. 許可されること
 

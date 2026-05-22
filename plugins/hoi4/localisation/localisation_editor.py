@@ -610,7 +610,7 @@ class LocalisationEditorController:
         registry = getattr(plugin, "localisation_registry", None) if plugin else None
         if registry:
             registry.update_file(path, "mod")
-        core.api.notify_loc_changed()
+        core.api.emit_event("loc_changed")
         self.parse_content(self.widget.content)
         self.apply_filter()
         core.api.show_message(f"Saved localisation: {os.path.basename(path)}", 3000)

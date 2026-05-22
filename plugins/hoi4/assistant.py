@@ -74,9 +74,9 @@ class AssistantWidget(QWidget):
                 self.header.clicked.connect(self.toggle_content)
                 self.update_header_icon()
             
-            core.api.register_project_path_handler(lambda _: self.load_toolbox())
-            core.api.register_file_saved_handler(self.on_file_saved)
-            core.api.register_loc_changed_handler(self.load_toolbox)
+            core.api.subscribe_event("project_path_changed", lambda _: self.load_toolbox())
+            core.api.subscribe_event("file_saved", self.on_file_saved)
+            core.api.subscribe_event("loc_changed", self.load_toolbox)
 
     def load_settings(self):
         """settings.json からピン留め情報を読み込む"""

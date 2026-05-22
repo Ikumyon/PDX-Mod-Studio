@@ -430,7 +430,7 @@ def main():
             return save_result_utils.save_failed(message=str(error))
 
         update_saved_widget_path(widget, target_path)
-        core.api.notify_file_saved(target_path)
+        core.api.emit_event("file_saved", target_path)
         return save_result_utils.save_success(primary_path=target_path)
 
     def finish_successful_save(widget, result=None):

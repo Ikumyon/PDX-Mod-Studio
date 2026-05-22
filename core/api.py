@@ -2,8 +2,7 @@ import os
 from core.i18n import tr
 
 _current_project_path = None
-_project_path_handlers = []
-_loc_changed_handlers = []
+_event_hooks = {}
 
 _message_handler = None
 _progress_handler = None
@@ -19,43 +18,22 @@ BUILTIN_TEXT_EDITOR_ID = "core.plain_text"
 def set_project_path(path: str):
     global _current_project_path
     _current_project_path = path
-    for handler in _project_path_handlers:
-        try:
-            handler(path)
-        except Exception as e:
-            print(f"Error in project path handler: {e}")
+    emit_event("project_path_changed", path)
 
 def get_project_path() -> str:
     return _current_project_path
 
-def register_project_path_handler(handler):
-    global _project_path_handlers
-    _project_path_handlers.append(handler)
+def subscribe_event(event_name: str, handler):
+    handlers = _event_hooks.setdefault(str(event_name), [])
+    handlers.append(handler)
 
-# --- ローカライズ更新通知 API ---
-def register_loc_changed_handler(handler):
-    global _loc_changed_handlers
-    _loc_changed_handlers.append(handler)
 
-def notify_loc_changed():
-    for handler in _loc_changed_handlers:
+def emit_event(event_name: str, *args, **kwargs):
+    for handler in list(_event_hooks.get(str(event_name), [])):
         try:
-            handler()
+            handler(*args, **kwargs)
         except Exception as e:
-            print(f"Error in loc changed handler: {e}")
-
-_file_saved_handlers = []
-
-def register_file_saved_handler(handler):
-    global _file_saved_handlers
-    _file_saved_handlers.append(handler)
-
-def notify_file_saved(file_path: str):
-    for handler in _file_saved_handlers:
-        try:
-            handler(file_path)
-        except Exception as e:
-            print(f"Error in file saved handler: {e}")
+            print(f"Error in event hook {event_name}: {e}")
 
 
 # --- メッセージ API ---

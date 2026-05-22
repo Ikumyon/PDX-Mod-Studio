@@ -28,9 +28,9 @@
 
 例:
 
-- `register_project_path_handler(...)`
-- `register_loc_changed_handler(...)`
-- `register_file_saved_handler(...)`
+- `subscribe_event("project_path_changed", ...)`
+- `subscribe_event("loc_changed", ...)`
+- `subscribe_event("file_saved", ...)`
 
 これらは「本体内部配線」ではなく、プラグインが依存してよい公開イベント購読APIとして扱う。
 
@@ -40,11 +40,23 @@
 
 現在開いているプロジェクトのルートパスを返す。
 
-### `register_project_path_handler(handler: callable)`
+### `subscribe_event(event_name: str, handler: callable)`
 
-プロジェクトパスが確定または変更されたときに呼ばれるイベント購読API。
+イベントを購読する公開API。
 
-- `handler(path: str)`
+- `event_name`
+  例: `project_path_changed`, `loc_changed`, `file_saved`
+- `handler`
+  イベント発生時に呼ばれる関数
+
+既存イベントの引数は次のとおり。
+
+- `project_path_changed`
+  `handler(path: str)`
+- `loc_changed`
+  `handler()`
+- `file_saved`
+  `handler(file_path: str)`
 
 ## メッセージ
 
@@ -100,27 +112,11 @@
 
 ## イベント購読
 
-### `register_loc_changed_handler(handler: callable)`
+### `emit_event(event_name: str, *args, **kwargs)`
 
-ローカライズデータ変更時に呼ばれるイベント購読API。
+イベントを発火する公開API。
 
-### `notify_loc_changed()`
-
-ローカライズデータ変更を通知する。
-
-通常は本体またはプラグイン内部処理から使う通知側であり、購読側は `register_loc_changed_handler(...)` を使う。
-
-### `register_file_saved_handler(handler: callable)`
-
-ファイル保存後に呼ばれるイベント購読API。
-
-- `handler(file_path: str)`
-
-### `notify_file_saved(file_path: str)`
-
-ファイル保存を通知する。
-
-通常は本体またはプラグイン内部処理から使う通知側であり、購読側は `register_file_saved_handler(...)` を使う。
+通常は本体またはプラグイン内部処理から使う通知側である。
 
 ## プラグイン文脈
 

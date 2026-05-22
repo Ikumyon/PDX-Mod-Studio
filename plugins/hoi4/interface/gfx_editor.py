@@ -483,10 +483,10 @@ class GfxEditorController(BaseEditorController):
 
         self.file_path = primary_path
         self.widget.file_path = primary_path
-        core.api.notify_file_saved(primary_path)
+        core.api.emit_event("file_saved", primary_path)
         for target in targets:
             if target.get("role") == "related_texture" and target.get("enabled", True):
-                core.api.notify_file_saved(target.get("path", ""))
+                core.api.emit_event("file_saved", target.get("path", ""))
         return save_result.save_success(primary_path=primary_path)
 
     def apply_target_paths_to_definitions(self, targets: list[dict]) -> None:
