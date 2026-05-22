@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 import core.api
+from core import save_result
 from PySide6.QtCore import QFile, QEvent, QObject, Qt
 from PySide6.QtGui import QAction, QPixmap
 from PySide6.QtUiTools import QUiLoader
@@ -340,16 +341,16 @@ class GfxEditorController(BaseEditorController):
         self.setup_preview_view()
         self.refresh()
 
-    def on_save_triggered(self) -> bool:
+    def on_save_triggered(self) -> dict:
         return self.build_save_plan(save_as=False)
 
-    def on_save_as_triggered(self) -> bool:
+    def on_save_as_triggered(self) -> dict:
         return self.build_save_plan(save_as=True)
 
-    def on_write_save_plan(self) -> bool:
+    def on_write_save_plan(self) -> dict:
         return self.write_save_plan()
 
-    def build_save_plan(self, save_as: bool = False) -> bool:
+    def build_save_plan(self, save_as: bool = False) -> dict:
         self.widget.save_plan = None
         primary_path = self.default_primary_save_path()
         requires_dialog = save_as or not self.file_path or str(self.file_path).startswith("untitled:")
@@ -358,7 +359,7 @@ class GfxEditorController(BaseEditorController):
         if requires_dialog:
             targets = self.open_save_targets_dialog(targets)
             if not targets:
-                return False
+                return save_result.save_cancelled()
 
         self.widget.save_plan = {
             "tab_kind": "gfx",
@@ -366,7 +367,7 @@ class GfxEditorController(BaseEditorController):
             "save_as": bool(requires_dialog),
             "targets": targets,
         }
-        return True
+        return save_result.save_success()
 
     def default_primary_save_path(self) -> str:
         if self.file_path and not str(self.file_path).startswith("untitled:"):
@@ -436,14 +437,14 @@ class GfxEditorController(BaseEditorController):
 
         return targets
 
-    def write_save_plan(self) -> bool:
+    def write_save_plan(self) -> dict:
         plan = getattr(self.widget, "save_plan", None) or {}
         targets = list(plan.get("targets", []))
         primary_target = next((target for target in targets if target.get("role") == "primary"), None)
         primary_path = primary_target.get("path", "") if primary_target else ""
         if not primary_path:
             QMessageBox.warning(self.widget, "保存できません", "主ファイルの保存先が未設定です。")
-            return False
+            return save_result.save_failed()
 
         self.apply_target_paths_to_definitions(targets)
         self.serialize_document()
@@ -456,7 +457,7 @@ class GfxEditorController(BaseEditorController):
                 handle.write(self.widget.content)
         except Exception as error:
             QMessageBox.warning(self.widget, "保存できません", str(error))
-            return False
+            return save_result.save_failed(message=str(error))
 
         failures = []
         for target in targets:
@@ -477,7 +478,7 @@ class GfxEditorController(BaseEditorController):
                 "DDS書き出し失敗",
                 "画像のDDS書き出しに失敗しました。\n\n" + "\n".join(failures),
             )
-            return False
+            return save_result.save_failed(message="\n".join(failures))
 
         self.file_path = primary_path
         self.widget.file_path = primary_path
@@ -485,7 +486,7 @@ class GfxEditorController(BaseEditorController):
         for target in targets:
             if target.get("role") == "related_texture" and target.get("enabled", True):
                 core.api.notify_file_saved(target.get("path", ""))
-        return True
+        return save_result.save_success(primary_path=primary_path)
 
     def apply_target_paths_to_definitions(self, targets: list[dict]) -> None:
         for target in targets:

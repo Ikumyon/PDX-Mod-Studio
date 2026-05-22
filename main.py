@@ -3,6 +3,7 @@ import os
 import json
 import tempfile
 import zipfile
+from core import save_result as save_result_utils
 from PySide6.QtWidgets import QApplication, QMenu, QVBoxLayout, QToolButton, QWidget, QTabBar, QFileDialog
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtCore import QFile, Qt, QSize, QCoreApplication
@@ -166,6 +167,7 @@ def main():
     # --- エディタ管理の初期化 ---
     editor_registry = EditorRegistry()
     TEXT_EDITOR_ID = editor_registry.text_editor_id
+    window.editor_registry = editor_registry
     
     # ビュー切り替え用のボタンをUIから取得 (旧modeSelectorButtonを流用)
     view_selector = window.findChild(QToolButton, "modeSelectorButton")
@@ -202,6 +204,44 @@ def main():
         except Exception:
             pass
         return None
+
+    def get_available_editors_for_file(file_path, include_script=True):
+        editors = [
+            {"id": e.editor_id, "name": e.name}
+            for e in (editor_registry.get_editors_for_element(get_element_for_path(file_path)) or [])
+        ]
+        if include_script:
+            editors.append({"id": TEXT_EDITOR_ID, "name": editor_registry.get_editor(TEXT_EDITOR_ID).name})
+        return editors
+
+    window.get_available_editors_for_file = get_available_editors_for_file
+
+    def get_active_tab_info():
+        if not window.editorTabs:
+            return None
+        index = window.editorTabs.currentIndex()
+        if index < 0:
+            return None
+        widget = window.editorTabs.currentWidget()
+        if not widget:
+            return None
+        return {
+            "path": window.editorTabs.tabToolTip(index),
+            "editor_id": editor_registry.normalize_editor_id(getattr(widget, "editor_id", TEXT_EDITOR_ID)),
+            "widget": widget,
+            "is_dirty": getattr(widget, "is_dirty", False),
+        }
+
+    def get_tab_plugin_for_widget(widget=None):
+        target_widget = widget
+        if target_widget is None:
+            active_tab = get_active_tab_info()
+            target_widget = active_tab.get("widget") if active_tab else None
+        if target_widget is not None:
+            plugin = getattr(target_widget, "active_plugin", None)
+            if plugin:
+                return plugin
+        return project_tree.active_plugin
 
     # --- ビュー切り替えボタンのメニュー更新ロジック ---
     def update_editor_selector(index):
@@ -315,7 +355,7 @@ def main():
                 tr("MainWindow", "All Files (*.*)"),
             )
             if not target_path:
-                return False
+                return save_result_utils.save_cancelled()
 
         widget.save_plan = {
             "tab_kind": "text",
@@ -329,7 +369,7 @@ def main():
                 }
             ],
         }
-        return True
+        return save_result_utils.save_success()
 
     def update_saved_widget_path(widget, path):
         if not path:
@@ -343,6 +383,11 @@ def main():
             window.editorTabs.setTabText(index, f"{editor_prefix}{os.path.basename(path)}")
             project_tree.update_open_editors(window.editorTabs)
 
+    def show_save_result_message(result, default_timeout=5000):
+        message = save_result_utils.save_result_message(result)
+        if message:
+            window.statusBar().showMessage(message, default_timeout)
+
     def write_plain_text_save_plan(widget):
         plan = getattr(widget, "save_plan", None) or {}
         targets = plan.get("targets", [])
@@ -350,7 +395,7 @@ def main():
         target_path = primary_target.get("path", "") if isinstance(primary_target, dict) else ""
         if not target_path:
             window.statusBar().showMessage(tr("MainWindow", "保存先が未設定です。"), 4000)
-            return False
+            return save_result_utils.save_failed()
 
         try:
             parent = os.path.dirname(target_path)
@@ -364,11 +409,32 @@ def main():
                 tr("MainWindow", "ファイルを書き込めませんでした: {error}").format(error=error),
                 5000,
             )
-            return False
+            return save_result_utils.save_failed(message=str(error))
 
         update_saved_widget_path(widget, target_path)
         core.api.notify_file_saved(target_path)
-        return True
+        return save_result_utils.save_success(primary_path=target_path)
+
+    def finish_successful_save(widget, result=None):
+        if result is None:
+            result = {}
+        if not isinstance(result, dict):
+            result = save_result_utils.normalize_save_result(result)
+
+        primary_path = result.get("primary_path", "")
+        if not primary_path:
+            save_plan = getattr(widget, "save_plan", None)
+            if isinstance(save_plan, dict):
+                targets = save_plan.get("targets", [])
+                primary_target = targets[0] if targets else None
+                if isinstance(primary_target, dict):
+                    primary_path = primary_target.get("path", "")
+        if not primary_path:
+            primary_path = getattr(widget, "file_path", "")
+
+        if primary_path:
+            update_saved_widget_path(widget, primary_path)
+        mark_tab_clean(widget)
 
     def save_active_tab(save_as=False):
         if not window.editorTabs:
@@ -386,7 +452,7 @@ def main():
             return False
 
         try:
-            planned = bool(handler())
+            plan_result = save_result_utils.normalize_save_result(handler())
         except Exception as error:
             window.statusBar().showMessage(
                 tr("MainWindow", "保存処理の呼び出しに失敗しました: {error}").format(error=error),
@@ -394,16 +460,18 @@ def main():
             )
             return False
 
-        if not planned:
+        if save_result_utils.is_save_cancelled(plan_result):
+            show_save_result_message(plan_result)
+            return False
+
+        if not save_result_utils.is_save_success(plan_result):
+            show_save_result_message(plan_result)
             return False
 
         save_plan = getattr(widget, "save_plan", None)
         if not save_plan:
-            window.statusBar().showMessage(
-                tr("MainWindow", "このタブは保存計画ベースの保存に未対応です。"),
-                4000,
-            )
-            return False
+            finish_successful_save(widget, plan_result)
+            return True
 
         writer = getattr(widget, "on_write_save_plan", None)
         if not callable(writer):
@@ -411,7 +479,7 @@ def main():
             return False
 
         try:
-            written = bool(writer())
+            write_result = save_result_utils.normalize_save_result(writer())
         except Exception as error:
             window.statusBar().showMessage(
                 tr("MainWindow", "保存書き込みに失敗しました: {error}").format(error=error),
@@ -419,12 +487,11 @@ def main():
             )
             return False
 
-        if written:
-            targets = save_plan.get("targets", []) if isinstance(save_plan, dict) else []
-            primary_target = targets[0] if targets else None
-            primary_path = primary_target.get("path", "") if isinstance(primary_target, dict) else ""
-            update_saved_widget_path(widget, primary_path)
-        return written
+        if save_result_utils.is_save_success(write_result):
+            finish_successful_save(widget, write_result)
+            return True
+        show_save_result_message(write_result)
+        return False
 
     def create_editor_widget(editor_id, file_path, content, available_editors, params=None):
         editor_id = editor_registry.normalize_editor_id(editor_id)
@@ -613,13 +680,7 @@ def main():
     window.open_file = open_file
     window.open_untitled_tab = open_untitled_tab
 
-    core.api.register_editor_handler({
-        "get_element_for_file": get_element_for_path,
-        "get_editors_for_file": lambda file_path, inc=True: 
-            [{"id": e.editor_id, "name": e.name} for e in (editor_registry.get_editors_for_element(get_element_for_path(file_path)) or [])] + ([{"id": TEXT_EDITOR_ID, "name": editor_registry.get_editor(TEXT_EDITOR_ID).name}] if inc else [])
-    })
-
-    core.api.register_active_plugin_handler(lambda: project_tree.active_plugin)
+    core.api._active_plugin = project_tree.active_plugin
 
 
     # --- アクティビティバーの設定 ---
@@ -665,6 +726,7 @@ def main():
         window.statusBar().showMessage(f"プラグイン '{plugin.name}' が選択されました。")
         # ProjectTreeDock にプラグインを通知
         project_tree.set_active_plugin(plugin)
+        core.api._active_plugin = plugin
         editor_registry.register_plugin(plugin)
         
         # 全タブの利用可能なエディタを更新
@@ -1027,7 +1089,7 @@ def main():
     if action_save_as:
         action_save_as.triggered.connect(lambda checked=False: save_active_tab(True))
 
-    core.api.register_message_handler(lambda text, timeout: window.statusBar().showMessage(text, timeout))
+    core.api._message_handler = lambda text, timeout: window.statusBar().showMessage(text, timeout)
 
     # 2. 進捗 (ステータスバーにプログレスバーを追加)
     from PySide6.QtWidgets import QProgressBar
@@ -1047,12 +1109,12 @@ def main():
             if text: progress_bar.setFormat(f"{text}: %p%")
             else: progress_bar.setFormat("%p%")
 
-    core.api.register_progress_handler(on_progress)
+    core.api._progress_handler = on_progress
 
-    core.api.register_tabs_handler({
-        "open_tab": open_file,
-        "open_untitled_tab": open_untitled_tab
-    })
+    core.api._open_tab_handler = open_file
+    core.api._open_untitled_tab_handler = open_untitled_tab
+    core.api._active_tab_handler = get_active_tab_info
+    core.api._tab_plugin_handler = get_tab_plugin_for_widget
 
     # 4. エディタ準備完了通知のハンドリング
     def on_editor_ready(widget):
@@ -1063,7 +1125,7 @@ def main():
             else:
                 widget.params = params
 
-    core.api.register_editor_ready_handler(on_editor_ready)
+    core.api._editor_ready_handler = on_editor_ready
 
 
     # ウィンドウを表示

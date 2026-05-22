@@ -8,9 +8,12 @@ _loc_changed_handlers = []
 
 _message_handler = None
 _progress_handler = None
-_tabs_handler = None
-_mode_handler = None
-_active_plugin_handler = None
+_open_tab_handler = None
+_open_untitled_tab_handler = None
+_active_tab_handler = None
+_tab_plugin_handler = None
+_editor_ready_handler = None
+_active_plugin = None
 BUILTIN_TEXT_EDITOR_ID = "core.plain_text"
 
 def set_project_path(path: str):
@@ -59,10 +62,6 @@ def notify_file_saved(file_path: str):
 
 
 # --- メッセージ API ---
-def register_message_handler(handler):
-    global _message_handler
-    _message_handler = handler
-
 def show_message(text: str, timeout: int = 3000):
     if _message_handler:
         _message_handler(text, timeout)
@@ -70,82 +69,42 @@ def show_message(text: str, timeout: int = 3000):
         print(f"[StatusBar] {text}")
 
 # --- 進捗 API ---
-def register_progress_handler(handler):
-    global _progress_handler
-    _progress_handler = handler
-
 def set_progress(value: int, text: str = ""):
     """value: 0-100, text: 表示するラベル"""
     if _progress_handler:
         _progress_handler(value, text)
 
 # --- タブ API ---
-def register_tabs_handler(handler_dict):
-    global _tabs_handler
-    _tabs_handler = handler_dict
-
 def open_tab(file_path: str, editor_id: str = None, params: dict = None):
     """指定したファイルをタブで開く（既に開いていれば切り替える）"""
-    if _tabs_handler and "open_tab" in _tabs_handler:
-        _tabs_handler["open_tab"](file_path, editor_id, params)
+    if _open_tab_handler:
+        _open_tab_handler(file_path, editor_id, params)
 
 def open_untitled_tab(name: str, content: str = "", editor_id: str = BUILTIN_TEXT_EDITOR_ID):
     """メモリ上でのみ存在する新規タブを開く（保存時にファイル名指定）"""
-    if _tabs_handler and "open_untitled_tab" in _tabs_handler:
-        _tabs_handler["open_untitled_tab"](name, content, editor_id)
+    if _open_untitled_tab_handler:
+        _open_untitled_tab_handler(name, content, editor_id)
 
+def get_active_tab():
+    """現在アクティブなタブ情報を返す。タブがなければ None。"""
+    if _active_tab_handler:
+        return _active_tab_handler()
+    return None
 
-def register_editor_handler(handler_dict):
-    global _mode_handler
-    _mode_handler = handler_dict
+def get_tab_plugin(widget=None):
+    """指定タブ、または現在アクティブなタブに属するプラグインを返す。"""
+    if _tab_plugin_handler:
+        return _tab_plugin_handler(widget)
+    return None
 
 # --- エディタ準備完了通知 API ---
-_editor_ready_handler = None
-
-def register_editor_ready_handler(handler):
-    """本体がエディタからの準備完了通知を受け取るためのハンドラを登録する"""
-    global _editor_ready_handler
-    _editor_ready_handler = handler
-
 def notify_editor_ready(widget):
     """エディタウィジェットが自身の初期化（パース等）が完了したことを通知する"""
     if _editor_ready_handler:
         _editor_ready_handler(widget)
 
-def get_editors_for_file(file_path: str, include_script: bool = True):
-    if _mode_handler and "get_editors_for_file" in _mode_handler:
-        return _mode_handler["get_editors_for_file"](file_path, include_script)
-    return [{"id": BUILTIN_TEXT_EDITOR_ID, "name": "テキストエディタ"}] if include_script else []
-
-
-def register_active_plugin_handler(handler):
-    global _active_plugin_handler
-    _active_plugin_handler = handler
-
 def get_active_plugin():
-    if _active_plugin_handler:
-        return _active_plugin_handler()
-    return None
-
-# --- アシスタントウィジェット API ---
-_assistant_widget_handler = None
-
-def register_assistant_widget_handler(handler):
-    """
-    プラグインがアシスタントセクション用のウィジェット生成関数を登録するために使用する。
-    handler: (parent: QWidget) -> QWidget を返す関数。
-    """
-    global _assistant_widget_handler
-    _assistant_widget_handler = handler
-
-def get_assistant_widget(parent):
-    """
-    ツリードッグがアクティブなプラグインからアシスタントセクション用のメタデータを取得するために使用する。
-    戻り値: { "widget": QWidget, "name": str, "collapsible": bool } または None
-    """
-    if _assistant_widget_handler:
-        return _assistant_widget_handler(parent)
-    return None
+    return _active_plugin
 
 # --- 診断プロバイダ (Linter) API ---
 _diagnostics_providers = {}  # { extension: provider_func }
@@ -189,7 +148,7 @@ def _call_generic_plugin_hook_func(func, plugin, hook_name: str, payload: dict):
             return func(payload)
 
 
-def call_plugin_hook(plugin, hook_name: str, payload: dict = None, default=None):
+def _call_plugin_hook(plugin, hook_name: str, payload: dict = None, default=None):
     """Call an optional plugin hook."""
     if not plugin or not getattr(plugin, "module", None) or not hook_name:
         return default
@@ -236,7 +195,7 @@ def plugin_translate(
     if not key:
         return fallback_text or ""
 
-    result = call_plugin_hook(
+    result = _call_plugin_hook(
         plugin,
         "i18n.translate",
         {

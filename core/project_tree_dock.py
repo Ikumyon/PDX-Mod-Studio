@@ -195,7 +195,8 @@ class ProjectTreeDock:
         
         # 1. 外部エディタ（利用可能なら優先して上に表示）
         try:
-            editors = core.api.get_editors_for_file(file_path, include_script=False)
+            get_editors = getattr(self.parent_window, "get_available_editors_for_file", None)
+            editors = get_editors(file_path, include_script=False) if callable(get_editors) else []
             if editors:
                 for editor in editors:
                     action = menu.addAction(f"{editor['name']} で開く")
@@ -532,7 +533,9 @@ class ProjectTreeDock:
                 widget.deleteLater()
         
         # アクティブなプラグインから新しいセクションの情報を取得
-        res = core.api.get_assistant_widget(self.pluginSectionContainer)
+        plugin = getattr(self, "active_plugin", None)
+        factory = getattr(plugin, "assistant_widget_factory", None) if plugin else None
+        res = factory(self.pluginSectionContainer) if callable(factory) else None
         if res and isinstance(res, dict):
             widget = res.get("widget")
             name = res.get("name", "追加セクション")

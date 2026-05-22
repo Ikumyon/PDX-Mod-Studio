@@ -6,6 +6,7 @@ import re
 from dataclasses import dataclass
 
 import core.api
+from core import save_result
 from PySide6.QtCore import QSignalBlocker, Qt
 from PySide6.QtWidgets import (
     QComboBox,
@@ -591,15 +592,15 @@ class LocalisationEditorController:
                 handle.write(self.widget.content)
         except Exception as error:
             QMessageBox.warning(self.widget, "保存できません", str(error))
-            return False
+            return save_result.save_failed(message=str(error))
 
         self.after_saved(self.file_path)
-        return True
+        return save_result.save_success(primary_path=self.file_path)
 
     def on_save_as_triggered(self):
         path, _ = QFileDialog.getSaveFileName(self.widget, "名前を付けて保存", self.file_path, "YAML Files (*.yml)")
         if not path:
-            return False
+            return save_result.save_cancelled()
         self.file_path = path
         self.widget.file_path = path
         return self.on_save_triggered()
