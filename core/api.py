@@ -1,5 +1,6 @@
 import os
 from core.i18n import tr
+from core.utils import load_svg_icon as _load_svg_icon
 
 _current_project_path = None
 _project_path_handlers = []
@@ -23,6 +24,9 @@ def set_project_path(path: str):
 
 def get_project_path() -> str:
     return _current_project_path
+
+def load_svg_icon(path: str, color_hex: str):
+    return _load_svg_icon(path, color_hex)
 
 def register_project_path_handler(handler):
     global _project_path_handlers
@@ -80,12 +84,6 @@ def register_tabs_handler(handler_dict):
     global _tabs_handler
     _tabs_handler = handler_dict
 
-def get_open_tabs() -> list:
-    """開いているタブの情報をリストで返す"""
-    if _tabs_handler and "get_tabs" in _tabs_handler:
-        return _tabs_handler["get_tabs"]()
-    return []
-
 def open_tab(file_path: str, editor_id: str = None, params: dict = None):
     """指定したファイルをタブで開く（既に開いていれば切り替える）"""
     if _tabs_handler and "open_tab" in _tabs_handler:
@@ -113,11 +111,6 @@ def notify_editor_ready(widget):
     """エディタウィジェットが自身の初期化（パース等）が完了したことを通知する"""
     if _editor_ready_handler:
         _editor_ready_handler(widget)
-
-def get_element_for_file(file_path: str):
-    if _mode_handler and "get_element_for_file" in _mode_handler:
-        return _mode_handler["get_element_for_file"](file_path)
-    return None
 
 def get_editors_for_file(file_path: str, include_script: bool = True):
     if _mode_handler and "get_editors_for_file" in _mode_handler:

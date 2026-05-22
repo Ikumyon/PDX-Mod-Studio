@@ -22,19 +22,6 @@
 
 ## タブ操作
 
-### `get_open_tabs() -> list`
-
-現在開いているタブ情報のリストを返します。
-
-各要素は以下のキーを持ちます。
-
-- `index`
-- `name`
-- `path`
-- `widget`
-- `is_dirty`
-- `editor_id`
-
 ### `open_tab(file_path: str, editor_id: str = None, params: dict = None)`
 
 指定したファイルをタブで開きます。
@@ -76,32 +63,90 @@ def setup(widget, file_path, content):
 
 ### `widget.on_save_triggered() -> bool | None`
 
-保存可能なタブが提供する保存入口です。
+保存可能なタブが提供する `Save` の入口です。
 
 本体メニューバーの `File > Save` は、現在アクティブなタブの `on_save_triggered()` を呼びます。
 
 `on_save_triggered()` は `widget` 直下に定義しても、`widget.plugin_controller` に定義しても構いません。
 
-```python
-class MyEditorController:
-    def on_save_triggered(self):
-        self.save_main_file()
-        self.save_related_files()
-        self.widget.is_dirty = False
-        return True
-```
-
 戻り値:
 
-- `True`: 保存成功
+- `True`: 保存計画の作成に成功
 - `False`: 保存失敗またはキャンセル
-- `None`: 例外が発生していなければ保存成功として扱う
+- `None`: 非推奨。`True` / `False` を返してください
 
 ### `widget.on_save_as_triggered() -> bool | None`
 
-任意の保存入口です。
+保存可能なタブが提供する `Save As` の入口です。
 
 本体メニューバーの `File > Save As` は、このメソッドが存在する場合に呼びます。
+
+戻り値:
+
+- `True`: 保存計画の作成に成功
+- `False`: 保存失敗またはキャンセル
+
+### `widget.save_plan`
+
+保存計画ベースの保存に対応するタブが保持する状態です。
+
+本体は `on_save_triggered()` または `on_save_as_triggered()` が `True` を返したあと、`widget.save_plan` を参照して書き込み段階へ進みます。
+
+本体は `save_plan` の内部構造を詳細には解釈しませんが、少なくとも次の情報を含む想定です。
+
+- `tab_kind`
+- `dialog`
+- `save_as`
+- `targets`
+
+`targets` は保存対象ごとの情報を持つ配列で、各要素は少なくとも次を持つ想定です。
+
+- `role`
+- `path`
+- `format`
+
+### `widget.on_write_save_plan() -> bool`
+
+保存計画に従って実ファイルを書き込む入口です。
+
+本体は `save_plan` が確定したあと、このメソッドを呼びます。書き込み内容、書き込み順序、複数ファイル間の整合性はタブまたはプラグイン側の責務です。
+
+戻り値:
+
+- `True`: 書き込み成功
+- `False`: 書き込み失敗またはキャンセル
+
+### 保存対応タブの実装例
+
+```python
+def setup(widget, file_path, content):
+    controller = MyEditorController(widget, file_path, content)
+    widget.plugin_controller = controller
+    widget.on_save_triggered = controller.on_save_triggered
+    widget.on_save_as_triggered = controller.on_save_as_triggered
+    widget.on_write_save_plan = controller.on_write_save_plan
+    controller.bind()
+
+class MyEditorController:
+    def on_save_triggered(self):
+        self.widget.save_plan = {
+            "tab_kind": "example",
+            "dialog": None,
+            "save_as": False,
+            "targets": [
+                {"role": "primary", "path": self.file_path, "format": "text"},
+            ],
+        }
+        return True
+
+    def on_save_as_triggered(self):
+        # 保存ダイアログ等で save_plan を組み立てる
+        return self.on_save_triggered()
+
+    def on_write_save_plan(self):
+        # save_plan に従って書き込む
+        return True
+```
 
 ### `widget.set_params(params: dict)`
 
@@ -140,6 +185,12 @@ class MyEditorController:
 ### `get_project_path() -> str`
 
 現在開いているプロジェクトのルートパスを返します。
+
+### `load_svg_icon(path: str, color_hex: str) -> QIcon`
+
+SVG ファイル内の `currentColor` を指定色に置換して `QIcon` を返します。
+
+プラグイン側で本体内部の `core.utils` を直接参照せず、`core.api` 経由で利用してください。
 
 ## イベント購読
 

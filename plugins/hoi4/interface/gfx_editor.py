@@ -5,7 +5,6 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 import core.api
-from core.utils import load_svg_icon
 from PySide6.QtCore import QFile, QEvent, QObject, Qt
 from PySide6.QtGui import QAction, QPixmap
 from PySide6.QtUiTools import QUiLoader
@@ -31,6 +30,7 @@ from PySide6.QtWidgets import (
     QToolButton,
     QWidget,
 )
+from lib.save_ui import MultipleSaveTargetsDialog
 
 from plugins.hoi4.base_editor import (
     BaseDocument,
@@ -154,6 +154,9 @@ def setup(widget, file_path, content):
     widget.plugin_controller = controller
     widget.toPlainText = lambda: widget.content
     widget.setPlainText = controller.set_content
+    widget.on_save_triggered = controller.on_save_triggered
+    widget.on_save_as_triggered = controller.on_save_as_triggered
+    widget.on_write_save_plan = controller.on_write_save_plan
     widget.set_params = controller.set_params
     widget.setParams = controller.set_params
     controller.bind()
@@ -336,6 +339,172 @@ class GfxEditorController(BaseEditorController):
 
         self.setup_preview_view()
         self.refresh()
+
+    def on_save_triggered(self) -> bool:
+        return self.build_save_plan(save_as=False)
+
+    def on_save_as_triggered(self) -> bool:
+        return self.build_save_plan(save_as=True)
+
+    def on_write_save_plan(self) -> bool:
+        return self.write_save_plan()
+
+    def build_save_plan(self, save_as: bool = False) -> bool:
+        self.widget.save_plan = None
+        primary_path = self.default_primary_save_path()
+        requires_dialog = save_as or not self.file_path or str(self.file_path).startswith("untitled:")
+        targets = self.collect_save_targets(primary_path)
+
+        if requires_dialog:
+            targets = self.open_save_targets_dialog(targets)
+            if not targets:
+                return False
+
+        self.widget.save_plan = {
+            "tab_kind": "gfx",
+            "dialog": "custom" if requires_dialog else None,
+            "save_as": bool(requires_dialog),
+            "targets": targets,
+        }
+        return True
+
+    def default_primary_save_path(self) -> str:
+        if self.file_path and not str(self.file_path).startswith("untitled:"):
+            return self.file_path
+        return os.path.join(self.get_mod_root(), "interface", "untitled.gfx")
+
+    def open_save_targets_dialog(self, targets: list[dict]) -> list[dict]:
+        dialog = MultipleSaveTargetsDialog(
+            parent=self.widget,
+            title="GFX 保存先",
+            description="保存対象ごとの保存先を確認してください。",
+            targets=targets,
+            format_options=["gfx", "dds"],
+        )
+        if not dialog.exec():
+            return []
+        return dialog.result_targets()
+
+    def collect_save_targets(self, primary_path: str) -> list[dict]:
+        targets = [
+            {
+                "enabled": True,
+                "role": "primary",
+                "path": primary_path,
+                "format": "gfx",
+            }
+        ]
+
+        seen_paths = {os.path.normcase(primary_path)}
+        for definition_index, definition in enumerate(self.definitions):
+            props = definition.get("properties", {})
+            source_paths = definition.get("_source_paths", {})
+            definition_name = definition.get("name", "")
+            for property_name in DDS_TEXTURE_PROPERTIES:
+                actual_key = self.actual_property_key(props, property_name)
+                value = self.unquote(props.get(actual_key, ""))
+                source_path = source_paths.get(actual_key, "")
+                if not source_path and value:
+                    source_path = self.resolve_texture_path(value)
+
+                output_path = self.dds_output_path_for_texture(value, source_path)
+                if not output_path:
+                    continue
+
+                normalized = os.path.normcase(output_path)
+                if normalized in seen_paths:
+                    continue
+                seen_paths.add(normalized)
+
+                targets.append(
+                    {
+                        "enabled": True,
+                        "role": "related_texture",
+                        "property": actual_key,
+                        "definition_name": definition_name,
+                        "path": output_path,
+                        "source_path": source_path,
+                        "format": "dds",
+                        "metadata": {
+                            "definition_index": definition_index,
+                            "property": actual_key,
+                            "definition_name": definition_name,
+                            "source_path": source_path,
+                        },
+                    }
+                )
+
+        return targets
+
+    def write_save_plan(self) -> bool:
+        plan = getattr(self.widget, "save_plan", None) or {}
+        targets = list(plan.get("targets", []))
+        primary_target = next((target for target in targets if target.get("role") == "primary"), None)
+        primary_path = primary_target.get("path", "") if primary_target else ""
+        if not primary_path:
+            QMessageBox.warning(self.widget, "保存できません", "主ファイルの保存先が未設定です。")
+            return False
+
+        self.apply_target_paths_to_definitions(targets)
+        self.serialize_document()
+
+        try:
+            parent = os.path.dirname(primary_path)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
+            with open(primary_path, "w", encoding="utf-8", newline="") as handle:
+                handle.write(self.widget.content)
+        except Exception as error:
+            QMessageBox.warning(self.widget, "保存できません", str(error))
+            return False
+
+        failures = []
+        for target in targets:
+            if target.get("role") != "related_texture" or not target.get("enabled", True):
+                continue
+
+            source_path = target.get("source_path") or target.get("metadata", {}).get("source_path", "")
+            output_path = target.get("path", "")
+            if not source_path or not os.path.exists(source_path):
+                failures.append(f"{target.get('role', '')}: {output_path}")
+                continue
+            if not output_path or not self.save_dds_texture(source_path, output_path):
+                failures.append(f"{target.get('role', '')}: {output_path}")
+
+        if failures:
+            QMessageBox.warning(
+                self.widget,
+                "DDS書き出し失敗",
+                "画像のDDS書き出しに失敗しました。\n\n" + "\n".join(failures),
+            )
+            return False
+
+        self.file_path = primary_path
+        self.widget.file_path = primary_path
+        core.api.notify_file_saved(primary_path)
+        for target in targets:
+            if target.get("role") == "related_texture" and target.get("enabled", True):
+                core.api.notify_file_saved(target.get("path", ""))
+        return True
+
+    def apply_target_paths_to_definitions(self, targets: list[dict]) -> None:
+        for target in targets:
+            if target.get("role") != "related_texture":
+                continue
+
+            metadata = target.get("metadata", {}) or {}
+            definition_index = metadata.get("definition_index")
+            property_name = metadata.get("property") or target.get("property")
+            output_path = target.get("path", "")
+            if definition_index is None or property_name is None or not output_path:
+                continue
+            if definition_index < 0 or definition_index >= len(self.definitions):
+                continue
+
+            definition = self.definitions[definition_index]
+            props = definition.get("properties", {})
+            actual_key = self.actual_property_key(props, property_name)
+            props[actual_key] = self.texture_value_for_path(output_path)
 
     def populate_gfx_type_combo(self):
         if not self.combo_gfx_type:
@@ -553,7 +722,16 @@ class GfxEditorController(BaseEditorController):
     def schema_field_value(self, property_name: str) -> str:
         binding = self.schema_field_binding(property_name)
         control = self.schema_field_control(property_name)
-        if not binding or not control:
+        if not binding:
+            return ""
+
+        if not control:
+            if property_name.lower() in {"texturefile", "texturefile1", "texturefile2"}:
+                source_edit = self.source_edit_for_property(property_name)
+                if source_edit:
+                    source_path = source_edit.text().strip()
+                    if source_path:
+                        return self.default_dds_texture_value_for_source(source_path)
             return ""
 
         kind = binding.get("kind", "")
@@ -576,6 +754,14 @@ class GfxEditorController(BaseEditorController):
         if isinstance(control, QComboBox):
             return control.currentText().strip()
         return ""
+
+    def source_edit_for_property(self, property_name: str):
+        mapping = {
+            "texturefile": self.edit_source_path,
+            "texturefile1": self.edit_source_path1,
+            "texturefile2": self.edit_source_path2,
+        }
+        return mapping.get((property_name or "").lower())
 
     def update_add_button_state(self):
         if not self.btn_add or not self.combo_gfx_type:
@@ -704,7 +890,7 @@ class GfxEditorController(BaseEditorController):
             icon_path = self.inline_action_icon_path(icon_name, icon_source)
             if os.path.exists(icon_path):
                 color_hex = self.widget.palette().color(self.widget.foregroundRole()).name()
-                button.setIcon(load_svg_icon(icon_path, color_hex))
+                button.setIcon(core.api.load_svg_icon(icon_path, color_hex))
             button.setIconSize(button.sizeHint())
             if on_clicked:
                 button.clicked.connect(on_clicked)
@@ -761,13 +947,16 @@ class GfxEditorController(BaseEditorController):
 
         def on_finished():
             source_path = control.text().strip()
-            previous_source = self.source_path_for_current_definition(property_name)
             self.set_definition_source_path(property_name, source_path)
-            if output_control and source_path:
-                current_output = output_control.text().strip()
-                if not current_output:
-                    set_line(output_control, self.default_dds_texture_value_for_source(source_path))
+            if source_path:
+                default_value = self.default_dds_texture_value_for_source(source_path)
+                if output_control:
+                    current_output = output_control.text().strip()
+                    if not current_output:
+                        set_line(output_control, default_value)
                     self.set_current_property(property_name, output_control.text().strip())
+            elif output_control:
+                self.set_current_property(property_name, "")
             if source_path and self.edit_name and not self.edit_name.text().strip():
                 new_name = self.generate_graphic_definition_name(source_path)
                 if new_name:
@@ -815,6 +1004,9 @@ class GfxEditorController(BaseEditorController):
         line_edits = [
             self.edit_name,
             self.edit_texture,
+            self.edit_source_path,
+            self.edit_source_path1,
+            self.edit_source_path2,
             self.edit_effect,
             self.edit_texture1,
             self.edit_texture2,
@@ -1040,14 +1232,12 @@ class GfxEditorController(BaseEditorController):
         if name is None:
             name = self.generate_graphic_definition_name(source_path) if source_path else ""
 
-        texture_value = self.default_dds_texture_value_for_source(source_path) if source_path else ""
         definition = {
             "name": name,
             "type": definition_type or "spriteType",
             "group": "spriteTypes",
             "properties": {
                 "name": name,
-                "texturefile": texture_value,
             },
             "order": ["name", "texturefile"],
         }
@@ -1236,7 +1426,7 @@ class GfxEditorController(BaseEditorController):
         texture_value = self.default_dds_texture_value_for_source(path)
         if source_edit:
             set_line(source_edit, path)
-        should_update_texture = texture_edit and (overwrite_texture or not texture_edit.text().strip())
+        should_update_texture = bool(texture_edit) and (overwrite_texture or not texture_edit.text().strip())
         if should_update_texture:
             set_line(texture_edit, texture_value)
         self.set_definition_source_path(property_name, path)

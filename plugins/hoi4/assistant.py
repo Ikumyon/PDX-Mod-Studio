@@ -5,7 +5,6 @@ from PySide6.QtUiTools import QUiLoader
 from PySide6.QtCore import QFile, Qt, QPoint, QEvent
 from PySide6.QtGui import QStandardItemModel, QStandardItem, QIcon, QAction
 import core.api
-from core.utils import load_svg_icon
 
 class AssistantWidget(QWidget):
     def __init__(self, parent=None):
@@ -208,7 +207,7 @@ class AssistantWidget(QWidget):
         icon_name = "star.svg" if is_pinned else "star-outline.svg"
         icon_path = os.path.join(self.base_dir, "asset", "icons", icon_name)
         if os.path.exists(icon_path):
-            btn.setIcon(load_svg_icon(icon_path, "#FFD700" if is_pinned else "#888888"))
+            btn.setIcon(core.api.load_svg_icon(icon_path, "#FFD700" if is_pinned else "#888888"))
         btn.setToolTip("ピン留めを解除" if is_pinned else "クイックアクセスに登録")
         if tree_item:
             btn.setVisible(is_pinned or item_id == self._hovered_nav_item_id)
@@ -659,7 +658,7 @@ class AssistantWidget(QWidget):
             if os.path.exists(icon_path):
                 if icon_path.lower().endswith(".svg"):
                     text_color = self.palette().color(self.foregroundRole()).name()
-                    item.setIcon(load_svg_icon(icon_path, text_color))
+                    item.setIcon(core.api.load_svg_icon(icon_path, text_color))
                 else:
                     item.setIcon(QIcon(icon_path))
         
@@ -787,7 +786,7 @@ class AssistantWidget(QWidget):
         
         if os.path.exists(icon_path):
             text_color = self.palette().color(self.foregroundRole()).name()
-            self.header.setIcon(load_svg_icon(icon_path, text_color))
+            self.header.setIcon(core.api.load_svg_icon(icon_path, text_color))
 
     def toggle_content(self):
         """コンテンツエリアの表示/非表示を切り替える"""
@@ -834,7 +833,7 @@ class AssistantWidget(QWidget):
             icon_path = os.path.join(self.base_dir, "asset", "icons", icon_name)
             if os.path.exists(icon_path):
                 text_color = self.palette().color(self.foregroundRole()).name()
-                icon_label.setPixmap(load_svg_icon(icon_path, text_color).pixmap(16, 16))
+                icon_label.setPixmap(core.api.load_svg_icon(icon_path, text_color).pixmap(16, 16))
         layout.addWidget(icon_label)
         
         # ラベル

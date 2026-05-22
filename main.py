@@ -107,6 +107,7 @@ def main():
 
         def count(self): return self.tab_bar.count()
         def currentIndex(self): return self.tab_bar.currentIndex()
+        def currentWidget(self): return self.stacked_widget.currentWidget()
         def setCurrentIndex(self, index):
             self.tab_bar.setCurrentIndex(index)
             self.stacked_widget.setCurrentIndex(index)
@@ -284,6 +285,147 @@ def main():
                 window.editorTabs.setTabText(index, clean_text)
             project_tree.update_open_editors(window.editorTabs)
 
+    def is_virtual_tab_path(path):
+        return not path or str(path).startswith("untitled:")
+
+    def default_save_dialog_path(widget):
+        current_path = getattr(widget, "file_path", "")
+        if current_path and not is_virtual_tab_path(current_path):
+            return current_path
+
+        project_path = core.api.get_project_path()
+        if project_path:
+            tab_name = window.editorTabs.tabText(window.editorTabs.indexOf(widget)) if window.editorTabs.indexOf(widget) >= 0 else "untitled"
+            clean_name = _tab_text_without_dirty_marker(tab_name).replace("[E] ", "").strip() or "untitled"
+            return os.path.join(project_path, clean_name)
+
+        return base_dir
+
+    def build_plain_text_save_plan(widget, save_as=False):
+        widget.save_plan = None
+        current_path = getattr(widget, "file_path", "")
+        requires_dialog = save_as or is_virtual_tab_path(current_path)
+        target_path = current_path
+
+        if requires_dialog:
+            target_path, _ = QFileDialog.getSaveFileName(
+                window,
+                tr("MainWindow", "名前を付けて保存"),
+                default_save_dialog_path(widget),
+                tr("MainWindow", "All Files (*.*)"),
+            )
+            if not target_path:
+                return False
+
+        widget.save_plan = {
+            "tab_kind": "text",
+            "dialog": "os_standard" if requires_dialog else None,
+            "save_as": bool(requires_dialog),
+            "targets": [
+                {
+                    "role": "primary",
+                    "path": target_path,
+                    "format": "text",
+                }
+            ],
+        }
+        return True
+
+    def update_saved_widget_path(widget, path):
+        if not path:
+            return
+        widget.file_path = path
+        index = window.editorTabs.indexOf(widget)
+        if index >= 0:
+            window.editorTabs.setTabToolTip(index, path)
+            clean_text = _tab_text_without_dirty_marker(window.editorTabs.tabText(index))
+            editor_prefix = "[E] " if clean_text.startswith("[E] ") else ""
+            window.editorTabs.setTabText(index, f"{editor_prefix}{os.path.basename(path)}")
+            project_tree.update_open_editors(window.editorTabs)
+
+    def write_plain_text_save_plan(widget):
+        plan = getattr(widget, "save_plan", None) or {}
+        targets = plan.get("targets", [])
+        primary_target = targets[0] if targets else None
+        target_path = primary_target.get("path", "") if isinstance(primary_target, dict) else ""
+        if not target_path:
+            window.statusBar().showMessage(tr("MainWindow", "保存先が未設定です。"), 4000)
+            return False
+
+        try:
+            parent = os.path.dirname(target_path)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
+            content = widget.toPlainText() if hasattr(widget, "toPlainText") else getattr(widget, "content", "")
+            with open(target_path, "w", encoding="utf-8", newline="") as handle:
+                handle.write(content)
+        except Exception as error:
+            window.statusBar().showMessage(
+                tr("MainWindow", "ファイルを書き込めませんでした: {error}").format(error=error),
+                5000,
+            )
+            return False
+
+        update_saved_widget_path(widget, target_path)
+        core.api.notify_file_saved(target_path)
+        return True
+
+    def save_active_tab(save_as=False):
+        if not window.editorTabs:
+            return False
+
+        widget = window.editorTabs.currentWidget()
+        if not widget:
+            window.statusBar().showMessage(tr("MainWindow", "保存するタブがありません。"), 3000)
+            return False
+
+        handler_name = "on_save_as_triggered" if save_as else "on_save_triggered"
+        handler = getattr(widget, handler_name, None)
+        if not callable(handler):
+            window.statusBar().showMessage(tr("MainWindow", "このタブはまだ保存に対応していません。"), 4000)
+            return False
+
+        try:
+            planned = bool(handler())
+        except Exception as error:
+            window.statusBar().showMessage(
+                tr("MainWindow", "保存処理の呼び出しに失敗しました: {error}").format(error=error),
+                5000,
+            )
+            return False
+
+        if not planned:
+            return False
+
+        save_plan = getattr(widget, "save_plan", None)
+        if not save_plan:
+            window.statusBar().showMessage(
+                tr("MainWindow", "このタブは保存計画ベースの保存に未対応です。"),
+                4000,
+            )
+            return False
+
+        writer = getattr(widget, "on_write_save_plan", None)
+        if not callable(writer):
+            window.statusBar().showMessage(tr("MainWindow", "このタブはまだ書き込み処理に対応していません。"), 4000)
+            return False
+
+        try:
+            written = bool(writer())
+        except Exception as error:
+            window.statusBar().showMessage(
+                tr("MainWindow", "保存書き込みに失敗しました: {error}").format(error=error),
+                5000,
+            )
+            return False
+
+        if written:
+            targets = save_plan.get("targets", []) if isinstance(save_plan, dict) else []
+            primary_target = targets[0] if targets else None
+            primary_path = primary_target.get("path", "") if isinstance(primary_target, dict) else ""
+            update_saved_widget_path(widget, primary_path)
+        return written
+
     def create_editor_widget(editor_id, file_path, content, available_editors, params=None):
         editor_id = editor_registry.normalize_editor_id(editor_id)
         if editor_id == TEXT_EDITOR_ID:
@@ -301,6 +443,7 @@ def main():
         widget.content = content
         widget.available_editors = available_editors
         widget.is_dirty = False
+        widget.save_plan = None
         if params:
             widget.params = params
         element = get_element_for_path(file_path)
@@ -327,6 +470,10 @@ def main():
             widget._dirty_timer = QTimer(widget)
             widget._dirty_timer.timeout.connect(check_content_change)
             widget._dirty_timer.start(100)
+        else:
+            widget.on_save_triggered = lambda w=widget: build_plain_text_save_plan(w, False)
+            widget.on_save_as_triggered = lambda w=widget: build_plain_text_save_plan(w, True)
+            widget.on_write_save_plan = lambda w=widget: write_plain_text_save_plan(w)
 
         return widget
 
@@ -872,6 +1019,14 @@ def main():
     if action_save_project_as:
         action_save_project_as.triggered.connect(save_project_as)
 
+    action_save = window.findChild(object, "actionSave")
+    if action_save:
+        action_save.triggered.connect(lambda checked=False: save_active_tab(False))
+
+    action_save_as = window.findChild(object, "actionSaveAs")
+    if action_save_as:
+        action_save_as.triggered.connect(lambda checked=False: save_active_tab(True))
+
     core.api.register_message_handler(lambda text, timeout: window.statusBar().showMessage(text, timeout))
 
     # 2. 進捗 (ステータスバーにプログレスバーを追加)
@@ -894,25 +1049,7 @@ def main():
 
     core.api.register_progress_handler(on_progress)
 
-    # 3. タブ操作
-    def get_open_tabs():
-        tabs = []
-        if window.editorTabs:
-            for i in range(window.editorTabs.count()):
-                widget = window.editorTabs.widget(i)
-                tabs.append({
-                    "index": i,
-                    "name": window.editorTabs.tabText(i),
-                    "path": window.editorTabs.tabToolTip(i),
-                    "widget": widget,
-                    "is_dirty": getattr(widget, "is_dirty", False),
-                    "editor_id": editor_registry.normalize_editor_id(getattr(widget, "editor_id", TEXT_EDITOR_ID))
-                })
-        return tabs
-
-
     core.api.register_tabs_handler({
-        "get_tabs": get_open_tabs,
         "open_tab": open_file,
         "open_untitled_tab": open_untitled_tab
     })
