@@ -11,20 +11,6 @@
   "unknown_keys": "warn",
   "case_insensitive_keys": true,
   "types": {
-    "SpriteType": {
-      "validate_fields": true,
-      "fields": {
-        "name": { "type": "identifier", "usage": "required" },
-        "texturefile": { "type": "string", "usage": "required" },
-        "size": { "type": "object", "usage": "optional" },
-        "noOfFrames": { "type": "integer", "usage": "optional" },
-        "effectFile": { "type": "string", "usage": "optional" },
-        "allwaystransparent": { "type": "boolean", "allowed_values": ["yes", "no"], "usage": "optional" },
-        "legacy_lazy_load": { "type": "boolean", "allowed_values": ["yes", "no"], "usage": "optional" },
-        "color": { "type": "object", "usage": "optional" },
-        "animation": { "type": "object", "schema": "gfx_animation", "multiple": true, "usage": "optional" }
-      }
-    },
     "spriteType": {
       "validate_fields": true,
       "fields": {

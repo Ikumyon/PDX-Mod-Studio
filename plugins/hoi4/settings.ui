@@ -25,13 +25,10 @@
     </widget>
    </item>
    <item>
-    <!-- 横並びのレイアウトで左にリスト、右にスタックを配置 -->
     <layout class="QHBoxLayout" name="contentLayout">
      <property name="spacing">
       <number>15</number>
      </property>
-
-     <!-- 左側: 縦積みリスト -->
      <item>
       <widget class="QListWidget" name="settingsListWidget">
        <property name="maximumSize">
@@ -72,12 +69,11 @@
        </item>
       </widget>
      </item>
-
-     <!-- 右側: スタックコンテンツ -->
      <item>
       <widget class="QStackedWidget" name="settingsStackedWidget">
-       
-       <!-- ページ1: 全般 -->
+       <property name="currentIndex">
+        <number>5</number>
+       </property>
        <widget class="QWidget" name="generalPage">
         <layout class="QVBoxLayout" name="generalPageLayout">
          <property name="leftMargin">
@@ -151,8 +147,6 @@
          </item>
         </layout>
        </widget>
-
-       <!-- ページ2: イベント -->
        <widget class="QWidget" name="eventPage">
         <layout class="QVBoxLayout" name="eventPageLayout">
          <property name="leftMargin">
@@ -337,8 +331,6 @@
          </item>
         </layout>
        </widget>
-
-       <!-- ページ3: ディシジョン -->
        <widget class="QWidget" name="decisionPage">
         <layout class="QVBoxLayout" name="decisionPageLayout">
          <property name="leftMargin">
@@ -440,8 +432,6 @@
          </item>
         </layout>
        </widget>
-
-       <!-- ページ3.5: 実績 -->
        <widget class="QWidget" name="achievementPage">
         <layout class="QVBoxLayout" name="achievementPageLayout">
          <property name="leftMargin">
@@ -551,8 +541,6 @@
          </item>
         </layout>
        </widget>
-
-       <!-- ページ4: 翻訳 -->
        <widget class="QWidget" name="localisationPage">
         <layout class="QVBoxLayout" name="localisationPageLayout">
          <property name="leftMargin">
@@ -619,8 +607,6 @@
          </item>
         </layout>
        </widget>
-
-       <!-- ページ5: グラフィック -->
        <widget class="QWidget" name="graphicPage">
         <layout class="QVBoxLayout" name="graphicPageLayout">
          <property name="leftMargin">
@@ -662,6 +648,27 @@
               </item>
              </layout>
             </item>
+            <item row="1" column="0">
+             <widget class="QLabel" name="labelTextureFileFormat">
+              <property name="text">
+               <string>テクスチャファイル名形式</string>
+              </property>
+             </widget>
+            </item>
+            <item row="1" column="1">
+             <layout class="QHBoxLayout" name="graphicTextureFileFormatLayout">
+              <item>
+               <widget class="QLineEdit" name="graphicTextureFileFormatEdit"/>
+              </item>
+              <item>
+               <widget class="QToolButton" name="graphicTextureFileFormatBrowseButton">
+                <property name="text">
+                 <string>...</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
            </layout>
           </widget>
          </item>
@@ -680,7 +687,6 @@
          </item>
         </layout>
        </widget>
-
       </widget>
      </item>
     </layout>

@@ -178,3 +178,87 @@ def get_diagnostics(file_path: str, content: str) -> list:
             print(f"Error in diagnostics provider for {ext}: {e}")
     return []
 
+
+def _call_named_plugin_hook_func(func, plugin, payload: dict):
+    try:
+        return func(plugin, payload)
+    except TypeError:
+        return func(payload)
+
+
+def _call_generic_plugin_hook_func(func, plugin, hook_name: str, payload: dict):
+    try:
+        return func(plugin, hook_name, payload)
+    except TypeError:
+        try:
+            return func(hook_name, payload)
+        except TypeError:
+            return func(payload)
+
+
+def call_plugin_hook(plugin, hook_name: str, payload: dict = None, default=None):
+    """Call an optional plugin hook."""
+    if not plugin or not getattr(plugin, "module", None) or not hook_name:
+        return default
+
+    payload = payload or {}
+    module = plugin.module
+    candidates = [
+        f"hook_{hook_name.replace('.', '_')}",
+        hook_name.replace(".", "_"),
+    ]
+    for name in candidates:
+        func = getattr(module, name, None)
+        if callable(func):
+            try:
+                result = _call_named_plugin_hook_func(func, plugin, payload)
+                return default if result is None else result
+            except Exception as e:
+                print(f"Error in plugin hook {plugin.id}.{hook_name}: {e}")
+                return default
+
+    for name in ("on_plugin_hook", "handle_plugin_hook", "on_hook"):
+        func = getattr(module, name, None)
+        if callable(func):
+            try:
+                result = _call_generic_plugin_hook_func(func, plugin, hook_name, payload)
+                return default if result is None else result
+            except Exception as e:
+                print(f"Error in plugin hook {plugin.id}.{hook_name}: {e}")
+                return default
+
+    return default
+
+
+def plugin_translate(
+    plugin,
+    key: str,
+    fallback: str = None,
+    language: str = None,
+    context: str = None,
+    metadata: dict = None,
+) -> str:
+    """Ask a plugin to translate a key through the optional i18n hook."""
+    fallback_text = fallback if fallback is not None else key
+    if not key:
+        return fallback_text or ""
+
+    result = call_plugin_hook(
+        plugin,
+        "i18n.translate",
+        {
+            "key": key,
+            "fallback": fallback_text,
+            "language": language,
+            "context": context,
+            "metadata": metadata or {},
+        },
+        default=None,
+    )
+
+    if isinstance(result, dict):
+        text = result.get("text")
+        return text if text is not None else fallback_text
+    if isinstance(result, str) and result:
+        return result
+    return fallback_text

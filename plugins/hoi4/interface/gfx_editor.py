@@ -5,8 +5,10 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 import core.api
-from PySide6.QtCore import QEvent, QObject, Qt
-from PySide6.QtGui import QPixmap
+from core.utils import load_svg_icon
+from PySide6.QtCore import QFile, QEvent, QObject, Qt
+from PySide6.QtGui import QAction, QPixmap
+from PySide6.QtUiTools import QUiLoader
 from PySide6.QtWidgets import (
     QFileDialog,
     QCheckBox,
@@ -15,14 +17,18 @@ from PySide6.QtWidgets import (
     QGraphicsPixmapItem,
     QGraphicsScene,
     QGraphicsView,
+    QFrame,
     QLabel,
     QLineEdit,
     QPushButton,
     QSizePolicy,
     QSpinBox,
-    QStackedWidget,
+    QVBoxLayout,
     QListWidget,
     QListWidgetItem,
+    QMessageBox,
+    QMenu,
+    QToolButton,
     QWidget,
 )
 
@@ -37,6 +43,17 @@ from plugins.hoi4.base_editor import (
     set_line,
     set_spin,
 )
+from plugins.hoi4.interface.gfx_ui_bindings import (
+    GFX_SCHEMA_FIELD_BINDINGS,
+    GFX_SCHEMA_FIELD_VISIBILITY_BINDINGS,
+    populate_type_combo,
+    missing_required_tooltip,
+    schema_required_fields,
+    schema_fields_with_usage,
+    schema_sub_fields_with_usage,
+    schema_type_definition,
+)
+from plugins.hoi4.interface.ui_image_helpers import load_pil_image
 from plugins.hoi4.script_parser import AssignmentNode, ObjectNode, ParsedEntity, ScalarNode
 
 
@@ -69,12 +86,49 @@ NUMERIC_PROPERTIES = {
     "animationdelay",
 }
 
+DDS_TEXTURE_PROPERTIES = (
+    "texturefile",
+    "textureFile1",
+    "textureFile2",
+    "maskFile",
+)
+
+
+GFX_SCHEMA_GROUP_VISIBILITY_BINDINGS = {
+    "groupBasic": ("name", "texturefile", "texturefile1", "texturefile2", "effectfile", "maskfile"),
+    "groupAppearance": (
+        "size",
+        "bordersize",
+        "color",
+        "colortwo",
+        "horizontal",
+        "allwaystransparent",
+        "legacy_lazy_load",
+        "transparencecheck",
+    ),
+    "groupFrames": ("noofframes", "animation_rate_fps", "looping", "play_on_show", "pause_on_loop"),
+    "groupFont": (),
+    "groupMapText": (),
+    "groupAnim": (
+        "animationmaskfile",
+        "animationtexturefile",
+        "animationrotation",
+        "animationlooping",
+        "animationtime",
+        "animationdelay",
+        "animationblendmode",
+        "animationrotationoffset",
+        "animationtexturescale",
+        "animationtype",
+    ),
+}
+
 
 class ParsedGfxDefinition(BaseParsedEntity):
     def __init__(self, entity: ParsedEntity):
         super().__init__(entity)
-        self.gfx_type = entity.node.key if isinstance(entity.node, AssignmentNode) else "spriteType"
-        self.group = entity.parent_id or "spriteTypes"
+        self.definition_type = entity.node.key if isinstance(entity.node, AssignmentNode) else "spriteType"
+        self.root_group = entity.parent_id or "spriteTypes"
 
 
 @dataclass
@@ -121,6 +175,12 @@ class GfxEditorController(BaseEditorController):
         self.preview_item = None
         self.preview_placeholder = None
         self.fit_preview_to_view = lambda: None
+        self.name_frame = None
+        self.inline_action_frame_by_edit = {}
+        self.source_paths = {}
+        self.schema_visibility_actions = {}
+        self.schema_visibility_menus = []
+        self.schema_visible_optional_fields = {}
 
     def bind(self):
         self.widget.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
@@ -133,18 +193,52 @@ class GfxEditorController(BaseEditorController):
         self.list_gfx_nodes = find(self.widget, QListWidget, "listGfxNodes")
         self.combo_gfx_type = find(self.widget, QComboBox, "comboGfxType")
         self.edit_source_path = find(self.widget, QLineEdit, "editSourcePath")
+        self.edit_source_path1 = find(self.widget, QLineEdit, "editSourcePath1")
+        self.edit_source_path2 = find(self.widget, QLineEdit, "editSourcePath2")
         self.btn_browse_source = find(self.widget, QPushButton, "btnBrowseSource")
-        self.btn_new_node = find(self.widget, QPushButton, "btnNewNode")
+        self.btn_browse_source1 = find(self.widget, QPushButton, "btnBrowseSource1")
+        self.btn_browse_source2 = find(self.widget, QPushButton, "btnBrowseSource2")
+        self.btn_browse_texture = find(self.widget, QPushButton, "btnBrowseTexture")
+        self.btn_browse_texture1 = find(self.widget, QPushButton, "btnBrowseTexture1")
+        self.btn_browse_texture2 = find(self.widget, QPushButton, "btnBrowseTexture2")
         self.btn_duplicate_node = find(self.widget, QPushButton, "btnDuplicateNode")
         self.btn_delete_node = find(self.widget, QPushButton, "btnDeleteNode")
+        self.btn_add = find(self.widget, QPushButton, "btnAdd")
+        self.btn_more_items = find(self.widget, QPushButton, "btnMoreItems")
+        self.btn_more_anim_items = find(self.widget, QPushButton, "btnMoreAnimItems")
         self.graphics_texture_view = find(self.widget, QGraphicsView, "graphicsTextureView")
-        self.widget_center_pane = find(self.widget, QStackedWidget, "widgetCenterPane")
+        self.name_inline_host = find(self.widget, QWidget, "widgetNameHost")
+        self.texture_inline_host = find(self.widget, QWidget, "widgetTextureHost")
+        self.texture1_inline_host = find(self.widget, QWidget, "widgetTexture1Host")
+        self.texture2_inline_host = find(self.widget, QWidget, "widgetTexture2Host")
 
-        self.edit_name = find(self.widget, QLineEdit, "editName")
-        self.edit_texture = find(self.widget, QLineEdit, "editTexture")
+        self.name_frame, self.edit_name, self.btn_auto_naming = self.load_inline_action_field(
+            self.name_inline_host,
+            icon_name="rotate-cw.svg",
+            tooltip="名前を自動設定フォーマットに合わせて再設定します。",
+            on_clicked=self.apply_auto_naming,
+            icon_source="plugin",
+        )
+        self.texture_frame, self.edit_texture, self.btn_select_texture = self.load_inline_action_field(
+            self.texture_inline_host,
+            icon_name="rotate-cw.svg",
+            tooltip="texturefile を自動設定フォーマットに合わせて再設定します。",
+            on_clicked=lambda: self.apply_auto_texture_naming(self.edit_source_path, self.edit_texture, "texturefile"),
+        )
+        self.texture1_frame, self.edit_texture1, self.btn_select_texture1 = self.load_inline_action_field(
+            self.texture1_inline_host,
+            icon_name="rotate-cw.svg",
+            tooltip="textureFile1 を自動設定フォーマットに合わせて再設定します。",
+            on_clicked=lambda: self.apply_auto_texture_naming(self.edit_source_path1, self.edit_texture1, "textureFile1"),
+        )
+        self.texture2_frame, self.edit_texture2, self.btn_select_texture2 = self.load_inline_action_field(
+            self.texture2_inline_host,
+            icon_name="rotate-cw.svg",
+            tooltip="textureFile2 を自動設定フォーマットに合わせて再設定します。",
+            on_clicked=lambda: self.apply_auto_texture_naming(self.edit_source_path2, self.edit_texture2, "textureFile2"),
+        )
+
         self.edit_effect = find(self.widget, QLineEdit, "editEffect")
-        self.edit_texture1 = find(self.widget, QLineEdit, "editTexture1")
-        self.edit_texture2 = find(self.widget, QLineEdit, "editTexture2")
         self.edit_mask = find(self.widget, QLineEdit, "editMask")
         self.edit_color = find(self.widget, QLineEdit, "editColor")
         self.edit_color_two = find(self.widget, QLineEdit, "editColorTwo")
@@ -164,11 +258,12 @@ class GfxEditorController(BaseEditorController):
         self.check_looping = find(self.widget, QCheckBox, "checkLooping")
         self.check_play_on_show = find(self.widget, QCheckBox, "checkPlayOnShow")
 
+        self.setup_schema_visibility_menus()
+        self.populate_gfx_type_combo()
+
         if self.list_gfx_nodes:
             self.list_gfx_nodes.currentItemChanged.connect(self.on_definition_selected)
 
-        if self.btn_new_node:
-            self.btn_new_node.clicked.connect(self.create_definition_from_image)
         if self.btn_duplicate_node:
             self.btn_duplicate_node.clicked.connect(self.duplicate_selected_definition)
             self.btn_duplicate_node.setEnabled(False)
@@ -177,12 +272,52 @@ class GfxEditorController(BaseEditorController):
             self.btn_delete_node.setEnabled(False)
         if self.btn_browse_source:
             self.btn_browse_source.clicked.connect(self.browse_source)
+        if self.btn_browse_source1:
+            self.btn_browse_source1.clicked.connect(lambda: self.browse_texture_source(
+                self.edit_source_path1,
+                self.edit_texture1,
+                "textureFile1",
+                "Select texture image 1",
+            ))
+        if self.btn_browse_source2:
+            self.btn_browse_source2.clicked.connect(lambda: self.browse_texture_source(
+                self.edit_source_path2,
+                self.edit_texture2,
+                "textureFile2",
+                "Select texture image 2",
+            ))
+        if self.btn_browse_texture:
+            self.btn_browse_texture.clicked.connect(lambda: self.browse_texture_destination(
+                self.edit_texture,
+                "texturefile",
+                "Select texture save destination",
+                self.edit_source_path,
+            ))
+        if self.btn_browse_texture1:
+            self.btn_browse_texture1.clicked.connect(lambda: self.browse_texture_destination(
+                self.edit_texture1,
+                "textureFile1",
+                "Select texture save destination 1",
+                self.edit_source_path1,
+            ))
+        if self.btn_browse_texture2:
+            self.btn_browse_texture2.clicked.connect(lambda: self.browse_texture_destination(
+                self.edit_texture2,
+                "textureFile2",
+                "Select texture save destination 2",
+                self.edit_source_path2,
+            ))
+        if self.btn_add:
+            self.btn_add.clicked.connect(self.add_definition_from_current)
         if self.combo_gfx_type:
             self.combo_gfx_type.currentIndexChanged.connect(self.on_type_changed)
 
         self.connect_line(self.edit_name, "name")
+        self.connect_source_line(self.edit_source_path, "texturefile", self.edit_texture, preview=True)
         self.connect_line(self.edit_texture, "texturefile", preview=True)
         self.connect_line(self.edit_effect, "effectFile")
+        self.connect_source_line(self.edit_source_path1, "textureFile1", self.edit_texture1, preview=True)
+        self.connect_source_line(self.edit_source_path2, "textureFile2", self.edit_texture2)
         self.connect_line(self.edit_texture1, "textureFile1", preview=True)
         self.connect_line(self.edit_texture2, "textureFile2")
         self.connect_line(self.edit_mask, "maskFile")
@@ -199,9 +334,280 @@ class GfxEditorController(BaseEditorController):
         self.connect_check(self.check_transparence, "transparencecheck")
         self.connect_check(self.check_looping, "looping")
         self.connect_check(self.check_play_on_show, "play_on_show")
+        self.connect_add_button_refresh()
 
         self.setup_preview_view()
         self.refresh()
+
+    def populate_gfx_type_combo(self):
+        if not self.combo_gfx_type:
+            return
+
+        schema = getattr(self.parser, "schema", {}) or {}
+        current_type = ""
+        current_definition = self.current_definition()
+        if current_definition:
+            current_type = current_definition.get("type", "")
+        elif self.combo_gfx_type.currentText():
+            current_type = self.combo_gfx_type.currentText()
+        populate_type_combo(self.combo_gfx_type, schema, current_type)
+        self.update_schema_visibility()
+        self.update_add_button_state()
+
+    def set_named_widget_visible(self, widget_name: str, visible: bool):
+        widget = find(self.widget, QWidget, widget_name)
+        if widget:
+            widget.setVisible(visible)
+
+    def setup_schema_visibility_menus(self):
+        self.more_items_menu = QMenu(self.widget) if self.btn_more_items else None
+        self.more_anim_items_menu = QMenu(self.widget) if self.btn_more_anim_items else None
+        self.schema_visibility_menus = []
+
+        if self.btn_more_items and self.more_items_menu:
+            self.btn_more_items.setMenu(self.more_items_menu)
+            self.more_items_menu.installEventFilter(self)
+            self.schema_visibility_menus.append(self.more_items_menu)
+        if self.btn_more_anim_items and self.more_anim_items_menu:
+            self.btn_more_anim_items.setMenu(self.more_anim_items_menu)
+            self.more_anim_items_menu.installEventFilter(self)
+            self.schema_visibility_menus.append(self.more_anim_items_menu)
+
+    def schema_visibility_state_key(self, definition_type: str, parent_field: str = "") -> str:
+        key = definition_type.lower()
+        if parent_field:
+            key += f":{parent_field.lower()}"
+        return key
+
+    def schema_field_has_value(self, field_name: str) -> bool:
+        definition = self.current_definition()
+        props = definition.get("properties", {}) if definition else {}
+        normalized = field_name.lower()
+        for prop_name, value in props.items():
+            if prop_name.lower() == normalized and str(value).strip():
+                return True
+        return False
+
+    def schema_optional_field_visible(self, definition_type: str, field_name: str, parent_field: str = "") -> bool:
+        state_key = self.schema_visibility_state_key(definition_type, parent_field)
+        enabled_fields = self.schema_visible_optional_fields.get(state_key, set())
+        return field_name.lower() in enabled_fields or self.schema_field_has_value(field_name)
+
+    def set_schema_optional_field_visible(
+        self,
+        definition_type: str,
+        field_name: str,
+        parent_field: str,
+        visible: bool,
+    ):
+        state_key = self.schema_visibility_state_key(definition_type, parent_field)
+        enabled_fields = self.schema_visible_optional_fields.setdefault(state_key, set())
+        normalized = field_name.lower()
+        if visible:
+            enabled_fields.add(normalized)
+        else:
+            enabled_fields.discard(normalized)
+
+    def schema_field_translation_key(self, field_name: str) -> str:
+        schema = getattr(self.parser, "schema", {}) or {}
+        schema_name = schema.get("schema_name", "schema")
+        return f"schema.{schema_name}.fields.{field_name}"
+
+    def schema_field_label(self, field_name: str, usage: str) -> str:
+        key = self.schema_field_translation_key(field_name)
+        plugin = getattr(self.widget, "active_plugin", None) or core.api.get_active_plugin()
+        translated = core.api.plugin_translate(
+            plugin,
+            key,
+            fallback=field_name,
+            context="schema_field",
+            metadata={
+                "schema_name": (getattr(self.parser, "schema", {}) or {}).get("schema_name", ""),
+                "field": field_name,
+            },
+        )
+        if translated and translated != field_name:
+            return f"{translated}（{field_name}）"
+        return field_name
+
+    def schema_field_has_visibility_binding(self, field_name: str, schema: dict, definition_type: str) -> bool:
+        normalized = field_name.lower()
+        if normalized in GFX_SCHEMA_FIELD_VISIBILITY_BINDINGS:
+            return True
+        for sub_field_name, _usage in schema_sub_fields_with_usage(schema, definition_type, field_name):
+            if sub_field_name.lower() in GFX_SCHEMA_FIELD_VISIBILITY_BINDINGS:
+                return True
+        return False
+
+    def rebuild_schema_visibility_menus(self):
+        if not self.combo_gfx_type:
+            return
+
+        schema = getattr(self.parser, "schema", {}) or {}
+        definition_type = self.combo_gfx_type.currentText().strip()
+        self.schema_visibility_actions = {}
+
+        if self.more_items_menu:
+            self.more_items_menu.clear()
+            count = 0
+            for field_name, usage in schema_fields_with_usage(schema, definition_type):
+                if usage == "required":
+                    continue
+                if not self.schema_field_has_visibility_binding(field_name, schema, definition_type):
+                    continue
+                action = self.add_schema_visibility_action(
+                    self.more_items_menu,
+                    definition_type,
+                    field_name,
+                    usage,
+                    "",
+                )
+                self.schema_visibility_actions[("", field_name.lower())] = action
+                count += 1
+            self.btn_more_items.setEnabled(count > 0)
+
+        if self.more_anim_items_menu:
+            self.more_anim_items_menu.clear()
+            count = 0
+            for field_name, usage in schema_sub_fields_with_usage(schema, definition_type, "animation"):
+                if usage == "required":
+                    continue
+                if field_name.lower() not in GFX_SCHEMA_FIELD_VISIBILITY_BINDINGS:
+                    continue
+                action = self.add_schema_visibility_action(
+                    self.more_anim_items_menu,
+                    definition_type,
+                    field_name,
+                    usage,
+                    "animation",
+                )
+                self.schema_visibility_actions[("animation", field_name.lower())] = action
+                count += 1
+            self.btn_more_anim_items.setEnabled(count > 0)
+
+    def add_schema_visibility_action(self, menu, definition_type: str, field_name: str, usage: str, parent_field: str):
+        required = usage == "required"
+        checked = required or self.schema_optional_field_visible(definition_type, field_name, parent_field)
+        action = QAction(self.schema_field_label(field_name, usage), menu)
+        action.setCheckable(True)
+        action.setChecked(checked)
+        action.setEnabled(not required)
+        action.triggered.connect(
+            lambda visible, f=field_name, p=parent_field, t=definition_type: self.on_schema_visibility_toggled(t, f, p, visible)
+        )
+        menu.addAction(action)
+        return action
+
+    def on_schema_visibility_toggled(self, definition_type: str, field_name: str, parent_field: str, visible: bool):
+        self.set_schema_optional_field_visible(definition_type, field_name, parent_field, visible)
+        self.update_schema_visibility(rebuild_menus=False)
+
+    def update_schema_visibility(self, rebuild_menus: bool = True):
+        if not self.combo_gfx_type:
+            return
+
+        schema = getattr(self.parser, "schema", {}) or {}
+        definition_type = self.combo_gfx_type.currentText().strip()
+        if rebuild_menus:
+            self.rebuild_schema_visibility_menus()
+
+        visible_fields = set()
+        root_fields = schema_fields_with_usage(schema, definition_type)
+        root_visible_fields = set()
+        for field_name, usage in root_fields:
+            normalized = field_name.lower()
+            if usage == "required" or self.schema_optional_field_visible(definition_type, field_name):
+                root_visible_fields.add(normalized)
+                visible_fields.add(normalized)
+
+        if "animation" in root_visible_fields:
+            for field_name, usage in schema_sub_fields_with_usage(schema, definition_type, "animation"):
+                if usage == "required" or self.schema_optional_field_visible(definition_type, field_name, "animation"):
+                    visible_fields.add(field_name.lower())
+
+        for field_name, widget_names in GFX_SCHEMA_FIELD_VISIBILITY_BINDINGS.items():
+            is_visible = field_name.lower() in visible_fields
+            for widget_name in widget_names:
+                self.set_named_widget_visible(widget_name, is_visible)
+
+        for group_name, group_fields in GFX_SCHEMA_GROUP_VISIBILITY_BINDINGS.items():
+            is_visible = any(field_name.lower() in visible_fields for field_name in group_fields)
+            self.set_named_widget_visible(group_name, is_visible)
+
+    def schema_field_binding(self, property_name: str) -> Optional[dict]:
+        return GFX_SCHEMA_FIELD_BINDINGS.get(property_name.lower())
+
+    def schema_field_control(self, property_name: str):
+        binding = self.schema_field_binding(property_name)
+        if not binding:
+            return None
+        controls = []
+        for attr_name in binding.get("controls", ()):
+            control = getattr(self, attr_name, None)
+            if control is not None:
+                controls.append(control)
+        if not controls:
+            return None
+        if len(controls) == 1:
+            return controls[0]
+        return tuple(controls)
+
+    def schema_field_value(self, property_name: str) -> str:
+        binding = self.schema_field_binding(property_name)
+        control = self.schema_field_control(property_name)
+        if not binding or not control:
+            return ""
+
+        kind = binding.get("kind", "")
+        if kind == "pair" and isinstance(control, tuple):
+            values = [self.format_number(item.value()) for item in control]
+            if all(value in {"", "0", "0.0"} for value in values):
+                return ""
+            return "{ " + " ".join(values) + " }"
+
+        if isinstance(control, QLineEdit):
+            return control.text().strip()
+        if isinstance(control, (QSpinBox, QDoubleSpinBox)):
+            value = self.format_number(control.value())
+            return "" if value in {"", "0", "0.0"} and kind == "spin" else value
+        if isinstance(control, QCheckBox):
+            if control.isChecked():
+                return "yes"
+            settings = self.get_plugin_settings()
+            return "no" if settings.get("explicit_no_export", False) else ""
+        if isinstance(control, QComboBox):
+            return control.currentText().strip()
+        return ""
+
+    def update_add_button_state(self):
+        if not self.btn_add or not self.combo_gfx_type:
+            return
+
+        definition_type = self.combo_gfx_type.currentText().strip()
+        schema = getattr(self.parser, "schema", {}) or {}
+        if not definition_type or not schema_type_definition(schema, definition_type):
+            self.btn_add.setEnabled(False)
+            self.btn_add.setToolTip("有効な型を選択してください")
+            self.combo_gfx_type.setToolTip("有効な型を選択してください")
+            return
+
+        missing_fields = []
+        for field_name in schema_required_fields(schema, definition_type, GFX_SCHEMA_FIELD_BINDINGS):
+            if not self.schema_field_value(field_name).strip():
+                missing_fields.append(field_name)
+
+        self.combo_gfx_type.setToolTip(
+            f"{definition_type}\n"
+            f"{'、'.join(schema_required_fields(schema, definition_type, GFX_SCHEMA_FIELD_BINDINGS)) or '必須項目はありません'}"
+        )
+
+        if missing_fields:
+            self.btn_add.setEnabled(False)
+            self.btn_add.setToolTip(missing_required_tooltip(missing_fields))
+            return
+
+        self.btn_add.setEnabled(True)
+        self.btn_add.setToolTip("必須項目がそろっています")
 
     def setup_preview_view(self):
         if not self.graphics_texture_view:
@@ -257,6 +663,81 @@ class GfxEditorController(BaseEditorController):
         if self.preview_placeholder and self.graphics_texture_view:
             self.preview_placeholder.setGeometry(self.graphics_texture_view.viewport().rect())
 
+    def inline_action_icon_path(self, icon_name: str, icon_source: str) -> str:
+        base_dir = os.path.dirname(__file__)
+        if icon_source == "plugin":
+            return os.path.abspath(os.path.join(base_dir, "..", "asset", "icons", icon_name))
+        return os.path.abspath(os.path.join(base_dir, "..", "..", "..", "assets", "icons", icon_name))
+
+    def load_inline_action_field(self, host: QWidget, *, icon_name: str, tooltip: str, on_clicked=None, icon_source: str = "plugin"):
+        if not host:
+            return None, None, None
+
+        ui_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "widgets", "inline_action_field.ui"))
+        ui_file = QFile(ui_path)
+        if not ui_file.open(QFile.OpenModeFlag.ReadOnly):
+            return None, None, None
+
+        try:
+            loader = QUiLoader()
+            field = loader.load(ui_file, host)
+        finally:
+            ui_file.close()
+
+        if not field:
+            return None, None, None
+
+        field.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        layout = host.layout()
+        if layout is None:
+            layout = QVBoxLayout(host)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setSpacing(0)
+        layout.addWidget(field)
+
+        field.setProperty("active", False)
+        edit = field.findChild(QLineEdit, "editInlineActionText")
+        button = field.findChild(QToolButton, "btnInlineAction")
+        if edit:
+            edit.installEventFilter(self)
+            self.inline_action_frame_by_edit[edit] = field
+        if button:
+            button.setToolTip(tooltip)
+            icon_path = self.inline_action_icon_path(icon_name, icon_source)
+            if os.path.exists(icon_path):
+                color_hex = self.widget.palette().color(self.widget.foregroundRole()).name()
+                button.setIcon(load_svg_icon(icon_path, color_hex))
+            button.setIconSize(button.sizeHint())
+            if on_clicked:
+                button.clicked.connect(on_clicked)
+
+        return field, edit, button
+
+    def eventFilter(self, watched, event):
+        frame = self.inline_action_frame_by_edit.get(watched)
+        if frame:
+            if event.type() == QEvent.Type.FocusIn:
+                self.update_inline_action_frame_focus(frame, True)
+            elif event.type() == QEvent.Type.FocusOut:
+                self.update_inline_action_frame_focus(frame, False)
+        if isinstance(watched, QMenu) and event.type() == QEvent.Type.MouseButtonRelease:
+            action = watched.actionAt(event.pos())
+            if action and action.isCheckable() and action.isEnabled():
+                action.trigger()
+                return True
+        return super().eventFilter(watched, event)
+
+    def update_name_frame_focus(self, focused: bool):
+        self.update_inline_action_frame_focus(self.name_frame, focused)
+
+    def update_inline_action_frame_focus(self, frame, focused: bool):
+        if not frame:
+            return
+        frame.setProperty("active", focused)
+        frame.style().unpolish(frame)
+        frame.style().polish(frame)
+        frame.update()
+
     def update_preview_placeholder_visibility(self):
         if not self.preview_placeholder:
             return
@@ -273,6 +754,29 @@ class GfxEditorController(BaseEditorController):
             self.set_current_property(property_name, control.text().strip())
             if preview:
                 self.load_preview_from_current()
+
+        control.editingFinished.connect(on_finished)
+
+    def connect_source_line(self, control, property_name: str, output_control=None, preview: bool = False):
+        if not control:
+            return
+
+        def on_finished():
+            source_path = control.text().strip()
+            previous_source = self.source_path_for_current_definition(property_name)
+            self.set_definition_source_path(property_name, source_path)
+            if output_control and source_path:
+                current_output = output_control.text().strip()
+                if not current_output:
+                    set_line(output_control, self.default_dds_texture_value_for_source(source_path))
+                    self.set_current_property(property_name, output_control.text().strip())
+            if source_path and self.edit_name and not self.edit_name.text().strip():
+                new_name = self.generate_graphic_definition_name(source_path)
+                if new_name:
+                    self.edit_name.setText(new_name)
+                    self.set_current_property("name", new_name)
+            if preview and source_path:
+                self.load_preview(source_path)
 
         control.editingFinished.connect(on_finished)
 
@@ -306,6 +810,47 @@ class GfxEditorController(BaseEditorController):
 
         control.toggled.connect(on_toggled)
 
+    def connect_add_button_refresh(self):
+        if self.combo_gfx_type:
+            self.combo_gfx_type.currentIndexChanged.connect(self.update_add_button_state)
+
+        line_edits = [
+            self.edit_name,
+            self.edit_texture,
+            self.edit_effect,
+            self.edit_texture1,
+            self.edit_texture2,
+            self.edit_mask,
+            self.edit_color,
+            self.edit_color_two,
+        ]
+        for control in line_edits:
+            if control:
+                control.textChanged.connect(self.update_add_button_state)
+
+        for control in [
+            self.spin_size_w,
+            self.spin_size_h,
+            self.spin_border_x,
+            self.spin_border_y,
+            self.spin_frames,
+            self.spin_rate,
+            self.spin_pause_on_loop,
+        ]:
+            if control:
+                control.valueChanged.connect(lambda _value: self.update_add_button_state())
+
+        for control in [
+            self.check_horizontal,
+            self.check_transparent,
+            self.check_lazy_load,
+            self.check_transparence,
+            self.check_looping,
+            self.check_play_on_show,
+        ]:
+            if control:
+                control.toggled.connect(lambda _checked: self.update_add_button_state())
+
     def format_number(self, value) -> str:
         try:
             if float(value).is_integer():
@@ -323,6 +868,7 @@ class GfxEditorController(BaseEditorController):
             self.refresh_definition_list()
             self.restore_selection(previous_name)
             self.update_definition_state()
+            self.update_add_button_state()
         finally:
             self.updating = False
 
@@ -341,8 +887,8 @@ class GfxEditorController(BaseEditorController):
 
         return {
             "name": definition.id,
-            "type": definition.gfx_type,
-            "group": definition.group,
+            "type": definition.definition_type,
+            "group": definition.root_group,
             "properties": properties,
             "order": order,
         }
@@ -422,6 +968,9 @@ class GfxEditorController(BaseEditorController):
             set_line(self.edit_name, props.get("name", ""))
             set_line(self.edit_texture, self.unquote(props.get("texturefile", "")))
             set_line(self.edit_effect, self.unquote(props.get("effectFile", "")))
+            set_line(self.edit_source_path, self.source_path_for_definition(definition, "texturefile") if definition else "")
+            set_line(self.edit_source_path1, self.source_path_for_definition(definition, "textureFile1") if definition else "")
+            set_line(self.edit_source_path2, self.source_path_for_definition(definition, "textureFile2") if definition else "")
             set_line(self.edit_texture1, self.unquote(props.get("textureFile1", "")))
             set_line(self.edit_texture2, self.unquote(props.get("textureFile2", "")))
             set_line(self.edit_mask, self.unquote(props.get("maskFile", "")))
@@ -438,11 +987,12 @@ class GfxEditorController(BaseEditorController):
             set_checked(self.check_transparence, self.bool_from_text(props.get("transparencecheck", "")))
             set_checked(self.check_looping, self.bool_from_text(props.get("looping", "")))
             set_checked(self.check_play_on_show, self.bool_from_text(props.get("play_on_show", "")))
-            set_line(self.edit_source_path, self.first_texture_value(props))
         finally:
             self.updating = False
 
-        self.set_definition_selected(definition is not None)
+        self.update_schema_visibility()
+        self.update_definition_state()
+        self.update_add_button_state()
         self.load_preview_from_current()
 
     def set_double(self, control, value):
@@ -464,11 +1014,6 @@ class GfxEditorController(BaseEditorController):
             control.setValue(number)
             control.blockSignals(was_blocked)
 
-    def set_definition_selected(self, selected: bool):
-        if self.widget_center_pane:
-            self.widget_center_pane.setCurrentIndex(0 if selected else 1)
-        self.update_preview_placeholder_visibility()
-
     def update_definition_state(self):
         has_selection = self.selected_index is not None
         if self.btn_duplicate_node:
@@ -482,13 +1027,22 @@ class GfxEditorController(BaseEditorController):
             return
         self.create_definition(source_path=path)
 
+    def add_definition_from_current(self):
+        source_path = ""
+        if self.edit_source_path:
+            source_path = self.edit_source_path.text().strip()
+
+        name = self.edit_name.text().strip() if self.edit_name else ""
+        definition_type = self.combo_gfx_type.currentText() if self.combo_gfx_type else None
+        self.create_definition(definition_type=definition_type, name=name or None, source_path=source_path)
+
     def create_definition(self, definition_type=None, name=None, source_path=""):
         if definition_type is None and self.combo_gfx_type:
             definition_type = self.combo_gfx_type.currentText() or "spriteType"
-        if not name:
-            name = self.generate_graphic_definition_name(source_path)
+        if name is None:
+            name = self.generate_graphic_definition_name(source_path) if source_path else ""
 
-        texture_value = self.texture_value_for_path(source_path)
+        texture_value = self.default_dds_texture_value_for_source(source_path) if source_path else ""
         definition = {
             "name": name,
             "type": definition_type or "spriteType",
@@ -499,12 +1053,98 @@ class GfxEditorController(BaseEditorController):
             },
             "order": ["name", "texturefile"],
         }
+        if source_path:
+            definition["_source_paths"] = {"texturefile": source_path}
         self.definitions.append(definition)
         self.selected_index = len(self.definitions) - 1
         self.serialize_document()
         self.refresh_definition_list(self.selected_index)
         self.load_definition(self.selected_index)
         self.widget.is_dirty = True
+
+    def apply_auto_naming(self):
+        if not self.edit_name:
+            return
+
+        source_path = self.preferred_auto_naming_source_path()
+
+        new_name = self.generate_graphic_definition_name(source_path)
+        if not new_name:
+            return
+
+        set_line(self.edit_name, new_name)
+        if self.current_definition():
+            self.set_current_property("name", new_name)
+        else:
+            self.update_add_button_state()
+
+    def preferred_auto_naming_source_path(self) -> str:
+        definition = self.current_definition()
+        definition_type = ""
+        if definition:
+            definition_type = (definition.get("type", "") or "").strip().lower()
+        elif self.combo_gfx_type:
+            definition_type = self.combo_gfx_type.currentText().strip().lower()
+
+        if definition_type == "progressbartype":
+            property_order = ("textureFile1", "textureFile2", "texturefile")
+            source_edits = {
+                "textureFile1": self.edit_source_path1,
+                "textureFile2": self.edit_source_path2,
+                "texturefile": self.edit_source_path,
+            }
+        else:
+            property_order = ("texturefile", "textureFile1", "textureFile2")
+            source_edits = {
+                "texturefile": self.edit_source_path,
+                "textureFile1": self.edit_source_path1,
+                "textureFile2": self.edit_source_path2,
+            }
+
+        for property_name in property_order:
+            source_edit = source_edits.get(property_name)
+            if source_edit:
+                source_path = source_edit.text().strip()
+                if source_path:
+                    return source_path
+
+            if definition:
+                source_path = self.source_path_for_definition(definition, property_name)
+                if source_path:
+                    return source_path
+
+                props = definition.get("properties", {})
+                actual_key = self.actual_property_key(props, property_name)
+                value = self.unquote(props.get(actual_key, ""))
+                if value:
+                    resolved = self.resolve_texture_path(value)
+                    if resolved and os.path.exists(resolved):
+                        return resolved
+
+        return ""
+
+    def apply_auto_texture_naming(self, source_edit, texture_edit, property_name: str):
+        if not texture_edit:
+            return
+
+        source_path = ""
+        if source_edit:
+            source_path = source_edit.text().strip()
+        if not source_path:
+            definition = self.current_definition()
+            if definition:
+                source_path = self.source_path_for_definition(definition, property_name)
+
+        if not source_path:
+            return
+
+        new_value = self.default_dds_texture_value_for_source(source_path)
+        if not new_value:
+            return
+
+        set_line(texture_edit, new_value)
+        if self.current_definition():
+            self.set_current_property(property_name, new_value)
 
     def generate_graphic_definition_name(self, source_path: str = "") -> str:
         file_stem = os.path.splitext(os.path.basename(source_path))[0] if source_path else ""
@@ -529,6 +1169,8 @@ class GfxEditorController(BaseEditorController):
             "properties": dict(definition.get("properties", {})),
             "order": list(definition.get("order", [])),
         }
+        if definition.get("_source_paths"):
+            copy["_source_paths"] = dict(definition.get("_source_paths", {}))
         copy["properties"]["name"] = copy["name"]
         self.definitions.append(copy)
         self.selected_index = len(self.definitions) - 1
@@ -557,21 +1199,64 @@ class GfxEditorController(BaseEditorController):
         self.widget.is_dirty = True
 
     def browse_source(self):
-        path = self.select_image_file("Select texture image")
+        self.browse_texture_source(self.edit_source_path, self.edit_texture, "texturefile", "Select texture image")
+
+    def browse_texture_destination(self, texture_edit, property_name: str, title: str, source_edit=None):
+        default_path = ""
+        if texture_edit:
+            current_texture = texture_edit.text().strip()
+            if current_texture:
+                default_path = self.resolve_texture_path(current_texture)
+        if not default_path and source_edit:
+            source_path = source_edit.text().strip()
+            if source_path:
+                default_path = self.default_dds_output_path_for_source(source_path)
+
+        path, _ = QFileDialog.getSaveFileName(
+            self.widget,
+            title,
+            default_path or os.path.join(self.get_mod_root(), "gfx"),
+            "DDS Files (*.dds);;All Files (*.*)",
+        )
         if not path:
             return
+
+        root, ext = os.path.splitext(path)
+        if not ext:
+            path = root + ".dds"
         texture_value = self.texture_value_for_path(path)
-        if self.edit_source_path:
-            set_line(self.edit_source_path, texture_value)
-        if self.edit_texture:
-            set_line(self.edit_texture, texture_value)
-        self.set_current_property("texturefile", texture_value)
+        if texture_edit:
+            set_line(texture_edit, texture_value)
+        self.set_current_property(property_name, texture_value)
+        if self.current_definition():
+            self.load_preview_from_current()
+
+    def browse_texture_source(self, source_edit, texture_edit, property_name: str, title: str, overwrite_texture: bool = False):
+        path = self.select_image_file(title, source_edit)
+        if not path:
+            return
+        texture_value = self.default_dds_texture_value_for_source(path)
+        if source_edit:
+            set_line(source_edit, path)
+        should_update_texture = texture_edit and (overwrite_texture or not texture_edit.text().strip())
+        if should_update_texture:
+            set_line(texture_edit, texture_value)
+        self.set_definition_source_path(property_name, path)
+        if should_update_texture:
+            self.set_current_property(property_name, texture_value)
+
+        if path and self.edit_name and not self.edit_name.text().strip():
+            new_name = self.generate_graphic_definition_name(path)
+            if new_name:
+                self.edit_name.setText(new_name)
+                self.set_current_property("name", new_name)
+
         self.load_preview(path)
 
-    def select_image_file(self, title: str) -> str:
+    def select_image_file(self, title: str, source_edit=None) -> str:
         start_dir = ""
-        if self.edit_source_path:
-            current_value = self.edit_source_path.text().strip()
+        if source_edit:
+            current_value = source_edit.text().strip()
             if current_value:
                 start_dir = os.path.dirname(current_value) or current_value
         path, _ = QFileDialog.getOpenFileName(
@@ -587,6 +1272,7 @@ class GfxEditorController(BaseEditorController):
             return
         definition = self.current_definition()
         if not definition:
+            self.update_add_button_state()
             return
         props = definition.setdefault("properties", {})
         order = definition.setdefault("order", [])
@@ -610,17 +1296,58 @@ class GfxEditorController(BaseEditorController):
         self.serialize_document()
         self.refresh_definition_list(self.selected_index)
         self.widget.is_dirty = True
+        self.update_add_button_state()
+
+    def set_definition_source_path(self, property_name: str, path: str):
+        definition = self.current_definition()
+        if not definition:
+            return
+        source_paths = definition.setdefault("_source_paths", {})
+        if path:
+            source_paths[property_name] = path
+        else:
+            source_paths.pop(property_name, None)
+        if not source_paths:
+            definition.pop("_source_paths", None)
+
+    def source_path_for_current_definition(self, property_name: str) -> str:
+        definition = self.current_definition()
+        if not definition:
+            return ""
+        return self.source_path_for_definition(definition, property_name)
+
+    def source_path_for_definition(self, definition: dict, property_name: str) -> str:
+        source_paths = definition.get("_source_paths", {}) if definition else {}
+        return source_paths.get(property_name, "")
+
+    def default_dds_output_path_for_source(self, source_path: str) -> str:
+        if not source_path:
+            return ""
+        source_name = os.path.splitext(os.path.basename(source_path))[0]
+        settings = self.get_plugin_settings()
+        format_str = settings.get("graphic_texture_file_format", "{file}")
+        formatted_name = format_str.format(file=source_name)
+        return os.path.join(self.get_mod_root(), "gfx", f"{formatted_name}.dds")
+
+    def default_dds_texture_value_for_source(self, source_path: str) -> str:
+        return self.texture_value_for_path(self.default_dds_output_path_for_source(source_path))
 
     def on_type_changed(self):
         if self.updating:
             return
+        if not self.combo_gfx_type:
+            return
+        self.update_schema_visibility()
+        self.update_add_button_state()
+
         definition = self.current_definition()
-        if not definition or not self.combo_gfx_type:
+        if not definition:
             return
         definition["type"] = self.combo_gfx_type.currentText() or "spriteType"
         self.serialize_document()
         self.refresh_definition_list(self.selected_index)
         self.widget.is_dirty = True
+        self.update_add_button_state()
 
     def actual_property_key(self, props: dict, property_name: str) -> str:
         for key in props.keys():
@@ -684,6 +1411,8 @@ class GfxEditorController(BaseEditorController):
         return text
 
     def on_save_triggered(self):
+        if not self.save_related_textures():
+            return False
         self.serialize_document()
         if not self.save_content_to_file(save_as=False):
             return False
@@ -691,11 +1420,85 @@ class GfxEditorController(BaseEditorController):
         return True
 
     def on_save_as_triggered(self):
+        if not self.save_related_textures():
+            return False
         self.serialize_document()
         if not self.save_content_to_file(save_as=True):
             return False
         self.widget.is_dirty = False
         return True
+
+    def save_related_textures(self) -> bool:
+        failures = []
+        changed = False
+
+        for definition in self.definitions:
+            props = definition.get("properties", {})
+            source_paths = definition.get("_source_paths", {})
+            for property_name in DDS_TEXTURE_PROPERTIES:
+                actual_key = self.actual_property_key(props, property_name)
+                value = self.unquote(props.get(actual_key, ""))
+                if not value and actual_key not in source_paths:
+                    continue
+
+                source_path = source_paths.get(actual_key, "")
+                if not source_path and value:
+                    source_path = self.resolve_texture_path(value)
+                if not source_path or not os.path.exists(source_path):
+                    failures.append(f"{definition.get('name', '')} / {actual_key}: {value}")
+                    continue
+
+                output_path = self.dds_output_path_for_texture(value, source_path)
+                if not self.save_dds_texture(source_path, output_path):
+                    failures.append(f"{definition.get('name', '')} / {actual_key}: {output_path}")
+                    continue
+
+                output_value = self.texture_value_for_path(output_path)
+                if output_value != value:
+                    props[actual_key] = output_value
+                    changed = True
+
+        if changed and self.selected_index is not None:
+            self.load_definition(self.selected_index)
+
+        if failures:
+            QMessageBox.warning(
+                self.widget,
+                "DDS書き出し失敗",
+                "画像のDDS書き出しに失敗しました。\n\n" + "\n".join(failures),
+            )
+            return False
+
+        return True
+
+    def save_dds_texture(self, source_path: str, output_path: str) -> bool:
+        pil_image = load_pil_image(source_path)
+        if pil_image is None:
+            return False
+
+        try:
+            output_dir = os.path.dirname(output_path)
+            if output_dir:
+                os.makedirs(output_dir, exist_ok=True)
+            pil_image.save(output_path, format="DDS", pixel_format="DXT5")
+        except Exception:
+            return False
+        return True
+
+    def dds_output_path_for_texture(self, texture_value: str, source_path: str = "") -> str:
+        texture_value = self.unquote(texture_value)
+        if texture_value:
+            if os.path.isabs(texture_value):
+                root, _ = os.path.splitext(texture_value)
+                return root + ".dds"
+            normalized = texture_value.replace("\\", "/")
+            if "/" not in normalized and not normalized.startswith("gfx/"):
+                normalized = f"gfx/{normalized}"
+            root, _ = os.path.splitext(os.path.join(self.get_mod_root(), normalized))
+            return root + ".dds"
+        if source_path:
+            return self.default_dds_output_path_for_source(source_path)
+        return ""
 
     def save_content_to_file(self, save_as: bool = False) -> bool:
         file_path = self.file_path or getattr(self.widget, "file_path", "")
@@ -742,8 +1545,21 @@ class GfxEditorController(BaseEditorController):
         if not definition:
             self.clear_preview()
             return
-        texture = self.first_texture_value(definition.get("properties", {}))
-        self.load_preview(self.resolve_texture_path(texture))
+        props = definition.get("properties", {})
+        source_paths = definition.get("_source_paths", {})
+        for key in ("texturefile", "textureFile1", "textureFile2"):
+            actual_key = self.actual_property_key(props, key)
+            source_path = source_paths.get(actual_key, "")
+            if source_path and os.path.exists(source_path):
+                self.load_preview(source_path)
+                return
+            texture = self.unquote(props.get(actual_key, ""))
+            if texture:
+                resolved = self.resolve_texture_path(texture)
+                if resolved and os.path.exists(resolved):
+                    self.load_preview(resolved)
+                    return
+        self.clear_preview()
 
     def load_preview(self, path: str):
         if not path:

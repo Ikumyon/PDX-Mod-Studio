@@ -2,7 +2,7 @@ import json
 import os
 
 import core.api
-from PySide6.QtCore import QFile, QFileSystemWatcher, QSize, Qt, QTimer, QCoreApplication
+from PySide6.QtCore import QFile, QFileSystemWatcher, QLocale, QSize, Qt, QTimer, QCoreApplication
 tr = QCoreApplication.translate
 from PySide6.QtGui import QIcon
 from PySide6.QtUiTools import QUiLoader
@@ -25,6 +25,7 @@ from plugins.hoi4.localisation.registry import LocalisationRegistry
 # グローバルなレジストリインスタンス
 _registry = None
 _watcher = None
+_i18n_cache = {}
 
 # --- 設定関連の定数とロジック ---
 DEFAULT_SETTINGS = {
@@ -41,13 +42,15 @@ DEFAULT_SETTINGS = {
     "achievement_loc_file_format": "{lang}/achievements_l_{lang}.yml",
     "achievement_unique_id_format": "{file}_{number}",
     "achievement_id_format": "{unique_id}_{number}",
-    "graphic_definition_name_format": "{file}",
+    "graphic_definition_name_format": "GFX_{file}",
+    "graphic_texture_file_format": "GFX_{file}",
     "pinned_ids": [
         "create_decision",
         "create_event",
         "create_focus"
     ],
     "display_language": "l_japanese",
+    "plugin_ui_language": "ja-JP",
     "save_empty_localisation": False,
     "explicit_no_export": False
 }
@@ -66,7 +69,8 @@ VARIABLE_DEFINITIONS = {
     "achievement_loc_file_format": ["{id}", "{lang}", "{file}"],
     "achievement_unique_id_format": ["{file}", "{number}", "{a-z}"],
     "achievement_id_format": ["{unique_id}", "{number}", "{a-z}"],
-    "graphic_definition_name_format": ["{file}", "{number}", "{a-z}"]
+    "graphic_definition_name_format": ["{file}", "{number}", "{a-z}"],
+    "graphic_texture_file_format": ["{file}", "{number}", "{a-z}"]
 }
 
 class VariableSelectorDialog(QDialog):
@@ -136,6 +140,70 @@ def load_plugin_settings(plugin):
 
     plugin.settings = settings
     return settings
+
+
+def normalize_language_code(language: str) -> str:
+    text = str(language or "").strip().replace("_", "-")
+    if not text:
+        return ""
+    parts = text.split("-")
+    if len(parts) == 1:
+        return parts[0].lower()
+    return "-".join([parts[0].lower(), *[part.upper() if len(part) == 2 else part for part in parts[1:]]])
+
+
+def plugin_ui_language(plugin, requested_language: str = "") -> str:
+    if requested_language:
+        return normalize_language_code(requested_language)
+
+    settings = getattr(plugin, "settings", None)
+    if not isinstance(settings, dict):
+        settings = load_plugin_settings(plugin)
+
+    configured = normalize_language_code(settings.get("plugin_ui_language", ""))
+    if configured:
+        return configured
+
+    system_language = normalize_language_code(QLocale.system().name())
+    return system_language or "ja-JP"
+
+
+def load_i18n_table(plugin, language: str) -> dict:
+    language = plugin_ui_language(plugin, language)
+    cache_key = (plugin.id, language)
+    if cache_key in _i18n_cache:
+        return _i18n_cache[cache_key]
+
+    candidates = [language]
+    if "-" in language:
+        candidates.append(language.split("-", 1)[0])
+    if "ja-JP" not in candidates:
+        candidates.append("ja-JP")
+
+    table = {}
+    for candidate in reversed(candidates):
+        path = os.path.join(plugin.path, "i18n", f"{candidate}.json")
+        if not os.path.exists(path):
+            continue
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                table.update(json.load(handle))
+        except Exception as error:
+            print(f"Failed to load plugin translation {path}: {error}")
+
+    _i18n_cache[cache_key] = table
+    return table
+
+
+def hook_i18n_translate(plugin, payload):
+    key = str((payload or {}).get("key", ""))
+    fallback = (payload or {}).get("fallback")
+    language = (payload or {}).get("language", "")
+    if not key:
+        return fallback or ""
+
+    table = load_i18n_table(plugin, language)
+    return table.get(key, fallback if fallback is not None else key)
 
 def load_plugin_elements(plugin):
     """Load HoI4 element definitions from each element config.json."""
@@ -260,7 +328,8 @@ def setup_settings_controls(widget, plugin, project_path):
         "achievementLocFileFormatEdit": "achievement_loc_file_format",
         "achievementUniqueIdFormatEdit": "achievement_unique_id_format",
         "achievementIdFormatEdit": "achievement_id_format",
-        "graphicDefinitionNameFormatEdit": "graphic_definition_name_format"
+        "graphicDefinitionNameFormatEdit": "graphic_definition_name_format",
+        "graphicTextureFileFormatEdit": "graphic_texture_file_format"
     }
 
     # 各入力欄とBrowseボタン（鉛筆アイコン）の自動紐付け

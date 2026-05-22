@@ -132,6 +132,9 @@
     <addaction name="actionSaveAs"/>
     <addaction name="actionSaveAll"/>
     <addaction name="separator"/>
+    <addaction name="actionExportProject"/>
+    <addaction name="actionExportCurrentTab"/>
+    <addaction name="separator"/>
     <addaction name="actionExit"/>
    </widget>
    <widget class="QMenu" name="menuEdit">
@@ -254,6 +257,16 @@
   <action name="actionSaveProjectAs">
    <property name="text">
     <string>プロジェクトを別名で保存...</string>
+   </property>
+  </action>
+  <action name="actionExportProject">
+   <property name="text">
+    <string>プロジェクト全体を出力</string>
+   </property>
+  </action>
+  <action name="actionExportCurrentTab">
+   <property name="text">
+    <string>現在のタブを出力</string>
    </property>
   </action>
  </widget>
