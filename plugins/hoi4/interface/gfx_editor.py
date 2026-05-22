@@ -156,8 +156,6 @@ def setup(widget, file_path, content):
     widget.setPlainText = controller.set_content
     widget.set_params = controller.set_params
     widget.setParams = controller.set_params
-    widget.on_save_triggered = controller.on_save_triggered
-    widget.on_save_as_triggered = controller.on_save_as_triggered
     controller.bind()
     core.api.notify_editor_ready(widget)
 
@@ -1410,24 +1408,6 @@ class GfxEditorController(BaseEditorController):
             return f'"{self.unquote(text)}"'
         return text
 
-    def on_save_triggered(self):
-        if not self.save_related_textures():
-            return False
-        self.serialize_document()
-        if not self.save_content_to_file(save_as=False):
-            return False
-        self.widget.is_dirty = False
-        return True
-
-    def on_save_as_triggered(self):
-        if not self.save_related_textures():
-            return False
-        self.serialize_document()
-        if not self.save_content_to_file(save_as=True):
-            return False
-        self.widget.is_dirty = False
-        return True
-
     def save_related_textures(self) -> bool:
         failures = []
         changed = False
@@ -1499,29 +1479,6 @@ class GfxEditorController(BaseEditorController):
         if source_path:
             return self.default_dds_output_path_for_source(source_path)
         return ""
-
-    def save_content_to_file(self, save_as: bool = False) -> bool:
-        file_path = self.file_path or getattr(self.widget, "file_path", "")
-        if save_as or not file_path or str(file_path).startswith("untitled:"):
-            file_path, _ = QFileDialog.getSaveFileName(
-                self.widget,
-                "Save GFX File",
-                os.path.dirname(file_path) if file_path and not str(file_path).startswith("untitled:") else "",
-                "GFX Files (*.gfx);;All Files (*.*)",
-            )
-            if not file_path:
-                return False
-
-        try:
-            with open(file_path, "w", encoding="utf-8") as handle:
-                handle.write(self.widget.content)
-        except Exception as error:
-            print(f"Failed to save GFX file: {error}")
-            return False
-
-        self.file_path = file_path
-        self.widget.file_path = file_path
-        return True
 
     def current_definition(self) -> Optional[dict]:
         if self.selected_index is None or self.selected_index < 0 or self.selected_index >= len(self.definitions):

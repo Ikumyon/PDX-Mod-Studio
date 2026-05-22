@@ -284,103 +284,11 @@ def main():
                 window.editorTabs.setTabText(index, clean_text)
             project_tree.update_open_editors(window.editorTabs)
 
-    def _path_for_save_dialog(widget):
-        file_path = getattr(widget, "file_path", "")
-        if file_path and not file_path.startswith("untitled:"):
-            return file_path
-        project_path = getattr(project_tree, "current_project_path", "")
-        if project_path:
-            return project_path
-        return base_dir
-
-    def save_text_widget(widget, save_as=False):
-        file_path = getattr(widget, "file_path", "")
-        if save_as or not file_path or file_path.startswith("untitled:"):
-            file_path, _ = QFileDialog.getSaveFileName(window, "Save File", _path_for_save_dialog(widget))
-            if not file_path:
-                return False
-
-        element = get_element_for_path(file_path)
-        encoding = "utf-8"
-        if element:
-            encoding = element.plugin.get_element_attribute(element, "encoding", file_path=file_path)
-
-        try:
-            with open(file_path, "w", encoding=encoding) as handle:
-                handle.write(widget.toPlainText())
-        except Exception as error:
-            window.statusBar().showMessage(f"Failed to save file: {error}", 5000)
-            return False
-
-        widget.file_path = file_path
-        widget.content = widget.toPlainText()
-        widget._last_notified_content = widget.content
-        index = window.editorTabs.indexOf(widget)
-        if index >= 0:
-            window.editorTabs.setTabToolTip(index, file_path)
-            window.editorTabs.setTabText(index, os.path.basename(file_path))
-            window.editorTabs.setTabIcon(index, project_tree.get_icon_for_path(file_path))
-
-        mark_tab_clean(widget)
-        window.statusBar().showMessage(f"Saved: {file_path}", 3000)
-        return True
-
-    def save_tab(widget, save_as=False):
-        if not widget:
-            return False
-
-        method_name = "on_save_as_triggered" if save_as else "on_save_triggered"
-        save = getattr(widget, method_name, None)
-        if not callable(save):
-            return False
-
-        try:
-            result = save()
-        except Exception as error:
-            window.statusBar().showMessage(f"Failed to save tab: {error}", 5000)
-            return False
-
-        success = result is not False
-        if success:
-            mark_tab_clean(widget)
-            file_path = getattr(widget, "file_path", None)
-            if file_path and not str(file_path).startswith("untitled:"):
-                core.api.notify_file_saved(file_path)
-        return success
-
-    def save_current_tab():
-        if not window.editorTabs:
-            return False
-        index = window.editorTabs.currentIndex()
-        if index < 0:
-            return False
-        return save_tab(window.editorTabs.widget(index), False)
-
-    def save_current_tab_as():
-        if not window.editorTabs:
-            return False
-        index = window.editorTabs.currentIndex()
-        if index < 0:
-            return False
-        return save_tab(window.editorTabs.widget(index), True)
-
-    def save_all_tabs():
-        if not window.editorTabs:
-            return False
-        ok = True
-        for index in range(window.editorTabs.count()):
-            widget = window.editorTabs.widget(index)
-            if getattr(widget, "is_dirty", True):
-                ok = save_tab(widget, False) and ok
-        return ok
-
     def create_editor_widget(editor_id, file_path, content, available_editors, params=None):
         editor_id = editor_registry.normalize_editor_id(editor_id)
         if editor_id == TEXT_EDITOR_ID:
             widget = EditorWidget()
             widget.setPlainText(content)
-            widget.on_save_triggered = lambda w=widget: save_text_widget(w, False)
-            widget.on_save_as_triggered = lambda w=widget: save_text_widget(w, True)
             widget.textChanged.connect(lambda w=widget: mark_tab_dirty(w))
         else:
             widget = editor_registry.create_editor_widget(editor_id, window.editorTabs, file_path, content)
@@ -403,16 +311,6 @@ def main():
         # 初回のエラー波線診断を実行
         if hasattr(widget, "run_diagnostics"):
             widget.run_diagnostics()
-
-
-
-        controller = getattr(widget, "plugin_controller", None)
-        if controller:
-            if not callable(getattr(widget, "on_save_triggered", None)) and callable(getattr(controller, "on_save_triggered", None)):
-                widget.on_save_triggered = controller.on_save_triggered
-            if not callable(getattr(widget, "on_save_as_triggered", None)) and callable(getattr(controller, "on_save_as_triggered", None)):
-                widget.on_save_as_triggered = controller.on_save_as_triggered
-
         if editor_id != TEXT_EDITOR_ID:
             from PySide6.QtCore import QTimer
 
@@ -567,20 +465,6 @@ def main():
 
     window.open_file = open_file
     window.open_untitled_tab = open_untitled_tab
-
-    action_save = window.findChild(object, "actionSave")
-    if action_save:
-        action_save.triggered.connect(save_current_tab)
-
-    action_save_as = window.findChild(object, "actionSaveAs")
-    if action_save_as:
-        action_save_as.triggered.connect(save_current_tab_as)
-
-    action_save_all = window.findChild(object, "actionSaveAll")
-    if action_save_all:
-        action_save_all.triggered.connect(save_all_tabs)
-
-
 
     core.api.register_editor_handler({
         "get_element_for_file": get_element_for_path,
@@ -872,9 +756,6 @@ def main():
         return True
 
     def save_project_to(path):
-        if not save_all_tabs():
-            window.statusBar().showMessage("Project save cancelled because a tab could not be saved.", 5000)
-            return False
         try:
             if project_type_for_path(path) == PROJECT_TYPE_EMBEDDED:
                 return save_embedded_project(path)

@@ -10,10 +10,12 @@ ENV/
 .vscode/
 .idea/
 
+#内部文書
 UIモックアップ/
 test_project/
 tests/
 test_mod/
+doc/save doc/
 
 #設定保存ファイル
 plugins/**/settings.json
@@ -26,3 +28,5 @@ Thumbs.db
 
 # AI Models
 plugins/hoi4/interface/colorize/models/
+AGENTS.md
+
