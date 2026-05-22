@@ -5,10 +5,12 @@ from PySide6.QtUiTools import QUiLoader
 from PySide6.QtCore import QFile, Qt, QPoint, QEvent
 from PySide6.QtGui import QStandardItemModel, QStandardItem, QIcon, QAction
 import core.api
+from core.utils import load_svg_icon
 
 class AssistantWidget(QWidget):
-    def __init__(self, parent=None):
+    def __init__(self, plugin, parent=None):
         super().__init__(parent)
+        self.plugin = plugin
         self.base_dir = os.path.dirname(__file__)
         self.pinned_ids = []
         self.all_toolbox_items = {} # IDからアイテムデータを逆引きするためのキャッシュ
@@ -207,7 +209,7 @@ class AssistantWidget(QWidget):
         icon_name = "star.svg" if is_pinned else "star-outline.svg"
         icon_path = os.path.join(self.base_dir, "asset", "icons", icon_name)
         if os.path.exists(icon_path):
-            btn.setIcon(core.api.load_svg_icon(icon_path, "#FFD700" if is_pinned else "#888888"))
+            btn.setIcon(load_svg_icon(icon_path, "#FFD700" if is_pinned else "#888888"))
         btn.setToolTip("ピン留めを解除" if is_pinned else "クイックアクセスに登録")
         if tree_item:
             btn.setVisible(is_pinned or item_id == self._hovered_nav_item_id)
@@ -227,7 +229,7 @@ class AssistantWidget(QWidget):
         norm_rel_path = os.path.normpath(rel_path)
         if norm_rel_path == decisions_root or norm_rel_path.startswith(decisions_root + os.sep):
             # 保存時はキャッシュを破棄して再走査を促す
-            plugin = core.api.get_active_plugin()
+            plugin = self.plugin
             if plugin and hasattr(plugin, "project_cache"):
                 if "decisions" in plugin.project_cache:
                     del plugin.project_cache["decisions"]
@@ -236,7 +238,7 @@ class AssistantWidget(QWidget):
         achievements_root = os.path.normpath("common/achievements")
         if norm_rel_path == achievements_root or norm_rel_path.startswith(achievements_root + os.sep):
             # 実績ファイルの保存時もキャッシュを破棄
-            plugin = core.api.get_active_plugin()
+            plugin = self.plugin
             if plugin and hasattr(plugin, "project_cache"):
                 if "achievements" in plugin.project_cache:
                     del plugin.project_cache["achievements"]
@@ -245,7 +247,7 @@ class AssistantWidget(QWidget):
         events_root = os.path.normpath("events")
         if norm_rel_path == events_root or norm_rel_path.startswith(events_root + os.sep):
             # イベントファイルの保存時もキャッシュを破棄
-            plugin = core.api.get_active_plugin()
+            plugin = self.plugin
             if plugin and hasattr(plugin, "project_cache"):
                 if "events" in plugin.project_cache:
                     del plugin.project_cache["events"]
@@ -261,13 +263,13 @@ class AssistantWidget(QWidget):
         try:
             from plugins.hoi4.events.event_editor import EventParser
             parser = EventParser()
-            plugin = core.api.get_active_plugin()
+            plugin = self.plugin
             
             events = []
             if plugin and hasattr(plugin, "project_cache") and "events" in plugin.project_cache:
                 events = parser.deserialize_events(plugin.project_cache["events"])
             else:
-                events = parser.parse_project(project_path)
+                events = parser.parse_project(project_path, plugin=self.plugin)
             
             registry = getattr(plugin, "localisation_registry", None) if plugin else None
                 
@@ -346,7 +348,7 @@ class AssistantWidget(QWidget):
 
         # MOD側のスキャン結果を取得して追加
         try:
-            plugin = core.api.get_active_plugin()
+            plugin = self.plugin
             registry = getattr(plugin, "localisation_registry", None) if plugin else None
             if not registry:
                 return
@@ -391,14 +393,14 @@ class AssistantWidget(QWidget):
         try:
             from plugins.hoi4.decisions.decision_editor import DecisionParser
             parser = DecisionParser()
-            plugin = core.api.get_active_plugin()
+            plugin = self.plugin
             
             categories = []
             # キャッシュがあればそれを利用、なければパース
             if plugin and hasattr(plugin, "project_cache") and "decisions" in plugin.project_cache:
                 categories = parser.deserialize_categories(plugin.project_cache["decisions"])
             else:
-                categories = parser.parse_project(project_path)
+                categories = parser.parse_project(project_path, plugin=self.plugin)
             
             # ローカライズレジストリの取得
             registry = getattr(plugin, "localisation_registry", None) if plugin else None
@@ -478,13 +480,13 @@ class AssistantWidget(QWidget):
         try:
             from plugins.hoi4.achievement.achievement_editor import AchievementParser
             parser = AchievementParser()
-            plugin = core.api.get_active_plugin()
+            plugin = self.plugin
             
             achievements = []
             if plugin and hasattr(plugin, "project_cache") and "achievements" in plugin.project_cache:
                 achievements = parser.deserialize_achievements(plugin.project_cache["achievements"])
             else:
-                achievements = parser.parse_project(project_path)
+                achievements = parser.parse_project(project_path, plugin=self.plugin)
             
             registry = getattr(plugin, "localisation_registry", None) if plugin else None
                 
@@ -658,7 +660,7 @@ class AssistantWidget(QWidget):
             if os.path.exists(icon_path):
                 if icon_path.lower().endswith(".svg"):
                     text_color = self.palette().color(self.foregroundRole()).name()
-                    item.setIcon(core.api.load_svg_icon(icon_path, text_color))
+                    item.setIcon(load_svg_icon(icon_path, text_color))
                 else:
                     item.setIcon(QIcon(icon_path))
         
@@ -786,7 +788,7 @@ class AssistantWidget(QWidget):
         
         if os.path.exists(icon_path):
             text_color = self.palette().color(self.foregroundRole()).name()
-            self.header.setIcon(core.api.load_svg_icon(icon_path, text_color))
+            self.header.setIcon(load_svg_icon(icon_path, text_color))
 
     def toggle_content(self):
         """コンテンツエリアの表示/非表示を切り替える"""
@@ -833,7 +835,7 @@ class AssistantWidget(QWidget):
             icon_path = os.path.join(self.base_dir, "asset", "icons", icon_name)
             if os.path.exists(icon_path):
                 text_color = self.palette().color(self.foregroundRole()).name()
-                icon_label.setPixmap(core.api.load_svg_icon(icon_path, text_color).pixmap(16, 16))
+                icon_label.setPixmap(load_svg_icon(icon_path, text_color).pixmap(16, 16))
         layout.addWidget(icon_label)
         
         # ラベル

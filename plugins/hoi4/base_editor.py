@@ -106,7 +106,7 @@ class BaseParser:
                     all_files.append(os.path.join(root, file))
         return all_files
 
-    def parse_project(self, project_path: str) -> list[Any]:
+    def parse_project(self, project_path: str, plugin=None) -> list[Any]:
         parsed_items = []
         scan_dir = self.project_scan_dir(project_path)
         if not os.path.exists(scan_dir):
@@ -126,16 +126,15 @@ class BaseParser:
                 continue
 
         core.api.set_progress(100, "")
-        self.store_project_cache(parsed_items)
+        self.store_project_cache(parsed_items, plugin=plugin)
         return parsed_items
 
     def serialize_project_items(self, items: list[Any]) -> list[dict[str, Any]]:
         return [{"id": item.id, "source_path": item.source_path} for item in items]
 
-    def store_project_cache(self, items: list[Any]) -> None:
+    def store_project_cache(self, items: list[Any], plugin=None) -> None:
         if not self.cache_key:
             return
-        plugin = core.api.get_active_plugin()
         if not plugin:
             return
         if not hasattr(plugin, "project_cache"):
@@ -205,13 +204,7 @@ class BaseEditorController(QObject):
         plugin = getattr(self.widget, "active_plugin", None)
         if plugin:
             return plugin
-        plugin = core.api.get_active_plugin()
-        if plugin:
-            return plugin
-        try:
-            return self.widget.parent().parent().active_plugin
-        except Exception:
-            return None
+        return None
 
     def get_mod_root(self) -> str:
         path = core.api.get_project_path()

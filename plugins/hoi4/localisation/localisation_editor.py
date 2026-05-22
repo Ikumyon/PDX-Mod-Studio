@@ -198,7 +198,7 @@ class LocalisationEditorController:
                 return
 
     def default_language(self):
-        plugin = core.api.get_active_plugin()
+        plugin = getattr(self.widget, "active_plugin", None)
         settings_path = os.path.join(plugin.path, "settings.json") if plugin else ""
         try:
             with open(settings_path, "r", encoding="utf-8") as handle:
@@ -289,7 +289,7 @@ class LocalisationEditorController:
         if counts.get(entry.key, 0) > 1:
             return "duplicate_in_file", "current file"
 
-        plugin = core.api.get_active_plugin()
+        plugin = getattr(self.widget, "active_plugin", None)
         registry = getattr(plugin, "localisation_registry", None) if plugin else None
         if not registry:
             return "not_found", ""
@@ -606,7 +606,7 @@ class LocalisationEditorController:
         return self.on_save_triggered()
 
     def after_saved(self, path):
-        plugin = core.api.get_active_plugin()
+        plugin = getattr(self.widget, "active_plugin", None)
         registry = getattr(plugin, "localisation_registry", None) if plugin else None
         if registry:
             registry.update_file(path, "mod")
@@ -624,4 +624,4 @@ def setup(widget, file_path, content):
     widget.on_save_triggered = controller.on_save_triggered
     widget.on_save_as_triggered = controller.on_save_as_triggered
     controller.bind()
-    core.api.notify_editor_ready(widget)
+    core.api.notify_editor_ready(getattr(widget, "tab_id", None))

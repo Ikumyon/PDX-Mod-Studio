@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 import core.api
+from core.utils import load_svg_icon
 from core import save_result
 from PySide6.QtCore import QFile, QEvent, QObject, Qt
 from PySide6.QtGui import QAction, QPixmap
@@ -161,7 +162,7 @@ def setup(widget, file_path, content):
     widget.set_params = controller.set_params
     widget.setParams = controller.set_params
     controller.bind()
-    core.api.notify_editor_ready(widget)
+    core.api.notify_editor_ready(getattr(widget, "tab_id", None))
 
 
 class GfxEditorController(BaseEditorController):
@@ -583,9 +584,9 @@ class GfxEditorController(BaseEditorController):
 
     def schema_field_label(self, field_name: str, usage: str) -> str:
         key = self.schema_field_translation_key(field_name)
-        plugin = getattr(self.widget, "active_plugin", None) or core.api.get_active_plugin()
+        plugin = getattr(self.widget, "active_plugin", None)
         translated = core.api.plugin_translate(
-            plugin,
+            getattr(plugin, "id", None),
             key,
             fallback=field_name,
             context="schema_field",
@@ -891,7 +892,7 @@ class GfxEditorController(BaseEditorController):
             icon_path = self.inline_action_icon_path(icon_name, icon_source)
             if os.path.exists(icon_path):
                 color_hex = self.widget.palette().color(self.widget.foregroundRole()).name()
-                button.setIcon(core.api.load_svg_icon(icon_path, color_hex))
+                button.setIcon(load_svg_icon(icon_path, color_hex))
             button.setIconSize(button.sizeHint())
             if on_clicked:
                 button.clicked.connect(on_clicked)

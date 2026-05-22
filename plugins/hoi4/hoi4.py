@@ -18,8 +18,6 @@ from PySide6.QtWidgets import (
     QToolButton,
     QVBoxLayout,
 )
-
-from core.plugin_manager import ModElement
 from plugins.hoi4.localisation.registry import LocalisationRegistry
 
 # グローバルなレジストリインスタンス
@@ -207,7 +205,7 @@ def hook_i18n_translate(plugin, payload):
 
 def load_plugin_elements(plugin):
     """Load HoI4 element definitions from each element config.json."""
-    plugin.elements.clear()
+    plugin.clear_elements()
     for item in os.listdir(plugin.path):
         element_dir = os.path.join(plugin.path, item)
         if not os.path.isdir(element_dir):
@@ -221,15 +219,13 @@ def load_plugin_elements(plugin):
             with open(config_path, "r", encoding="utf-8") as f:
                 config = json.load(f)
 
-            element = ModElement(
+            plugin.add_element(
                 id=item,
                 name=config.get("name", item),
                 path=config.get("path", ""),
-                plugin=plugin,
                 element_dir=element_dir,
                 raw=config,
             )
-            plugin.elements.append(element)
         except Exception as e:
             print(f"Failed to load HoI4 element {item}: {e}")
 
@@ -415,11 +411,11 @@ def initialize(plugin):
     
     # アシスタントウィジェットの登録
     from plugins.hoi4.assistant import AssistantWidget
-    plugin.assistant_widget_factory = lambda parent: {
-        "widget": AssistantWidget(parent),
+    plugin.set_assistant_widget_factory(lambda parent: {
+        "widget": AssistantWidget(plugin, parent),
         "name": tr("HoI4Plugin", "ツールボックス"),
         "collapsible": True
-    }
+    })
     
     global _registry, _watcher
     _registry = LocalisationRegistry()

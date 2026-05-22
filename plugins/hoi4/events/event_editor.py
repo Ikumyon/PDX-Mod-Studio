@@ -119,8 +119,8 @@ class EventParser(BaseParser):
         event.options.extend(entity.properties.get("option", []))
         return event
 
-    def parse_project(self, project_path: str) -> list[ParsedEvent]:
-        return super().parse_project(project_path)
+    def parse_project(self, project_path: str, plugin=None) -> list[ParsedEvent]:
+        return super().parse_project(project_path, plugin=plugin)
 
     def serialize_events(self, events: list[ParsedEvent]) -> list[dict]:
         return [{"id": e.event_id, "source_path": e.source_path, "key": getattr(e, "key", "country_event")} for e in events]
@@ -484,7 +484,7 @@ def setup(widget, file_path, content):
     controller.bind()
     
     # エディタの準備が完了したことを本体に通知
-    core.api.notify_editor_ready(widget)
+    core.api.notify_editor_ready(getattr(widget, "tab_id", None))
 
 
 class EventEditorController(BaseEditorController):
@@ -2230,7 +2230,7 @@ class EventEditorController(BaseEditorController):
                 files = self.parser.iter_project_files(scan_dir) if os.path.exists(scan_dir) else []
                 signature = tuple((os.path.normcase(path), os.path.getmtime(path)) for path in sorted(files))
                 if signature != self._chain_project_signature:
-                    self._chain_project_events = self.parser.parse_project(project_path)
+                    self._chain_project_events = self.parser.parse_project(project_path, plugin=self.get_hoi4_plugin())
                     self._chain_project_signature = signature
             except Exception:
                 self._chain_project_events = []

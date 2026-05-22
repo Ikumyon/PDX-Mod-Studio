@@ -1,9 +1,6 @@
 import os
 import json
 import importlib.util
-from PySide6.QtWidgets import QDialog, QVBoxLayout, QDialogButtonBox
-from PySide6.QtUiTools import QUiLoader
-from PySide6.QtCore import QFile
 
 class ModElement:
     def __init__(
@@ -40,6 +37,24 @@ class Plugin:
         self.raw = raw or {}
         self.elements = [] # ModElementのリスト
         self.module = None # ロードされたPythonモジュール
+        self.entry_point = self.raw.get("entry_point")
+        self.entry_kind = self._detect_entry_kind(self.entry_point, self.raw.get("entry_kind"))
+        self._assistant_widget_factory = None
+
+    def clear_elements(self):
+        self.elements.clear()
+
+    def add_element(self, id, name, path, element_dir=None, raw=None):
+        element = ModElement(
+            id=id,
+            name=name,
+            path=path,
+            plugin=self,
+            element_dir=element_dir,
+            raw=raw,
+        )
+        self.elements.append(element)
+        return element
 
     def get_element_attribute(self, element, attribute, default=None, **kwargs):
         """プラグインロジックから属性を取得する。コア側はデフォルト値を持たない。"""
@@ -49,13 +64,87 @@ class Plugin:
             return func(element, **kwargs)
         return default
 
+    def _detect_entry_kind(self, entry_point, explicit_kind=None):
+        if explicit_kind:
+            return str(explicit_kind).lower()
+        if not entry_point:
+            return "none"
+        _, ext = os.path.splitext(str(entry_point))
+        ext = ext.lower()
+        if ext == ".py":
+            return "python"
+        if ext == ".exe":
+            return "executable"
+        if ext in (".dll", ".pyd", ".so", ".dylib"):
+            return "native"
+        if ext == ".c":
+            return "source"
+        return ext.lstrip(".") or "unknown"
+
+    def set_assistant_widget_factory(self, factory):
+        self._assistant_widget_factory = factory
+
+    def create_assistant_widget(self, parent):
+        if callable(self._assistant_widget_factory):
+            return self._assistant_widget_factory(parent)
+        return None
+
+    def initialize(self):
+        func = getattr(self.module, "initialize", None) if self.module else None
+        if callable(func):
+            func(self)
+
     def show_settings(self, parent, project_path):
         """プラグインの設定画面を表示する"""
-        if self.module and hasattr(self.module, "show_settings"):
-            self.module.show_settings(self, parent, project_path)
+        func = getattr(self.module, "show_settings", None) if self.module else None
+        if callable(func):
+            func(self, parent, project_path)
         else:
             from PySide6.QtWidgets import QMessageBox
             QMessageBox.information(parent, "プラグイン設定", f"プラグイン '{self.name}' には設定項目がありません。")
+
+    def export_project_data(self, context):
+        func = getattr(self.module, "export_project_data", None) if self.module else None
+        if callable(func):
+            return func(self, context) or {}
+        return {}
+
+    def import_project_data(self, context, data):
+        func = getattr(self.module, "import_project_data", None) if self.module else None
+        if callable(func):
+            func(self, context, data or {})
+
+    def call_named_hook(self, hook_name, payload=None, default=None):
+        if not self.module or not hook_name:
+            return default
+        payload = payload or {}
+        candidates = [
+            f"hook_{hook_name.replace('.', '_')}",
+            hook_name.replace(".", "_"),
+        ]
+        for name in candidates:
+            func = getattr(self.module, name, None)
+            if not callable(func):
+                continue
+            try:
+                result = _call_named_plugin_hook_func(func, self, payload)
+                return default if result is None else result
+            except Exception as error:
+                print(f"Error in plugin hook {self.id}.{hook_name}: {error}")
+                return default
+
+        for name in ("on_plugin_hook", "handle_plugin_hook", "on_hook"):
+            func = getattr(self.module, name, None)
+            if not callable(func):
+                continue
+            try:
+                result = _call_generic_plugin_hook_func(func, self, hook_name, payload)
+                return default if result is None else result
+            except Exception as error:
+                print(f"Error in plugin hook {self.id}.{hook_name}: {error}")
+                return default
+
+        return default
 
     def __repr__(self):
         return f"<Plugin {self.name} ({self.id})>"
@@ -99,7 +188,7 @@ class PluginManager:
                     raw=manifest
                 )
                 
-                # 指定されたエントリーポイント（.py）をロード
+                # 指定されたエントリーポイントをロード
                 entry_point = manifest.get("entry_point")
                 if entry_point:
                     self._load_plugin_logic(plugin, entry_point)
@@ -120,14 +209,15 @@ class PluginManager:
         if not os.path.exists(logic_path):
             print(f"Entry point not found: {logic_path}")
             return
-            
+
         try:
+            if plugin.entry_kind != "python":
+                print(f"Plugin {plugin.id}: unsupported entry kind '{plugin.entry_kind}' for current loader")
+                return
             module_name = f"plugin_logic_{plugin.id}"
             module = load_module_from_path(module_name, logic_path)
             plugin.module = module
-            
-            if hasattr(module, "initialize"):
-                module.initialize(plugin)
+            plugin.initialize()
         except Exception as e:
             print(f"Failed to load plugin logic from {logic_path}: {e}")
 
@@ -191,3 +281,20 @@ def load_module_from_path(module_name, path):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def _call_named_plugin_hook_func(func, plugin, payload: dict):
+    try:
+        return func(plugin, payload)
+    except TypeError:
+        return func(payload)
+
+
+def _call_generic_plugin_hook_func(func, plugin, hook_name: str, payload: dict):
+    try:
+        return func(plugin, hook_name, payload)
+    except TypeError:
+        try:
+            return func(hook_name, payload)
+        except TypeError:
+            return func(payload)

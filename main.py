@@ -61,7 +61,8 @@ def main():
         app.setWindowIcon(QIcon(icon_path))
 
     # --- エディタパラメータ管理 ---
-    window.pending_params = {} # {widget: params}
+    window.pending_params = {} # {tab_id: params}
+    window._tab_id_counter = 0
 
     # --- ドックの初期化 ---
     from core.project_tree_dock import ProjectTreeDock
@@ -149,8 +150,9 @@ def main():
     # シグナルの接続
     def close_editor_tab(index):
         widget = window.editorTabs.widget(index)
-        if widget in window.pending_params:
-            del window.pending_params[widget]
+        tab_id = getattr(widget, "tab_id", None)
+        if tab_id in window.pending_params:
+            del window.pending_params[tab_id]
         window.editorTabs.removeTab(index)
         project_tree.update_open_editors(window.editorTabs)
 
@@ -216,6 +218,19 @@ def main():
 
     window.get_available_editors_for_file = get_available_editors_for_file
 
+    def next_tab_id():
+        window._tab_id_counter += 1
+        return f"tab:{window._tab_id_counter}"
+
+    def find_widget_by_tab_id(tab_id):
+        if not tab_id or not window.editorTabs:
+            return None
+        for i in range(window.editorTabs.count()):
+            widget = window.editorTabs.widget(i)
+            if getattr(widget, "tab_id", None) == tab_id:
+                return widget
+        return None
+
     def get_active_tab_info():
         if not window.editorTabs:
             return None
@@ -225,23 +240,26 @@ def main():
         widget = window.editorTabs.currentWidget()
         if not widget:
             return None
+        plugin = getattr(widget, "active_plugin", None)
         return {
+            "tab_id": getattr(widget, "tab_id", None),
             "path": window.editorTabs.tabToolTip(index),
             "editor_id": editor_registry.normalize_editor_id(getattr(widget, "editor_id", TEXT_EDITOR_ID)),
-            "widget": widget,
             "is_dirty": getattr(widget, "is_dirty", False),
+            "plugin_id": getattr(plugin, "id", None),
         }
 
-    def get_tab_plugin_for_widget(widget=None):
-        target_widget = widget
-        if target_widget is None:
+    def get_tab_plugin_id(tab_id=None):
+        target_tab_id = tab_id
+        if target_tab_id is None:
             active_tab = get_active_tab_info()
-            target_widget = active_tab.get("widget") if active_tab else None
+            target_tab_id = active_tab.get("tab_id") if active_tab else None
+        target_widget = find_widget_by_tab_id(target_tab_id)
         if target_widget is not None:
             plugin = getattr(target_widget, "active_plugin", None)
             if plugin:
-                return plugin
-        return project_tree.active_plugin
+                return plugin.id
+        return getattr(project_tree.active_plugin, "id", None)
 
     # --- ビュー切り替えボタンのメニュー更新ロジック ---
     def update_editor_selector(index):
@@ -493,17 +511,18 @@ def main():
         show_save_result_message(write_result)
         return False
 
-    def create_editor_widget(editor_id, file_path, content, available_editors, params=None):
+    def create_editor_widget(editor_id, file_path, content, available_editors, params=None, tab_id=None):
         editor_id = editor_registry.normalize_editor_id(editor_id)
         if editor_id == TEXT_EDITOR_ID:
             widget = EditorWidget()
+            widget.tab_id = tab_id
             widget.setPlainText(content)
             widget.textChanged.connect(lambda w=widget: mark_tab_dirty(w))
         else:
-            widget = editor_registry.create_editor_widget(editor_id, window.editorTabs, file_path, content)
+            widget = editor_registry.create_editor_widget(editor_id, window.editorTabs, file_path, content, tab_id=tab_id)
             if not widget:
                 # 失敗した場合はテキストエディタ
-                return create_editor_widget(TEXT_EDITOR_ID, file_path, content, available_editors, params)
+                return create_editor_widget(TEXT_EDITOR_ID, file_path, content, available_editors, params, tab_id=tab_id)
         
         widget.editor_id = editor_id
         widget.file_path = file_path
@@ -607,7 +626,7 @@ def main():
             if editor_definition:
                 available_editors = [editor_definition]
         
-        editor = create_editor_widget(editor_id, virtual_path, content, available_editors)
+            editor = create_editor_widget(editor_id, virtual_path, content, available_editors, tab_id=next_tab_id())
         
         from PySide6.QtGui import QIcon
         icon = QIcon() # デフォルト
@@ -659,11 +678,11 @@ def main():
                 content = f.read()
 
             # 新しく開く場合は、まずウィジェットを生成
-            editor = create_editor_widget(editor_id, file_path, content, available_editors)
+            editor = create_editor_widget(editor_id, file_path, content, available_editors, tab_id=next_tab_id())
             
             # パラメータがあれば「準備完了後」に適用されるように予約
             if params:
-                window.pending_params[editor] = params
+                window.pending_params[getattr(editor, "tab_id", None)] = params
             file_name = os.path.basename(file_path)
             if editor_id != TEXT_EDITOR_ID:
                 file_name = f"[E] {file_name}"
@@ -680,7 +699,7 @@ def main():
     window.open_file = open_file
     window.open_untitled_tab = open_untitled_tab
 
-    core.api._active_plugin = project_tree.active_plugin
+    core.api._active_plugin_id_handler = lambda: getattr(project_tree.active_plugin, "id", None)
 
 
     # --- アクティビティバーの設定 ---
@@ -718,6 +737,8 @@ def main():
     plugins_dir = os.path.join(base_dir, "plugins")
     plugin_manager = PluginManager(plugins_dir)
     plugins = plugin_manager.load_plugins()
+    plugin_by_id = {plugin.id: plugin for plugin in plugins}
+    core.api._plugin_object_resolver = lambda plugin_id: plugin_by_id.get(plugin_id) if plugin_id else None
 
     def on_plugin_selected(plugin):
         if not plugin:
@@ -726,7 +747,6 @@ def main():
         window.statusBar().showMessage(f"プラグイン '{plugin.name}' が選択されました。")
         # ProjectTreeDock にプラグインを通知
         project_tree.set_active_plugin(plugin)
-        core.api._active_plugin = plugin
         editor_registry.register_plugin(plugin)
         
         # 全タブの利用可能なエディタを更新
@@ -825,19 +845,14 @@ def main():
         return True
 
     def plugin_export_project_data(plugin, context):
-        if not plugin or not plugin.module:
+        if not plugin:
             return {}
-        export = getattr(plugin.module, "export_project_data", None)
-        if not callable(export):
-            return {}
-        return export(plugin, context) or {}
+        return plugin.export_project_data(context)
 
     def plugin_import_project_data(plugin, context, data):
-        if not plugin or not plugin.module:
+        if not plugin:
             return
-        import_data = getattr(plugin.module, "import_project_data", None)
-        if callable(import_data):
-            import_data(plugin, context, data or {})
+        plugin.import_project_data(context, data)
 
     def active_required_plugins():
         plugin = getattr(project_tree, "active_plugin", None)
@@ -1114,12 +1129,15 @@ def main():
     core.api._open_tab_handler = open_file
     core.api._open_untitled_tab_handler = open_untitled_tab
     core.api._active_tab_handler = get_active_tab_info
-    core.api._tab_plugin_handler = get_tab_plugin_for_widget
+    core.api._tab_plugin_id_handler = get_tab_plugin_id
 
     # 4. エディタ準備完了通知のハンドリング
-    def on_editor_ready(widget):
-        if widget in window.pending_params:
-            params = window.pending_params.pop(widget)
+    def on_editor_ready(tab_id):
+        if tab_id in window.pending_params:
+            params = window.pending_params.pop(tab_id)
+            widget = find_widget_by_tab_id(tab_id)
+            if not widget:
+                return
             if hasattr(widget, "set_params"):
                 widget.set_params(params)
             else:

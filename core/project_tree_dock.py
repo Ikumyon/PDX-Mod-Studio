@@ -534,8 +534,7 @@ class ProjectTreeDock:
         
         # アクティブなプラグインから新しいセクションの情報を取得
         plugin = getattr(self, "active_plugin", None)
-        factory = getattr(plugin, "assistant_widget_factory", None) if plugin else None
-        res = factory(self.pluginSectionContainer) if callable(factory) else None
+        res = plugin.create_assistant_widget(self.pluginSectionContainer) if plugin else None
         if res and isinstance(res, dict):
             widget = res.get("widget")
             name = res.get("name", "追加セクション")

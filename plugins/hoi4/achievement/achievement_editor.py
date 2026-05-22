@@ -91,8 +91,8 @@ class AchievementParser(BaseParser):
                 elif item.key == "loc_path" and isinstance(item.value, ScalarNode):
                     doc.properties["loc_path"] = str(item.value.value)
                     doc.properties["loc_path_node"] = item
-    def parse_project(self, project_path: str) -> list[ParsedAchievement]:
-        return super().parse_project(project_path)
+    def parse_project(self, project_path: str, plugin=None) -> list[ParsedAchievement]:
+        return super().parse_project(project_path, plugin=plugin)
 
     def serialize_project_items(self, items: list[ParsedAchievement]) -> list[dict]:
         return self.serialize_achievements(items)
@@ -133,7 +133,7 @@ def setup(widget, file_path, content):
     
     # エディタの準備が完了したことを本体に通知
     # これにより、本体側から widget.setParams() が呼び出される
-    core.api.notify_editor_ready(widget)
+    core.api.notify_editor_ready(getattr(widget, "tab_id", None))
 
 class AchievementEditorController(BaseEditorController):
     ELEMENT_ID = "achievement"

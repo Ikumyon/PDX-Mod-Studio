@@ -1,6 +1,5 @@
 import os
 from core.i18n import tr
-from core.utils import load_svg_icon as _load_svg_icon
 
 _current_project_path = None
 _project_path_handlers = []
@@ -11,9 +10,10 @@ _progress_handler = None
 _open_tab_handler = None
 _open_untitled_tab_handler = None
 _active_tab_handler = None
-_tab_plugin_handler = None
+_tab_plugin_id_handler = None
 _editor_ready_handler = None
-_active_plugin = None
+_active_plugin_id_handler = None
+_plugin_object_resolver = None
 BUILTIN_TEXT_EDITOR_ID = "core.plain_text"
 
 def set_project_path(path: str):
@@ -27,9 +27,6 @@ def set_project_path(path: str):
 
 def get_project_path() -> str:
     return _current_project_path
-
-def load_svg_icon(path: str, color_hex: str):
-    return _load_svg_icon(path, color_hex)
 
 def register_project_path_handler(handler):
     global _project_path_handlers
@@ -91,20 +88,28 @@ def get_active_tab():
         return _active_tab_handler()
     return None
 
-def get_tab_plugin(widget=None):
-    """指定タブ、または現在アクティブなタブに属するプラグインを返す。"""
-    if _tab_plugin_handler:
-        return _tab_plugin_handler(widget)
+def get_tab_plugin_id(tab_id=None):
+    """指定タブ、または現在アクティブなタブに属するプラグインIDを返す。"""
+    if _tab_plugin_id_handler:
+        return _tab_plugin_id_handler(tab_id)
     return None
 
 # --- エディタ準備完了通知 API ---
-def notify_editor_ready(widget):
-    """エディタウィジェットが自身の初期化（パース等）が完了したことを通知する"""
+def notify_editor_ready(tab_id):
+    """エディタが自身の初期化完了を tab_id で通知する。"""
     if _editor_ready_handler:
-        _editor_ready_handler(widget)
+        _editor_ready_handler(tab_id)
 
-def get_active_plugin():
-    return _active_plugin
+def get_active_plugin_id():
+    """現在アクティブなプラグインIDを返す。"""
+    if _active_plugin_id_handler:
+        return _active_plugin_id_handler()
+    return None
+
+def _resolve_plugin_object(plugin_id):
+    if _plugin_object_resolver:
+        return _plugin_object_resolver(plugin_id)
+    return None
 
 # --- 診断プロバイダ (Linter) API ---
 _diagnostics_providers = {}  # { extension: provider_func }
@@ -131,59 +136,15 @@ def get_diagnostics(file_path: str, content: str) -> list:
     return []
 
 
-def _call_named_plugin_hook_func(func, plugin, payload: dict):
-    try:
-        return func(plugin, payload)
-    except TypeError:
-        return func(payload)
-
-
-def _call_generic_plugin_hook_func(func, plugin, hook_name: str, payload: dict):
-    try:
-        return func(plugin, hook_name, payload)
-    except TypeError:
-        try:
-            return func(hook_name, payload)
-        except TypeError:
-            return func(payload)
-
-
 def _call_plugin_hook(plugin, hook_name: str, payload: dict = None, default=None):
     """Call an optional plugin hook."""
-    if not plugin or not getattr(plugin, "module", None) or not hook_name:
+    if not plugin or not hook_name:
         return default
-
-    payload = payload or {}
-    module = plugin.module
-    candidates = [
-        f"hook_{hook_name.replace('.', '_')}",
-        hook_name.replace(".", "_"),
-    ]
-    for name in candidates:
-        func = getattr(module, name, None)
-        if callable(func):
-            try:
-                result = _call_named_plugin_hook_func(func, plugin, payload)
-                return default if result is None else result
-            except Exception as e:
-                print(f"Error in plugin hook {plugin.id}.{hook_name}: {e}")
-                return default
-
-    for name in ("on_plugin_hook", "handle_plugin_hook", "on_hook"):
-        func = getattr(module, name, None)
-        if callable(func):
-            try:
-                result = _call_generic_plugin_hook_func(func, plugin, hook_name, payload)
-                return default if result is None else result
-            except Exception as e:
-                print(f"Error in plugin hook {plugin.id}.{hook_name}: {e}")
-                return default
-
-    return default
+    return plugin.call_named_hook(hook_name, payload=payload, default=default)
 
 
 def plugin_translate(
-    plugin,
+    plugin_id,
     key: str,
     fallback: str = None,
     language: str = None,
@@ -194,6 +155,7 @@ def plugin_translate(
     fallback_text = fallback if fallback is not None else key
     if not key:
         return fallback_text or ""
+    plugin = _resolve_plugin_object(plugin_id)
 
     result = _call_plugin_hook(
         plugin,

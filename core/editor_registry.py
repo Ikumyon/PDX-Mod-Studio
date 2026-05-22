@@ -90,7 +90,7 @@ class EditorRegistry:
             return None
         return None
 
-    def create_editor_widget(self, editor_id, parent, file_path, content):
+    def create_editor_widget(self, editor_id, parent, file_path, content, tab_id=None):
         editor_id = self.normalize_editor_id(editor_id)
         if editor_id not in self.editors:
             return None
@@ -117,6 +117,7 @@ class EditorRegistry:
             widget.file_path = file_path
             widget.editor_id = editor_id
             widget.content = content
+            widget.tab_id = tab_id
 
 
             namespace = {

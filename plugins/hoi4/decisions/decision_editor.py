@@ -210,7 +210,7 @@ class DecisionParser(BaseParser):
                     entities.append(entity)
         return entities
 
-    def parse_project(self, project_path: str) -> list[ParsedDecisionCategory]:
+    def parse_project(self, project_path: str, plugin=None) -> list[ParsedDecisionCategory]:
         categories = {}
         all_files = []
         for rule in self.schema_rules:
@@ -247,7 +247,6 @@ class DecisionParser(BaseParser):
         result = list(categories.values())
         
         # キャッシュへの保存
-        plugin = core.api.get_active_plugin()
         if plugin:
             if not hasattr(plugin, "project_cache"):
                 plugin.project_cache = {}
@@ -786,7 +785,7 @@ class DecisionEditorController(BaseEditorController):
                 else:
                     self.project_categories_cache = None
                     self._last_raw_cache = None
-                    all_categories = self.parser.parse_project(project_path)
+                    all_categories = self.parser.parse_project(project_path, plugin=self.get_hoi4_plugin())
 
                 # 現在のファイルのカテゴリプロパティを優先する。
                 # このエディタはカテゴリとディシジョンを同じ画面で編集するため、
@@ -835,7 +834,7 @@ class DecisionEditorController(BaseEditorController):
             self.update_preview()
             
             # 初期化完了を通知（main.py 側で予約されたパラメータがあれば適用される）
-            core.api.notify_editor_ready(self.widget)
+            core.api.notify_editor_ready(getattr(self.widget, "tab_id", None))
 
     def _get_tree_structure(self):
         structure = []
