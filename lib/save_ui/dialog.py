@@ -7,6 +7,7 @@ from PySide6.QtCore import QFile, Qt
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QAbstractItemDelegate,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -46,7 +47,7 @@ class MultipleSaveTargetsDialog(QDialog):
             self.labelDescription.setText(description)
 
         self._configure_table()
-        self.btnSave.clicked.connect(self.accept)
+        self.btnSave.clicked.connect(self._accept_and_commit)
         self.btnCancel.clicked.connect(self.reject)
 
         if targets:
@@ -118,18 +119,9 @@ class MultipleSaveTargetsDialog(QDialog):
         filename_item.setFlags(filename_item.flags() | Qt.ItemFlag.ItemIsEditable)
         table.setItem(row, self.COLUMN_FILENAME, filename_item)
 
-        format_combo = QComboBox(table)
-        options = self._format_options or ([target["format"]] if target["format"] else [])
-        if target["format"] and target["format"] not in options:
-            options = [target["format"], *options]
-        for value in options:
-            format_combo.addItem(value)
-        if target["format"]:
-            index = format_combo.findText(target["format"])
-            if index >= 0:
-                format_combo.setCurrentIndex(index)
-        format_combo.setEditable(not bool(options))
-        table.setCellWidget(row, self.COLUMN_FORMAT, format_combo)
+        format_item = QTableWidgetItem(target["format"] or "")
+        format_item.setFlags(format_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+        table.setItem(row, self.COLUMN_FORMAT, format_item)
 
         browse_button = QPushButton("...", table)
         browse_button.clicked.connect(lambda checked=False, current_row=row: self._browse_row_path(current_row))
@@ -140,17 +132,20 @@ class MultipleSaveTargetsDialog(QDialog):
         path = str(normalized.get("path", "") or "")
         directory = str(normalized.get("directory", "") or "")
         file_name = str(normalized.get("file_name", "") or "")
+        fmt = str(normalized.get("format", "") or "")
         if path:
             split_dir, split_name = os.path.split(path)
             directory = directory or split_dir
             file_name = file_name or split_name
+        file_name = self._ensure_extension(file_name, fmt)
 
         return {
+            **normalized,
             "enabled": bool(normalized.get("enabled", True)),
             "role": str(normalized.get("role", "") or ""),
             "directory": directory,
             "file_name": file_name,
-            "format": str(normalized.get("format", "") or ""),
+            "format": fmt,
             "path": path,
             "metadata": dict(normalized.get("metadata", {}) or {}),
         }
@@ -158,6 +153,7 @@ class MultipleSaveTargetsDialog(QDialog):
     def _browse_row_path(self, row: int) -> None:
         directory_item = self.tableSaveTargets.item(row, self.COLUMN_DIRECTORY)
         file_name_item = self.tableSaveTargets.item(row, self.COLUMN_FILENAME)
+        format_item = self.tableSaveTargets.item(row, self.COLUMN_FORMAT)
         start_path = ""
         if directory_item and file_name_item:
             directory = directory_item.text().strip()
@@ -169,6 +165,7 @@ class MultipleSaveTargetsDialog(QDialog):
             return
 
         selected_dir, selected_name = os.path.split(selected_path)
+        selected_name = self._ensure_extension(selected_name, format_item.text().strip() if format_item else "")
         if directory_item:
             directory_item.setText(selected_dir)
         if file_name_item:
@@ -182,12 +179,12 @@ class MultipleSaveTargetsDialog(QDialog):
             role_item = table.item(row, self.COLUMN_ROLE)
             directory_item = table.item(row, self.COLUMN_DIRECTORY)
             file_name_item = table.item(row, self.COLUMN_FILENAME)
-            format_widget = table.cellWidget(row, self.COLUMN_FORMAT)
+            format_item = table.item(row, self.COLUMN_FORMAT)
 
             original = enabled_item.data(Qt.ItemDataRole.UserRole) if enabled_item else {}
             directory = directory_item.text().strip() if directory_item else ""
-            file_name = file_name_item.text().strip() if file_name_item else ""
-            fmt = format_widget.currentText().strip() if isinstance(format_widget, QComboBox) else ""
+            fmt = format_item.text().strip() if format_item else ""
+            file_name = self._ensure_extension(file_name_item.text().strip() if file_name_item else "", fmt)
             path = os.path.join(directory, file_name) if directory or file_name else ""
 
             results.append(
@@ -202,3 +199,27 @@ class MultipleSaveTargetsDialog(QDialog):
                 }
             )
         return results
+
+    def _accept_and_commit(self) -> None:
+        table = self.tableSaveTargets
+        editor = self.focusWidget()
+        if editor and table and table.isAncestorOf(editor):
+            table.commitData(editor)
+            table.closeEditor(editor, QAbstractItemDelegate.EndEditHint.NoHint)
+        if table:
+            table.clearFocus()
+            table.viewport().update()
+        self.accept()
+
+    def _ensure_extension(self, file_name: str, fmt: str) -> str:
+        file_name = str(file_name or "").strip()
+        fmt = str(fmt or "").strip().lstrip(".")
+        if not file_name or not fmt:
+            return file_name
+
+        root, ext = os.path.splitext(file_name)
+        if not ext:
+            return f"{file_name}.{fmt}"
+        if ext == ".":
+            return f"{root}.{fmt}"
+        return file_name

@@ -45,8 +45,8 @@ def apply_alpha_mask_pil(
     img = img.convert("RGBA")
     mask_img = mask_img.convert("L")
 
-    mask_w = max(1, int(img.width * scale_percent / 100.0))
-    mask_h = max(1, int(img.height * scale_percent / 100.0))
+    mask_w = max(1, int(mask_img.width * scale_percent / 100.0))
+    mask_h = max(1, int(mask_img.height * scale_percent / 100.0))
     resized_mask = mask_img.resize((mask_w, mask_h), resample=Image.Resampling.BILINEAR)
 
     x_offset = (img.width - resized_mask.width) // 2 + offset_x
@@ -260,12 +260,12 @@ def apply_alpha_mask(
     if mask_img.isNull():
         return img
 
-    mask_w = max(1, int(img.width() * scale_percent / 100.0))
-    mask_h = max(1, int(img.height() * scale_percent / 100.0))
+    mask_w = max(1, int(mask_img.width() * scale_percent / 100.0))
+    mask_h = max(1, int(mask_img.height() * scale_percent / 100.0))
     resized_mask = mask_img.scaled(
         mask_w,
         mask_h,
-        Qt.AspectRatioMode.KeepAspectRatio,
+        Qt.AspectRatioMode.IgnoreAspectRatio,
         Qt.TransformationMode.SmoothTransformation,
     )
 

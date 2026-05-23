@@ -1,0 +1,10 @@
+{
+  "id": "leader_portrait",
+  "name_key": "PRESET_LEADER_PORTRAIT",
+  "settings": {
+    "clip": {
+      "width": 156,
+      "height": 210
+    }
+  }
+}

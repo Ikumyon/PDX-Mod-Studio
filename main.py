@@ -343,52 +343,6 @@ def main():
                 window.editorTabs.setTabText(index, clean_text)
             project_tree.update_open_editors(window.editorTabs)
 
-    def is_virtual_tab_path(path):
-        return not path or str(path).startswith("untitled:")
-
-    def default_save_dialog_path(widget):
-        current_path = getattr(widget, "file_path", "")
-        if current_path and not is_virtual_tab_path(current_path):
-            return current_path
-
-        project_path = core.api.get_project_path()
-        if project_path:
-            tab_name = window.editorTabs.tabText(window.editorTabs.indexOf(widget)) if window.editorTabs.indexOf(widget) >= 0 else "untitled"
-            clean_name = _tab_text_without_dirty_marker(tab_name).replace("[E] ", "").strip() or "untitled"
-            return os.path.join(project_path, clean_name)
-
-        return base_dir
-
-    def build_plain_text_save_plan(widget, save_as=False):
-        widget.save_plan = None
-        current_path = getattr(widget, "file_path", "")
-        requires_dialog = save_as or is_virtual_tab_path(current_path)
-        target_path = current_path
-
-        if requires_dialog:
-            target_path, _ = QFileDialog.getSaveFileName(
-                window,
-                tr("MainWindow", "名前を付けて保存"),
-                default_save_dialog_path(widget),
-                tr("MainWindow", "All Files (*.*)"),
-            )
-            if not target_path:
-                return save_result_utils.save_cancelled()
-
-        widget.save_plan = {
-            "tab_kind": "text",
-            "dialog": "os_standard" if requires_dialog else None,
-            "save_as": bool(requires_dialog),
-            "targets": [
-                {
-                    "role": "primary",
-                    "path": target_path,
-                    "format": "text",
-                }
-            ],
-        }
-        return save_result_utils.save_success()
-
     def update_saved_widget_path(widget, path):
         if not path:
             return
@@ -406,32 +360,8 @@ def main():
         if message:
             window.statusBar().showMessage(message, default_timeout)
 
-    def write_plain_text_save_plan(widget):
-        plan = getattr(widget, "save_plan", None) or {}
-        targets = plan.get("targets", [])
-        primary_target = targets[0] if targets else None
-        target_path = primary_target.get("path", "") if isinstance(primary_target, dict) else ""
-        if not target_path:
-            window.statusBar().showMessage(tr("MainWindow", "保存先が未設定です。"), 4000)
-            return save_result_utils.save_failed()
-
-        try:
-            parent = os.path.dirname(target_path)
-            if parent:
-                os.makedirs(parent, exist_ok=True)
-            content = widget.toPlainText() if hasattr(widget, "toPlainText") else getattr(widget, "content", "")
-            with open(target_path, "w", encoding="utf-8", newline="") as handle:
-                handle.write(content)
-        except Exception as error:
-            window.statusBar().showMessage(
-                tr("MainWindow", "ファイルを書き込めませんでした: {error}").format(error=error),
-                5000,
-            )
-            return save_result_utils.save_failed(message=str(error))
-
-        update_saved_widget_path(widget, target_path)
-        core.api.emit_event("file_saved", target_path)
-        return save_result_utils.save_success(primary_path=target_path)
+    def clear_pending_save_plan(widget):
+        widget.save_plan = None
 
     def finish_successful_save(widget, result=None):
         if result is None:
@@ -441,18 +371,15 @@ def main():
 
         primary_path = result.get("primary_path", "")
         if not primary_path:
-            save_plan = getattr(widget, "save_plan", None)
-            if isinstance(save_plan, dict):
-                targets = save_plan.get("targets", [])
-                primary_target = targets[0] if targets else None
-                if isinstance(primary_target, dict):
-                    primary_path = primary_target.get("path", "")
-        if not primary_path:
             primary_path = getattr(widget, "file_path", "")
 
         if primary_path:
             update_saved_widget_path(widget, primary_path)
         mark_tab_clean(widget)
+        clear_pending_save_plan(widget)
+
+    def finish_unsuccessful_save(widget):
+        clear_pending_save_plan(widget)
 
     def save_active_tab(save_as=False):
         if not window.editorTabs:
@@ -479,10 +406,12 @@ def main():
             return False
 
         if save_result_utils.is_save_cancelled(plan_result):
+            finish_unsuccessful_save(widget)
             show_save_result_message(plan_result)
             return False
 
         if not save_result_utils.is_save_success(plan_result):
+            finish_unsuccessful_save(widget)
             show_save_result_message(plan_result)
             return False
 
@@ -503,11 +432,13 @@ def main():
                 tr("MainWindow", "保存書き込みに失敗しました: {error}").format(error=error),
                 5000,
             )
+            finish_unsuccessful_save(widget)
             return False
 
         if save_result_utils.is_save_success(write_result):
             finish_successful_save(widget, write_result)
             return True
+        finish_unsuccessful_save(widget)
         show_save_result_message(write_result)
         return False
 
@@ -556,11 +487,6 @@ def main():
             widget._dirty_timer = QTimer(widget)
             widget._dirty_timer.timeout.connect(check_content_change)
             widget._dirty_timer.start(100)
-        else:
-            widget.on_save_triggered = lambda w=widget: build_plain_text_save_plan(w, False)
-            widget.on_save_as_triggered = lambda w=widget: build_plain_text_save_plan(w, True)
-            widget.on_write_save_plan = lambda w=widget: write_plain_text_save_plan(w)
-
         return widget
 
     def _open_file_legacy_unused(file_path, editor_id=None):

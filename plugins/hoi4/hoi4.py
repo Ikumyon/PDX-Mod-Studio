@@ -41,6 +41,7 @@ DEFAULT_SETTINGS = {
     "achievement_unique_id_format": "{file}_{number}",
     "achievement_id_format": "{unique_id}_{number}",
     "graphic_definition_name_format": "GFX_{file}",
+    "graphic_definition_file_name_format": "GFX_{file}",
     "graphic_texture_file_format": "GFX_{file}",
     "pinned_ids": [
         "create_decision",
@@ -68,6 +69,7 @@ VARIABLE_DEFINITIONS = {
     "achievement_unique_id_format": ["{file}", "{number}", "{a-z}"],
     "achievement_id_format": ["{unique_id}", "{number}", "{a-z}"],
     "graphic_definition_name_format": ["{file}", "{number}", "{a-z}"],
+    "graphic_definition_file_name_format": ["{file}", "{number}", "{a-z}"],
     "graphic_texture_file_format": ["{file}", "{number}", "{a-z}"]
 }
 
@@ -325,6 +327,7 @@ def setup_settings_controls(widget, plugin, project_path):
         "achievementUniqueIdFormatEdit": "achievement_unique_id_format",
         "achievementIdFormatEdit": "achievement_id_format",
         "graphicDefinitionNameFormatEdit": "graphic_definition_name_format",
+        "graphicDefinitionFileNameFormatEdit": "graphic_definition_file_name_format",
         "graphicTextureFileFormatEdit": "graphic_texture_file_format"
     }
 

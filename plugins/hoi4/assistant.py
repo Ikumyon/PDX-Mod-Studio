@@ -604,6 +604,8 @@ class AssistantWidget(QWidget):
             item_data = self.all_toolbox_items.get(item_id)
             if item_data:
                 q_item = QStandardItem() # ラベルはカスタムウィジェット側で表示
+                q_item.setEditable(False)
+                q_item.setData(item_data, Qt.UserRole)
                 self.quickModel.appendRow(q_item)
                 self.add_item_widget_to_list(q_item, item_data)
         

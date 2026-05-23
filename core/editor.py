@@ -1,5 +1,9 @@
+import os
+
+import core.api
+from core import save_result
 from PySide6.QtWidgets import (
-    QFrame, QHBoxLayout, QLabel, QPlainTextEdit, QTextEdit, QToolButton, QVBoxLayout, QWidget
+    QFileDialog, QFrame, QHBoxLayout, QLabel, QPlainTextEdit, QTextEdit, QToolButton, QVBoxLayout, QWidget
 )
 from PySide6.QtGui import QFont, QColor, QPainter, QTextFormat, QTextCharFormat, QTextCursor
 from PySide6.QtCore import Qt, QSize, QRect, QTimer, QEvent, QPoint
@@ -131,6 +135,90 @@ class EditorWidget(QPlainTextEdit):
         
         self.update_line_number_area_width(0)
         self.highlight_current_line()
+        self.save_plan = None
+
+    def on_save_triggered(self):
+        return self.build_save_plan(save_as=False)
+
+    def on_save_as_triggered(self):
+        return self.build_save_plan(save_as=True)
+
+    def on_write_save_plan(self):
+        return self.write_save_plan()
+
+    def build_save_plan(self, save_as=False):
+        self.save_plan = None
+        current_path = getattr(self, "file_path", "")
+        requires_dialog = save_as or self.is_virtual_tab_path(current_path)
+        target_path = current_path
+
+        if requires_dialog:
+            target_path, _ = QFileDialog.getSaveFileName(
+                self.window(),
+                "名前を付けて保存",
+                self.default_save_dialog_path(),
+                "All Files (*.*)",
+            )
+            if not target_path:
+                return save_result.save_cancelled()
+
+        self.save_plan = {
+            "tab_kind": "text",
+            "dialog": "os_standard" if requires_dialog else None,
+            "save_as": bool(requires_dialog),
+            "targets": [
+                {
+                    "kind": "text_document",
+                    "role": "テキストファイル",
+                    "path": target_path,
+                    "format": "text",
+                }
+            ],
+        }
+        return save_result.save_success()
+
+    def write_save_plan(self):
+        plan = getattr(self, "save_plan", None) or {}
+        targets = plan.get("targets", [])
+        primary_target = targets[0] if targets else None
+        target_path = primary_target.get("path", "") if isinstance(primary_target, dict) else ""
+        if not target_path:
+            return save_result.save_failed(message="保存先が未設定です。")
+
+        try:
+            parent = os.path.dirname(target_path)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
+            with open(target_path, "w", encoding="utf-8", newline="") as handle:
+                handle.write(self.toPlainText())
+        except Exception as error:
+            return save_result.save_failed(message=str(error))
+
+        core.api.emit_event("file_saved", target_path)
+        return save_result.save_success(primary_path=target_path)
+
+    def is_virtual_tab_path(self, path):
+        return not path or str(path).startswith("untitled:")
+
+    def default_save_dialog_path(self):
+        current_path = getattr(self, "file_path", "")
+        if current_path and not self.is_virtual_tab_path(current_path):
+            return current_path
+
+        project_path = core.api.get_project_path()
+        if project_path:
+            editor_tabs = getattr(self.window(), "editorTabs", None)
+            if editor_tabs:
+                index = editor_tabs.indexOf(self)
+                if index >= 0:
+                    tab_name = editor_tabs.tabText(index)
+                    clean_name = self.tab_text_without_dirty_marker(tab_name).replace("[E] ", "").strip() or "untitled"
+                    return os.path.join(project_path, clean_name)
+        return os.getcwd()
+
+    @staticmethod
+    def tab_text_without_dirty_marker(text):
+        return text[1:] if text.startswith("*") else text
 
 
     def lineNumberAreaWidth(self):

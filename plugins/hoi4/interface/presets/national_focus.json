@@ -1,0 +1,10 @@
+{
+  "id": "national_focus",
+  "name_key": "PRESET_NATIONAL_FOCUS",
+  "settings": {
+    "clip": {
+      "width": 82,
+      "height": 82
+    }
+  }
+}

@@ -34,6 +34,8 @@ from plugins.hoi4.interface.colorize.core.model_assets import (
 tr = QCoreApplication.translate
 
 class ImageToolsDialog(QDialog):
+    ANIMATED_EXTENSIONS = {".gif", ".webp", ".apng"}
+
     def __init__(self, image_path: str, parent=None):
         super().__init__(parent)
         self.image_path = image_path
@@ -114,6 +116,7 @@ class ImageToolsDialog(QDialog):
                 print(f"Failed to load image: {self.image_path}")
 
         self.bind_controls()
+        self.update_animation_controls_visibility()
         self.init_ui_states()
         self.update_preview()
 
@@ -132,7 +135,7 @@ class ImageToolsDialog(QDialog):
         self.ui.spinCropHeight.valueChanged.connect(self.on_crop_spin_changed)
         self.ui.spinCropX.valueChanged.connect(self.on_crop_position_changed)
         self.ui.spinCropY.valueChanged.connect(self.on_crop_position_changed)
-        self.ui.comboMaskImage.currentIndexChanged.connect(self.trigger_preview_update)
+        self.ui.comboMaskImage.currentIndexChanged.connect(self.on_mask_changed)
         self.ui.spinMaskScale.valueChanged.connect(self.trigger_preview_update)
         self.ui.spinMaskX.valueChanged.connect(self.trigger_preview_update)
         self.ui.spinMaskY.valueChanged.connect(self.trigger_preview_update)
@@ -225,9 +228,29 @@ class ImageToolsDialog(QDialog):
         for choice in load_mask_choices(base_dir):
             self.ui.comboMaskImage.addItem(choice.label, choice.config)
 
+    def load_presets(self):
+        """presets/ ディレクトリの定義を読み込み、コンボボックスに追加する"""
+        from plugins.hoi4.interface.preset_repository import load_preset_choices
+        self.ui.comboMainPreset.blockSignals(True)
+        self.ui.comboMainPreset.clear()
+        base_dir = os.path.dirname(__file__)
+        for choice in load_preset_choices(base_dir):
+            self.ui.comboMainPreset.addItem(choice.label, choice.config)
+        self.ui.comboMainPreset.blockSignals(False)
+
+    def update_animation_controls_visibility(self):
+        preview_control_group = getattr(self.ui, "groupPreviewControl", None)
+        if not preview_control_group:
+            return
+        preview_control_group.setVisible(self.is_animated_image_source())
+
+    def is_animated_image_source(self) -> bool:
+        ext = os.path.splitext(self.image_path or "")[1].lower()
+        return ext in self.ANIMATED_EXTENSIONS
+
     def init_ui_states(self):
         self.ui.stackedWidgetSettings.setCurrentIndex(0)
-        self.ui.comboMainPreset.setCurrentIndex(0)
+        self.ui.comboMainPreset.setCurrentIndex(-1)
         self.init_interpolation_options()
         self.on_zoom_fit_toggled(self.ui.chkZoomFit.isChecked())
         
@@ -258,7 +281,7 @@ class ImageToolsDialog(QDialog):
         self.ui.sliderRemoveBgFeather.setEnabled(False)
         self.ui.spinRemoveBgFeather.setEnabled(False)
         self.ui.btnSelectKeyColor.setEnabled(False)
-        
+
         self.ui.sliderRemoveBgTolerance.setValue(30)
         self.ui.spinRemoveBgTolerance.setValue(30)
         self.ui.sliderRemoveBgFeather.setValue(5)
@@ -320,8 +343,9 @@ class ImageToolsDialog(QDialog):
             self.ui.spinMaskX.setRange(-self.original_image.width(), self.original_image.width())
             self.ui.spinMaskY.setRange(-self.original_image.height(), self.original_image.height())
             
-        # マスク一覧のロード
+        # マスク一覧とプリセット一覧のロード
         self.load_masks()
+        self.load_presets()
 
     def init_interpolation_options(self):
         self.ui.comboInterpolation.clear()
@@ -337,18 +361,28 @@ class ImageToolsDialog(QDialog):
         self.update_preview()
 
     def on_crop_preset_changed(self, index: int):
-        presets = {
-            1: (60, 60),    # 国民精神
-            2: (82, 82),    # 国家方針
-            3: (156, 210)   # 指導者肖像画
-        }
+        if index < 0:
+            return
+            
+        settings_data = self.ui.comboMainPreset.itemData(index)
         
-        if index in presets:
-            w, h = presets[index]
-            self.ui.spinCropWidth.setValue(w)
-            self.ui.spinCropHeight.setValue(h)
-            self.ui.spinCropWidth.setEnabled(False)
-            self.ui.spinCropHeight.setEnabled(False)
+        if isinstance(settings_data, dict) and "settings" in settings_data:
+            filter_settings = settings_data["settings"]
+            
+            self.ui.spinCropWidth.blockSignals(True)
+            self.ui.spinCropHeight.blockSignals(True)
+            self.ui.spinCropX.blockSignals(True)
+            self.ui.spinCropY.blockSignals(True)
+            
+            self.apply_filter_settings(filter_settings)
+            
+            self.ui.spinCropWidth.blockSignals(False)
+            self.ui.spinCropHeight.blockSignals(False)
+            self.ui.spinCropX.blockSignals(False)
+            self.ui.spinCropY.blockSignals(False)
+            self.ui.spinCropWidth.setEnabled(True)
+            self.ui.spinCropHeight.setEnabled(True)
+                
         else:
             self.ui.spinCropWidth.setEnabled(True)
             self.ui.spinCropHeight.setEnabled(True)
@@ -357,6 +391,53 @@ class ImageToolsDialog(QDialog):
 
     def on_crop_spin_changed(self):
         self.update_crop_rect_size()
+
+    def on_mask_changed(self, index: int):
+        self.auto_adjust_mask_scale()
+        self.trigger_preview_update()
+
+    def auto_adjust_mask_scale(self):
+        mask_index = self.ui.comboMaskImage.currentIndex()
+        if mask_index <= 0:
+            return
+            
+        mask_config = self.ui.comboMaskImage.itemData(mask_index)
+        if not mask_config:
+            return
+            
+        base_dir = os.path.dirname(__file__)
+        from plugins.hoi4.interface.mask_repository import resolve_mask_image_path
+        mask_path = resolve_mask_image_path(base_dir, mask_config)
+        if not mask_path:
+            return
+            
+        from plugins.hoi4.interface.ui_image_helpers import load_pil_image
+        mask_img = load_pil_image(mask_path)
+        if not mask_img or mask_img.width <= 0 or mask_img.height <= 0:
+            return
+
+        target_w = self.ui.spinCropWidth.value()
+        target_h = self.ui.spinCropHeight.value()
+        
+        if target_w <= 0 or target_h <= 0:
+            return
+            
+        scale_w = target_w / mask_img.width
+        scale_h = target_h / mask_img.height
+        
+        scale = max(scale_w, scale_h) * 100.0
+        
+        self.ui.spinMaskScale.blockSignals(True)
+        self.ui.spinMaskX.blockSignals(True)
+        self.ui.spinMaskY.blockSignals(True)
+        
+        self.ui.spinMaskScale.setValue(int(round(scale)))
+        self.ui.spinMaskX.setValue(0)
+        self.ui.spinMaskY.setValue(0)
+        
+        self.ui.spinMaskScale.blockSignals(False)
+        self.ui.spinMaskX.blockSignals(False)
+        self.ui.spinMaskY.blockSignals(False)
 
     def on_crop_position_changed(self):
         self.update_crop_rect_position()
@@ -530,9 +611,56 @@ class ImageToolsDialog(QDialog):
             view.scale(zoom, zoom)
 
     def eventFilter(self, watched, event):
-        if watched == self.ui.graphicsViewPreview.viewport() and event.type() == QEvent.Type.Resize:
-            if self.ui.chkZoomFit.isChecked():
-                QTimer.singleShot(0, self.update_preview_view_scale)
+        if watched == self.ui.graphicsViewPreview.viewport():
+            if event.type() == QEvent.Type.Resize:
+                if self.ui.chkZoomFit.isChecked():
+                    QTimer.singleShot(0, self.update_preview_view_scale)
+            
+            elif event.type() == QEvent.Type.MouseButtonPress:
+                if event.button() == Qt.MouseButton.LeftButton:
+                    if self.ui.comboMaskImage.currentIndex() > 0:
+                        self._dragging_mask = True
+                        self._drag_start_pos = event.pos()
+                        self._drag_start_mask_x = self.ui.spinMaskX.value()
+                        self._drag_start_mask_y = self.ui.spinMaskY.value()
+                        return True
+                elif event.button() == Qt.MouseButton.MiddleButton:
+                    self._panning_view = True
+                    self._pan_start_pos = event.pos()
+                    return True
+                    
+            elif event.type() == QEvent.Type.MouseMove:
+                if getattr(self, "_dragging_mask", False):
+                    start_scene = self.ui.graphicsViewPreview.mapToScene(self._drag_start_pos)
+                    current_scene = self.ui.graphicsViewPreview.mapToScene(event.pos())
+                    delta = current_scene - start_scene
+                    
+                    new_x = self._drag_start_mask_x + int(round(delta.x()))
+                    new_y = self._drag_start_mask_y + int(round(delta.y()))
+                    
+                    self.ui.spinMaskX.setValue(new_x)
+                    self.ui.spinMaskY.setValue(new_y)
+                    return True
+                    
+                elif getattr(self, "_panning_view", False):
+                    delta = event.pos() - self._pan_start_pos
+                    scrollbar_h = self.ui.graphicsViewPreview.horizontalScrollBar()
+                    scrollbar_v = self.ui.graphicsViewPreview.verticalScrollBar()
+                    
+                    scrollbar_h.setValue(scrollbar_h.value() - delta.x())
+                    scrollbar_v.setValue(scrollbar_v.value() - delta.y())
+                    
+                    self._pan_start_pos = event.pos()
+                    return True
+                    
+            elif event.type() == QEvent.Type.MouseButtonRelease:
+                if event.button() == Qt.MouseButton.LeftButton and getattr(self, "_dragging_mask", False):
+                    self._dragging_mask = False
+                    return True
+                elif event.button() == Qt.MouseButton.MiddleButton and getattr(self, "_panning_view", False):
+                    self._panning_view = False
+                    return True
+
         return super().eventFilter(watched, event)
 
     def on_blur_enable_toggled(self, checked: bool):
@@ -756,11 +884,13 @@ class ImageToolsDialog(QDialog):
 
         mask = settings.get("mask", {})
         mask_id = mask.get("id")
+        self.ui.comboMaskImage.blockSignals(True)
         for i in range(self.ui.comboMaskImage.count()):
             mask_config = self.ui.comboMaskImage.itemData(i)
             if (not mask_id and not mask_config) or (isinstance(mask_config, dict) and mask_config.get("id") == mask_id):
                 self.ui.comboMaskImage.setCurrentIndex(i)
                 break
+        self.ui.comboMaskImage.blockSignals(False)
         self.ui.spinMaskScale.setValue(mask.get("scale", self.ui.spinMaskScale.value()))
         self.ui.spinMaskX.setValue(mask.get("x", self.ui.spinMaskX.value()))
         self.ui.spinMaskY.setValue(mask.get("y", self.ui.spinMaskY.value()))
@@ -1006,3 +1136,15 @@ class ImageToolsDialog(QDialog):
         except Exception as e:
             print(f"[AI Colorize] Inference error: {e}")
             return img
+
+    def keyPressEvent(self, event):
+        from PySide6.QtCore import Qt
+        from PySide6.QtWidgets import QPushButton
+        
+        # Enterキーによる意図しないクローズを防ぐ
+        # フォーカスがボタン（例: OKボタン）にある場合は通常通り処理する
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            if not isinstance(self.focusWidget(), QPushButton):
+                return
+                
+        super().keyPressEvent(event)

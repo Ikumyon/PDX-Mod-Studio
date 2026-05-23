@@ -1,5 +1,7 @@
 import ast
 import os
+import sys
+import types
 
 from PySide6.QtCore import QFile
 from PySide6.QtUiTools import QUiLoader
@@ -90,6 +92,10 @@ class EditorRegistry:
             return None
         return None
 
+    def _logic_module_name(self, editor_id):
+        safe_id = "".join(ch if ch.isalnum() else "_" for ch in self.normalize_editor_id(editor_id))
+        return f"pdx_editor_logic_{safe_id}"
+
     def create_editor_widget(self, editor_id, parent, file_path, content, tab_id=None):
         editor_id = self.normalize_editor_id(editor_id)
         if editor_id not in self.editors:
@@ -119,15 +125,21 @@ class EditorRegistry:
             widget.content = content
             widget.tab_id = tab_id
 
-
-            namespace = {
+            module_name = self._logic_module_name(editor_id)
+            logic_module = types.ModuleType(module_name)
+            logic_module.__file__ = editor.py_path
+            logic_module.__package__ = ""
+            namespace = logic_module.__dict__
+            namespace.update({
                 "widget": widget,
                 "parent": parent,
                 "file_path": file_path,
                 "content": content,
+                "__name__": module_name,
                 "__file__": editor.py_path,
                 "tr": tr,
-            }
+            })
+            sys.modules[module_name] = logic_module
             exec(py_code, namespace)
 
             setup = namespace.get("setup")
