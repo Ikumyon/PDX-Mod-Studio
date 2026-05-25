@@ -8,8 +8,7 @@
     "document_type": "decision_file",
     "form": "decision_editor.ui",
     "logic": "decision_editor.py",
-    "parser": "script_parser.py",
-    "schema": "decision_schema.json",
+    "schema": "../grammar/structures/decision_schema.toml",
     "children": [
         {
             "id": "common",
@@ -30,13 +29,13 @@
         {
             "path": "common/decisions/categories",
             "document_type": "decision_category_file",
-            "schema": "decision_category_schema.json",
+            "schema": "../grammar/structures/decision_category_schema.toml",
             "role": "category"
         },
         {
             "path": "common/decisions",
             "document_type": "decision_file",
-            "schema": "decision_schema.json",
+            "schema": "../grammar/structures/decision_schema.toml",
             "role": "decision"
         }
     ]

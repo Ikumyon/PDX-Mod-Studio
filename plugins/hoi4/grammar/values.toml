@@ -1,0 +1,26 @@
+[value.boolean]
+literals = ["yes", "no"]
+
+[value.integer]
+pattern = "-?[0-9]+"
+
+[value.decimal]
+pattern = "-?[0-9]+\\.[0-9]+"
+
+[value.date]
+pattern = "[0-9]{4}\\.[0-9]{1,2}\\.[0-9]{1,2}"
+
+[value.identifier]
+pattern = "[A-Za-z0-9_\\.:-]+"
+
+[value.country_tag]
+pattern = "[A-Z]{3}"
+
+[value.province_id]
+pattern = "[0-9]+"
+
+[value.localisation_key]
+pattern = "[A-Za-z0-9_\\.:-]+"
+
+[value.sprite_name]
+pattern = "[A-Za-z0-9_\\.:-]+"

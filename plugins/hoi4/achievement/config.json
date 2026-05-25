@@ -5,7 +5,7 @@
     "extension": ".txt",
     "form": "achievement_editor.ui",
     "logic": "achievement_editor.py",
-    "schema": "achievement_schema.json",
+    "schema": "../grammar/structures/achievement_schema.toml",
     "format": "achievement_format.json",
     "children": [
         {

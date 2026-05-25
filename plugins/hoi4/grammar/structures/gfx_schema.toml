@@ -1,0 +1,583 @@
+# ============================================================
+# gfx types
+# ============================================================
+
+[[structure]]
+name = "spriteType"
+kind = "spriteType"
+body = "named_block"
+extra = "none"
+
+[[structure.column]]
+key = "name"
+value = "identifier"
+required = true
+multiple = false
+
+[[structure.column]]
+key = "texturefile"
+value = "string"
+required = true
+multiple = false
+
+[[structure.column]]
+key = "size"
+value = "object"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "noOfFrames"
+value = "integer"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "effectFile"
+value = "string"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "allwaystransparent"
+value = "boolean"
+required = false
+multiple = false
+allowed_values = ["yes", "no"]
+
+[[structure.column]]
+key = "legacy_lazy_load"
+value = "boolean"
+required = false
+multiple = false
+allowed_values = ["yes", "no"]
+
+[[structure.column]]
+key = "color"
+value = "object"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "animation"
+value = "gfx_animation"
+required = false
+multiple = true
+
+[[structure]]
+name = "textSpriteType"
+kind = "textSpriteType"
+body = "named_block"
+extra = "none"
+
+[[structure.column]]
+key = "name"
+value = "identifier"
+required = true
+multiple = false
+
+[[structure.column]]
+key = "texturefile"
+value = "string"
+required = true
+multiple = false
+
+[[structure.column]]
+key = "size"
+value = "object"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "noOfFrames"
+value = "integer"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "effectFile"
+value = "string"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "allwaystransparent"
+value = "boolean"
+required = false
+multiple = false
+allowed_values = ["yes", "no"]
+
+[[structure.column]]
+key = "legacy_lazy_load"
+value = "boolean"
+required = false
+multiple = false
+allowed_values = ["yes", "no"]
+
+[[structure.column]]
+key = "color"
+value = "object"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "animation"
+value = "gfx_animation"
+required = false
+multiple = true
+
+[[structure]]
+name = "corneredTileSpriteType"
+kind = "corneredTileSpriteType"
+body = "named_block"
+extra = "none"
+
+[[structure.column]]
+key = "name"
+value = "identifier"
+required = true
+multiple = false
+
+[[structure.column]]
+key = "texturefile"
+value = "string"
+required = true
+multiple = false
+
+[[structure.column]]
+key = "size"
+value = "object"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "borderSize"
+value = "object"
+required = true
+multiple = false
+
+[[structure.column]]
+key = "noOfFrames"
+value = "integer"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "effectFile"
+value = "string"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "allwaystransparent"
+value = "boolean"
+required = false
+multiple = false
+allowed_values = ["yes", "no"]
+
+[[structure.column]]
+key = "legacy_lazy_load"
+value = "boolean"
+required = false
+multiple = false
+allowed_values = ["yes", "no"]
+
+[[structure.column]]
+key = "color"
+value = "object"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "animation"
+value = "gfx_animation"
+required = false
+multiple = true
+
+[[structure]]
+name = "tileSpriteType"
+kind = "tileSpriteType"
+body = "named_block"
+extra = "none"
+
+[[structure.column]]
+key = "name"
+value = "identifier"
+required = true
+multiple = false
+
+[[structure.column]]
+key = "texturefile"
+value = "string"
+required = true
+multiple = false
+
+[[structure.column]]
+key = "size"
+value = "object"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "noOfFrames"
+value = "integer"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "effectFile"
+value = "string"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "allwaystransparent"
+value = "boolean"
+required = false
+multiple = false
+allowed_values = ["yes", "no"]
+
+[[structure.column]]
+key = "legacy_lazy_load"
+value = "boolean"
+required = false
+multiple = false
+allowed_values = ["yes", "no"]
+
+[[structure.column]]
+key = "color"
+value = "object"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "animation"
+value = "gfx_animation"
+required = false
+multiple = true
+
+[[structure]]
+name = "maskedShieldType"
+kind = "maskedShieldType"
+body = "named_block"
+extra = "none"
+
+[[structure.column]]
+key = "name"
+value = "identifier"
+required = true
+multiple = false
+
+[[structure.column]]
+key = "texturefile"
+value = "string"
+required = true
+multiple = false
+
+[[structure.column]]
+key = "maskFile"
+value = "string"
+required = true
+multiple = false
+
+[[structure.column]]
+key = "size"
+value = "object"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "effectFile"
+value = "string"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "allwaystransparent"
+value = "boolean"
+required = false
+multiple = false
+allowed_values = ["yes", "no"]
+
+[[structure.column]]
+key = "legacy_lazy_load"
+value = "boolean"
+required = false
+multiple = false
+allowed_values = ["yes", "no"]
+
+[[structure.column]]
+key = "color"
+value = "object"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "animation"
+value = "gfx_animation"
+required = false
+multiple = true
+
+[[structure]]
+name = "progressbartype"
+kind = "progressbartype"
+body = "named_block"
+extra = "none"
+
+[[structure.column]]
+key = "name"
+value = "identifier"
+required = true
+multiple = false
+
+[[structure.column]]
+key = "textureFile1"
+value = "string"
+required = true
+multiple = false
+
+[[structure.column]]
+key = "textureFile2"
+value = "string"
+required = true
+multiple = false
+
+[[structure.column]]
+key = "size"
+value = "object"
+required = true
+multiple = false
+
+[[structure.column]]
+key = "effectFile"
+value = "string"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "allwaystransparent"
+value = "boolean"
+required = false
+multiple = false
+allowed_values = ["yes", "no"]
+
+[[structure.column]]
+key = "legacy_lazy_load"
+value = "boolean"
+required = false
+multiple = false
+allowed_values = ["yes", "no"]
+
+[[structure.column]]
+key = "color"
+value = "object"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "colortwo"
+value = "object"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "horizontal"
+value = "boolean"
+required = false
+multiple = false
+allowed_values = ["yes", "no"]
+
+[[structure]]
+name = "frameAnimatedSpriteType"
+kind = "frameAnimatedSpriteType"
+body = "named_block"
+extra = "none"
+
+[[structure.column]]
+key = "name"
+value = "identifier"
+required = true
+multiple = false
+
+[[structure.column]]
+key = "texturefile"
+value = "string"
+required = true
+multiple = false
+
+[[structure.column]]
+key = "size"
+value = "object"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "noOfFrames"
+value = "integer"
+required = true
+multiple = false
+
+[[structure.column]]
+key = "effectFile"
+value = "string"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "allwaystransparent"
+value = "boolean"
+required = false
+multiple = false
+allowed_values = ["yes", "no"]
+
+[[structure.column]]
+key = "legacy_lazy_load"
+value = "boolean"
+required = false
+multiple = false
+allowed_values = ["yes", "no"]
+
+[[structure.column]]
+key = "color"
+value = "object"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "animation_rate_fps"
+value = "float"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "looping"
+value = "boolean"
+required = false
+multiple = false
+allowed_values = ["yes", "no"]
+
+[[structure.column]]
+key = "play_on_show"
+value = "boolean"
+required = false
+multiple = false
+allowed_values = ["yes", "no"]
+
+[[structure.column]]
+key = "pause_on_loop"
+value = "float"
+required = false
+multiple = false
+
+[[structure]]
+name = "animatedmaptext"
+kind = "animatedmaptext"
+body = "named_block"
+extra = "none"
+
+[[structure.column]]
+key = "name"
+value = "identifier"
+required = true
+multiple = false
+
+[[structure.column]]
+key = "texturefile"
+value = "string"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "size"
+value = "object"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "allwaystransparent"
+value = "boolean"
+required = false
+multiple = false
+allowed_values = ["yes", "no"]
+
+[[structure.column]]
+key = "color"
+value = "object"
+required = false
+multiple = false
+
+# ============================================================
+# gfx animation
+# ============================================================
+
+[[structure]]
+name = "gfx_animation"
+kind = "gfx_animation"
+extra = "none"
+
+[[structure.column]]
+key = "animationmaskfile"
+value = "string"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "animationtexturefile"
+value = "string"
+required = true
+multiple = false
+
+[[structure.column]]
+key = "animationtype"
+value = "string"
+required = true
+multiple = false
+
+[[structure.column]]
+key = "animationtime"
+value = "float"
+required = true
+multiple = false
+
+[[structure.column]]
+key = "animationlooping"
+value = "boolean"
+required = false
+multiple = false
+allowed_values = ["yes", "no"]
+
+[[structure.column]]
+key = "animationblendmode"
+value = "string"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "animationdelay"
+value = "float"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "animationrotation"
+value = "float"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "animationrotationoffset"
+value = "object"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "animationtexturescale"
+value = "object"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "animationframes"
+value = "object"
+required = false
+multiple = false

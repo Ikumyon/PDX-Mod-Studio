@@ -1,0 +1,6 @@
+[[file_type]]
+id = "events"
+name = "Events"
+paths = "events/*.txt"
+root_mode = "fixed"
+unknown_root = "error"

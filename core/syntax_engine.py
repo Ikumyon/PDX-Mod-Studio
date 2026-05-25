@@ -1,7 +1,9 @@
 from __future__ import annotations
+
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Optional
+
 
 @dataclass(frozen=True)
 class SourcePosition:
@@ -9,25 +11,31 @@ class SourcePosition:
     line: int
     column: int
 
+
 @dataclass(frozen=True)
 class SourceRange:
     start: SourcePosition
     end: SourcePosition
 
     @property
-    def start_offset(self) -> int: return self.start.offset
+    def start_offset(self) -> int:
+        return self.start.offset
+
     @property
-    def end_offset(self) -> int: return self.end.offset
+    def end_offset(self) -> int:
+        return self.end.offset
 
     @staticmethod
-    def between(start: SourceRange, end: SourceRange) -> SourceRange:
+    def between(start: "SourceRange", end: "SourceRange") -> "SourceRange":
         return SourceRange(start.start, end.end)
+
 
 @dataclass(frozen=True)
 class DiagnosticAction:
     title: str
     range: SourceRange
     replacement: str
+
 
 @dataclass
 class Diagnostic:
@@ -170,7 +178,7 @@ class Lexer:
                         message=f"Invalid character: {token.raw!r}",
                         range=token.range,
                         code="invalid-character",
-                        source="hoi4-lexer",
+                        source="syntax-lexer",
                     )
                 )
                 tokens.append(token)
@@ -252,7 +260,7 @@ class Lexer:
 
         token = Token(TokenKind.STRING, "".join(value), "".join(raw), SourceRange(start, self._position()))
         self.diagnostics.append(
-            Diagnostic("error", "Unterminated string literal", token.range, code="unterminated-string", source="hoi4-lexer")
+            Diagnostic("error", "Unterminated string literal", token.range, code="unterminated-string", source="syntax-lexer")
         )
         return token
 
@@ -327,7 +335,7 @@ class Parser:
             return self._parse_object()
         bad = self._advance()
         node = ErrorNode(bad.range, f"Unexpected token: {bad.raw!r}", bad.raw)
-        self.diagnostics.append(Diagnostic("error", node.message, bad.range, code="unexpected-token", source="hoi4-parser", target=node))
+        self.diagnostics.append(Diagnostic("error", node.message, bad.range, code="unexpected-token", source="syntax-parser", target=node))
         return node
 
     def _parse_value(self) -> AstNode:
@@ -335,7 +343,7 @@ class Parser:
         if self._check(TokenKind.EOF) or self._check(TokenKind.RBRACE):
             token = self._current()
             node = MissingValueNode(token.range)
-            self.diagnostics.append(Diagnostic("error", "Missing value", token.range, code="missing-value", source="hoi4-parser", target=node))
+            self.diagnostics.append(Diagnostic("error", "Missing value", token.range, code="missing-value", source="syntax-parser", target=node))
             return node
         if self._check(TokenKind.LBRACE):
             return self._parse_object()
@@ -343,7 +351,7 @@ class Parser:
             return self._parse_scalar()
         bad = self._advance()
         node = ErrorNode(bad.range, f"Invalid value token: {bad.raw!r}", bad.raw)
-        self.diagnostics.append(Diagnostic("error", node.message, bad.range, code="invalid-value", source="hoi4-parser", target=node))
+        self.diagnostics.append(Diagnostic("error", node.message, bad.range, code="invalid-value", source="syntax-parser", target=node))
         return node
 
     def _parse_object(self) -> ObjectNode:
@@ -358,7 +366,7 @@ class Parser:
             items.append(self._parse_statement())
         if close_token is None:
             end_range = self._current().range
-            self.diagnostics.append(Diagnostic("error", "Missing closing brace", end_range, code="missing-closing-brace", source="hoi4-parser"))
+            self.diagnostics.append(Diagnostic("error", "Missing closing brace", end_range, code="missing-closing-brace", source="syntax-parser"))
         else:
             end_range = close_token.range
         return ObjectNode(SourceRange.between(open_token.range, end_range), items, open_token.range, close_token.range if close_token else None)
@@ -393,7 +401,7 @@ class Parser:
         if self._check(kind):
             return self._advance()
         token = self._current()
-        self.diagnostics.append(Diagnostic("error", message, token.range, code="expected-token", source="hoi4-parser"))
+        self.diagnostics.append(Diagnostic("error", message, token.range, code="expected-token", source="syntax-parser"))
         return token
 
     def _check(self, kind: TokenKind) -> bool:
@@ -457,12 +465,12 @@ class ParsedEntity:
                 return property_key
         return None
 
+
 class SchemaEvaluator:
     def __init__(self, schema: dict):
         self.schema = schema
         self.schema_name = schema.get("schema_name", "unknown")
         self.root_pattern = schema.get("root_pattern", "named_block")
-        self.id_rule = schema.get("id_rule", {})
         self.fields = schema.get("fields", {})
         self.case_insensitive_keys = bool(schema.get("case_insensitive_keys", False))
 
@@ -479,7 +487,7 @@ class SchemaEvaluator:
                     node_key=item.key,
                     parent_key=None,
                     node=item,
-                    path=path
+                    path=path,
                 )
                 if entity:
                     entities.append(entity)
@@ -496,7 +504,7 @@ class SchemaEvaluator:
                         node_key=inner.key,
                         parent_key=parent_key,
                         node=inner,
-                        path=path
+                        path=path,
                     )
                     if entity:
                         entities.append(entity)
@@ -507,16 +515,6 @@ class SchemaEvaluator:
         entity_id = node_key
         entity_parent_id = parent_key
 
-        source = self.id_rule.get("source")
-        if source == "inner_property":
-            prop_name = self.id_rule.get("property_name", "id")
-            if isinstance(node.value, ObjectNode):
-                for child in node.value.items:
-                    if isinstance(child, AssignmentNode) and child.key == prop_name:
-                        if hasattr(child.value, "value"):
-                            entity_id = str(child.value.value)
-                        break
-
         entity = ParsedEntity(
             schema_name=self.schema_name,
             id=entity_id,
@@ -524,7 +522,7 @@ class SchemaEvaluator:
             node=node,
             source_path=path,
             properties={},
-            case_insensitive_keys=self.case_insensitive_keys
+            case_insensitive_keys=self.case_insensitive_keys,
         )
 
         if isinstance(node.value, ObjectNode):

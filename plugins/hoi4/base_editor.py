@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
 )
 
-from plugins.hoi4.script_parser import (
+from core.syntax_engine import (
     AssignmentNode,
     ObjectNode,
     ParsedEntity,
@@ -63,9 +63,8 @@ class BaseParser:
     progress_label = "Parsing"
     cache_key: Optional[str] = None
 
-    def __init__(self, schema_path: str):
-        with open(schema_path, "r", encoding="utf-8") as f:
-            self.schema_data = json.load(f)
+    def __init__(self, schema_data: dict):
+        self.schema_data = schema_data
         self.evaluator = SchemaEvaluator(self.schema_data)
         self.schema = self.schema_data
 
@@ -170,27 +169,23 @@ class BaseEditorController(QObject):
         return {}
 
     def load_format_config(self) -> dict:
-        """自身（具象クラス）の情報に基づき、フォーマット設定ファイルをロードする"""
+        """カスタムタブ側の出力形式定義をローカル資産からロードする"""
         config = self.get_element_config()
-        format_file = config.get("format", "")
-        
+        format_file = config.get("format", "") or self.DEFAULT_FORMAT_FILE
         if not format_file:
-            format_file = self.DEFAULT_FORMAT_FILE
-            
-        if not format_file:
-            return {}
-            
+            raise KeyError(f"Format is not defined for element '{self.ELEMENT_ID}'.")
+
         module = sys.modules[self.__class__.__module__]
         base_dir = os.path.dirname(getattr(module, "__file__", ""))
-        
         path = os.path.join(base_dir, format_file)
-        if os.path.exists(path):
-            try:
-                with open(path, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            except Exception:
-                return {}
-        return {}
+        if not os.path.exists(path):
+            raise FileNotFoundError(path)
+
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            raise TypeError(f"Format data must be a JSON object: {path}")
+        return data
 
     def initialize_config(self):
         """要素のconfig情報およびフォーマット設定を初期化する"""

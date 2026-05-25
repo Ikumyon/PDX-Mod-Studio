@@ -8,6 +8,7 @@ from typing import Optional
 import core.api
 from core.utils import load_svg_icon
 from core import save_result
+from core import syntax_assets
 from PySide6.QtCore import QFile, QEvent, QObject, Qt
 from PySide6.QtGui import QAction, QPixmap
 from PySide6.QtUiTools import QUiLoader
@@ -58,7 +59,7 @@ from plugins.hoi4.interface.gfx_ui_bindings import (
     schema_type_definition,
 )
 from plugins.hoi4.interface.ui_image_helpers import load_pil_image
-from plugins.hoi4.script_parser import AssignmentNode, ObjectNode, ParsedEntity, ScalarNode
+from core.syntax_engine import AssignmentNode, ObjectNode, ParsedEntity, ScalarNode
 
 
 EDITOR_NAME = "GFX Editor"
@@ -150,9 +151,10 @@ class GfxParser(BaseParser):
     progress_label = "Parsing gfx"
     cache_key = "gfx"
 
-    def __init__(self):
-        base_dir = os.path.dirname(__file__)
-        super().__init__(os.path.join(base_dir, "gfx_schema.json"))
+    def __init__(self, plugin=None):
+        element = syntax_assets.plugin_element(plugin, "interface")
+        schema_data = syntax_assets.load_element_schema(element)
+        super().__init__(schema_data)
 
 
 def setup(widget, file_path, content):
@@ -175,7 +177,7 @@ class GfxEditorController(BaseEditorController):
 
     def __init__(self, widget, file_path, content):
         super().__init__(widget, file_path, content)
-        self.parser = GfxParser()
+        self.parser = GfxParser(self.get_hoi4_plugin())
         self.definitions: list[dict] = []
         self.selected_index: Optional[int] = None
         self.preview_scene = None

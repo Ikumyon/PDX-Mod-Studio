@@ -2,7 +2,8 @@ import json
 import os
 from decimal import Decimal, InvalidOperation, ROUND_DOWN, ROUND_HALF_UP
 from typing import Any, Optional
-from plugins.hoi4.script_parser import (
+from core import syntax_assets
+from core.syntax_engine import (
     Parser, Diagnostic, DiagnosticAction, AssignmentNode, ObjectNode, ScalarNode,
     AstNode, DocumentAst, ComparisonNode, SourceRange
 )
@@ -37,27 +38,10 @@ class ScriptValidator:
     MIN_VALUE = -2147483
     MAX_DECIMAL_PLACES = 5
 
-    def __init__(self, plugin_path: str):
-        self.plugin_path = plugin_path
-        self.effects = {}
-        self.triggers = {}
-        
-        # 検証ルールの読み込み
-        effects_path = os.path.join(plugin_path, "rules", "effects.json")
-        if os.path.exists(effects_path):
-            try:
-                with open(effects_path, "r", encoding="utf-8") as f:
-                    self.effects = json.load(f)
-            except Exception as e:
-                print(f"Failed to load effects.json: {e}")
-                
-        triggers_path = os.path.join(plugin_path, "rules", "triggers.json")
-        if os.path.exists(triggers_path):
-            try:
-                with open(triggers_path, "r", encoding="utf-8") as f:
-                    self.triggers = json.load(f)
-            except Exception as e:
-                print(f"Failed to load triggers.json: {e}")
+    def __init__(self, plugin):
+        self.plugin = plugin
+        self.effects = syntax_assets.load_plugin_rule_data(plugin, "effects")
+        self.triggers = syntax_assets.load_plugin_rule_data(plugin, "triggers")
 
     def validate(self, file_path: str, content: str) -> list[Diagnostic]:
         self._content = content
@@ -78,23 +62,8 @@ class ScriptValidator:
             rich_diagnostics.append(rich_d)
         
         # スキーマの特定と読み込み
-        schema = None
-        norm_path = file_path.lower().replace("\\", "/")
-        if "events" in norm_path:
-            schema_path = os.path.join(self.plugin_path, "events", "event_schema.json")
-        elif "decisions" in norm_path:
-            schema_path = os.path.join(self.plugin_path, "decisions", "decision_schema.json")
-        elif "interface" in norm_path:
-            schema_path = os.path.join(self.plugin_path, "interface", "gfx_schema.json")
-        else:
-            schema_path = None
-            
-        if schema_path and os.path.exists(schema_path):
-            try:
-                with open(schema_path, "r", encoding="utf-8") as f:
-                    schema = json.load(f)
-            except Exception as e:
-                print(f"Failed to load schema {schema_path}: {e}")
+        element = syntax_assets.element_for_project_file(self.plugin, file_path)
+        schema = syntax_assets.load_element_schema(element, file_path=file_path)
         
         errors = []
         self._validate_node(ast, schema, None, errors)

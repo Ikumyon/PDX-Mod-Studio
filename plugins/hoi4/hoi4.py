@@ -542,7 +542,7 @@ def initialize(plugin):
     from plugins.hoi4.script_validator import ScriptValidator
     
     def hoi4_diagnostics_provider(file_path, content):
-        validator = ScriptValidator(plugin.path)
+        validator = ScriptValidator(plugin)
         return validator.validate(file_path, content)
         
     core.api.register_diagnostics_provider(".txt", hoi4_diagnostics_provider)

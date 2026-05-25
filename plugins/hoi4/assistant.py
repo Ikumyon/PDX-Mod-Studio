@@ -262,8 +262,8 @@ class AssistantWidget(QWidget):
 
         try:
             from plugins.hoi4.events.event_editor import EventParser
-            parser = EventParser()
             plugin = self.plugin
+            parser = EventParser(plugin)
             
             events = []
             if plugin and hasattr(plugin, "project_cache") and "events" in plugin.project_cache:
@@ -392,8 +392,8 @@ class AssistantWidget(QWidget):
 
         try:
             from plugins.hoi4.decisions.decision_editor import DecisionParser
-            parser = DecisionParser()
             plugin = self.plugin
+            parser = DecisionParser(plugin)
             
             categories = []
             # キャッシュがあればそれを利用、なければパース
@@ -479,8 +479,8 @@ class AssistantWidget(QWidget):
 
         try:
             from plugins.hoi4.achievement.achievement_editor import AchievementParser
-            parser = AchievementParser()
             plugin = self.plugin
+            parser = AchievementParser(plugin)
             
             achievements = []
             if plugin and hasattr(plugin, "project_cache") and "achievements" in plugin.project_cache:

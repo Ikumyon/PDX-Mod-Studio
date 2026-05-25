@@ -1,0 +1,396 @@
+# ============================================================
+# decision category
+# ============================================================
+
+[[structure]]
+name = "decision_category"
+kind = "decision_category"
+body = "named_block"
+body_value = "decision"
+extra = "none"
+
+
+# ============================================================
+# decision / mission entry
+# ============================================================
+
+[[structure]]
+name = "decision"
+kind = "decision"
+extra = "none"
+
+# ------------------------------------------------------------
+# basic fields
+# ------------------------------------------------------------
+
+[[structure.column]]
+key = "icon"
+value = "gfx"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "priority"
+value = "integer"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "cost"
+value = "decimal"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "fire_only_once"
+value = "boolean"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "days_re_enable"
+value = "integer"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "days_remove"
+value = "integer"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "fixed_random_seed"
+value = "boolean"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "cancel_if_not_visible"
+value = "boolean"
+required = false
+multiple = false
+
+# ------------------------------------------------------------
+# trigger fields
+# ------------------------------------------------------------
+
+[[structure.column]]
+key = "allowed"
+value = "trigger_block"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "visible"
+value = "trigger_block"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "available"
+value = "trigger_block"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "activation"
+value = "trigger_block"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "cancel_trigger"
+value = "trigger_block"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "custom_cost_trigger"
+value = "trigger_block"
+required = false
+multiple = false
+
+# ------------------------------------------------------------
+# effect fields
+# ------------------------------------------------------------
+
+[[structure.column]]
+key = "complete_effect"
+value = "effect_block"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "remove_effect"
+value = "effect_block"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "cancel_effect"
+value = "effect_block"
+required = false
+multiple = false
+
+# ------------------------------------------------------------
+# custom cost
+# ------------------------------------------------------------
+
+[[structure.column]]
+key = "custom_cost_text"
+value = "localisation_key"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "ai_hint_pp_cost"
+value = "integer"
+required = false
+multiple = false
+
+# ------------------------------------------------------------
+# AI
+# ------------------------------------------------------------
+
+[[structure.column]]
+key = "ai_will_do"
+value = "ai_will_do"
+required = false
+multiple = false
+
+# ------------------------------------------------------------
+# modifier
+# ------------------------------------------------------------
+
+[[structure.column]]
+key = "modifier"
+value = "modifier_block"
+required = false
+multiple = false
+
+# ------------------------------------------------------------
+# war / timeout
+# ------------------------------------------------------------
+
+[[structure.column]]
+key = "war_with_on_remove"
+value = "country_tag"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "war_with_on_timeout"
+value = "country_tag"
+required = false
+multiple = false
+
+# ------------------------------------------------------------
+# mission fields
+# ------------------------------------------------------------
+
+[[structure.column]]
+key = "is_good"
+value = "boolean"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "selectable_mission"
+value = "boolean"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "days_mission_timeout"
+value = "integer"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "timeout_effect"
+value = "effect_block"
+required = false
+multiple = false
+
+# ------------------------------------------------------------
+# target decision fields
+# ------------------------------------------------------------
+
+[[structure.column]]
+key = "target_root_trigger"
+value = "trigger_block"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "target_trigger"
+value = "trigger_block"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "targets"
+value = "country_tag_list"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "targets_dynamic"
+value = "boolean"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "target_array"
+value = "identifier"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "state_target"
+value = "state_target"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "on_map_mode"
+value = "on_map_mode"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "war_with_target_on_complete"
+value = "boolean"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "war_with_target_on_remove"
+value = "boolean"
+required = false
+multiple = false
+
+# ------------------------------------------------------------
+# map highlight
+# ------------------------------------------------------------
+
+[[structure.column]]
+key = "highlight_states"
+value = "highlight_states"
+required = false
+multiple = false
+
+# ------------------------------------------------------------
+# targeted modifier
+# ------------------------------------------------------------
+
+[[structure.column]]
+key = "targeted_modifier"
+value = "targeted_modifier"
+required = false
+multiple = false
+
+
+# ============================================================
+# ai_will_do
+# ============================================================
+
+[[structure]]
+name = "ai_will_do"
+kind = "ai_weight"
+extra = "none"
+
+[[structure.column]]
+key = "base"
+value = "decimal"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "modifier"
+value = "ai_weight_modifier"
+required = false
+multiple = true
+
+
+# ============================================================
+# ai_will_do modifier
+# ============================================================
+
+[[structure]]
+name = "ai_weight_modifier"
+kind = "ai_weight_modifier"
+extra = "trigger_block"
+
+[[structure.column]]
+key = "factor"
+value = "decimal"
+required = true
+multiple = false
+
+
+# ============================================================
+# highlight_states
+# ============================================================
+
+[[structure]]
+name = "highlight_states"
+kind = "decision_map_highlight"
+extra = "none"
+
+[[structure.column]]
+key = "highlight_state_targets"
+value = "highlight_state_targets"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "highlight_provinces"
+value = "province_id_list"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "highlight_color_while_active"
+value = "integer"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "highlight_color_before_active"
+value = "integer"
+required = false
+multiple = false
+
+
+# ============================================================
+# highlight_state_targets
+# ============================================================
+
+[[structure]]
+name = "highlight_state_targets"
+kind = "highlight_state_targets"
+extra = "none"
+
+[[structure.column]]
+key = "state"
+value = "state_id"
+required = false
+multiple = true
+
+
+# ============================================================
+# targeted_modifier
+# ============================================================
+
+[[structure]]
+name = "targeted_modifier"
+kind = "targeted_modifier"
+extra = "modifier_block"
+
+[[structure.column]]
+key = "tag"
+value = "country_scope_ref"
+required = true
+multiple = false

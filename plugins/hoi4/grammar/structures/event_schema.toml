@@ -1,0 +1,106 @@
+[document_properties.add_namespace]
+ui_widget = "namespaceEdit"
+
+# ============================================================
+# event
+# ============================================================
+
+[[structure]]
+name = "event"
+kind = "event"
+body = "named_block"
+extra = "none"
+
+[[structure.column]]
+key = "id"
+value = "identifier"
+required = true
+multiple = false
+
+[[structure.column]]
+key = "title"
+value = "localisation_key"
+required = true
+multiple = false
+
+[[structure.column]]
+key = "desc"
+value = "localisation_key"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "picture"
+value = "gfx"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "is_triggered_only"
+value = "boolean"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "fire_only_once"
+value = "boolean"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "trigger"
+value = "trigger_block"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "mean_time_to_happen"
+value = "mtth_block"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "immediate"
+value = "effect_block"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "option"
+value = "event_option"
+required = false
+multiple = true
+
+
+# ============================================================
+# event option
+# ============================================================
+
+[[structure]]
+name = "event_option"
+kind = "event_option"
+extra = "none"
+
+[[structure.column]]
+key = "name"
+value = "localisation_key"
+required = true
+multiple = false
+
+[[structure.column]]
+key = "trigger"
+value = "trigger_block"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "ai_chance"
+value = "ai_chance_block"
+required = false
+multiple = false
+
+[[structure.column]]
+key = "tooltip"
+value = "localisation_key"
+required = false
+multiple = false

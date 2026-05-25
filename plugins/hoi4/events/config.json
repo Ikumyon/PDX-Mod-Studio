@@ -7,9 +7,7 @@
     "document_type": "event_file",
     "form": "event_editor.ui",
     "logic": "event_editor.py",
-    "parser": "event_parser.py",
-    "parser_entry": "EventParser",
-    "schema": "event_schema.json",
+    "schema": "../grammar/structures/event_schema.toml",
     "format": "event_format.json",
     "children": [
         { "name": "イベントを作成", "path": "events", "extension": ".txt" }

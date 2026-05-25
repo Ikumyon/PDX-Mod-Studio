@@ -7,7 +7,7 @@
     "document_type": "gfx_file",
     "form": "gfx_editor.ui",
     "logic": "gfx_editor.py",
-    "schema": "gfx_schema.json",
+    "schema": "../grammar/structures/gfx_schema.toml",
     "format": "gfx_format.json",
     "children": [
         {
