@@ -103,7 +103,7 @@ QToolButton:checked {
          </sizepolicy>
         </property>
         <property name="text">
-         <string>トリミング</string>
+         <string>キャンバスサイズ</string>
         </property>
         <property name="checkable">
          <bool>true</bool>
@@ -349,8 +349,11 @@ QToolButton:checked {
          <layout class="QHBoxLayout" name="layoutScaleSelect">
           <item>
            <widget class="QLabel" name="lblScaleSelect">
-            <property name="text">
-             <string>画像の拡大縮小率 (%):</string>
+           <property name="text">
+             <string>画像の拡大・縮小率 (%):</string>
+            </property>
+            <property name="toolTip">
+             <string>元画像そのものを補完付きで拡大・縮小します。キャンバスサイズとは別です。</string>
             </property>
            </widget>
           </item>
@@ -374,6 +377,9 @@ QToolButton:checked {
             <property name="value">
              <number>100</number>
             </property>
+            <property name="toolTip">
+             <string>元画像そのものを補完付きで拡大・縮小します。キャンバスサイズとは別です。</string>
+            </property>
            </widget>
           </item>
          </layout>
@@ -382,8 +388,11 @@ QToolButton:checked {
          <layout class="QHBoxLayout" name="layoutInterpolationSelect">
           <item>
            <widget class="QLabel" name="lblInterpolationSelect">
-            <property name="text">
+           <property name="text">
              <string>補間方式:</string>
+            </property>
+            <property name="toolTip">
+             <string>画像の拡大・縮小率を変更したときの補完方法です。</string>
             </property>
            </widget>
           </item>
@@ -411,8 +420,11 @@ QToolButton:checked {
         </item>
         <item>
          <widget class="QLabel" name="lblCropManual">
-          <property name="text">
-           <string>手動サイズ調整 (px):</string>
+         <property name="text">
+           <string>キャンバスサイズ (px):</string>
+          </property>
+          <property name="toolTip">
+           <string>最終的な出力画像のサイズです。画像自体の拡大・縮小率とは別です。</string>
           </property>
          </widget>
         </item>
@@ -477,7 +489,10 @@ QToolButton:checked {
           <item>
            <widget class="QLabel" name="lblCropPosition">
             <property name="text">
-             <string>トリミング位置 (X, Y):</string>
+             <string>画像オフセット (X, Y):</string>
+            </property>
+            <property name="toolTip">
+             <string>キャンバス内で画像をどこに配置するかを調整します。</string>
             </property>
            </widget>
           </item>

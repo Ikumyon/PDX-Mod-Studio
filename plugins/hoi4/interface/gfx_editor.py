@@ -188,6 +188,8 @@ class GfxEditorController(BaseEditorController):
         self.schema_visibility_actions = {}
         self.schema_visibility_menus = []
         self.schema_visible_optional_fields = {}
+        self.pending_new_definition_filter_settings = None
+        self.pending_new_definition_filter_source_path = ""
 
     def bind(self):
         self.widget.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
@@ -1313,7 +1315,14 @@ class GfxEditorController(BaseEditorController):
         }
         if source_path:
             definition["_source_paths"] = {"texturefile": source_path}
+        if (
+            self.pending_new_definition_filter_settings
+            and os.path.normcase(self.pending_new_definition_filter_source_path or "") == os.path.normcase(source_path or "")
+        ):
+            definition["_filter_settings"] = deepcopy(self.pending_new_definition_filter_settings)
         self.definitions.append(definition)
+        self.pending_new_definition_filter_settings = None
+        self.pending_new_definition_filter_source_path = ""
         self.selected_index = len(self.definitions) - 1
         self.serialize_document()
         self.refresh_definition_list(self.selected_index)
@@ -1486,17 +1495,34 @@ class GfxEditorController(BaseEditorController):
         dialog = ImageToolsDialog(source_path, self.widget)
         
         definition = self.current_definition()
+        pending_filter_settings = None
         if definition and "_filter_settings" in definition:
+            pending_filter_settings = definition["_filter_settings"]
+        elif (
+            self.pending_new_definition_filter_settings
+            and os.path.normcase(self.pending_new_definition_filter_source_path or "") == os.path.normcase(source_path or "")
+        ):
+            pending_filter_settings = self.pending_new_definition_filter_settings
+        if pending_filter_settings:
             try:
-                dialog.apply_filter_settings(definition["_filter_settings"])
+                dialog.apply_filter_settings(pending_filter_settings)
             except Exception as e:
                 print(f"Failed to apply previous filter settings: {e}")
 
-        if dialog.exec() == QDialog.DialogCode.Accepted or getattr(dialog, "result", lambda: None)() == 1:
+        if dialog.exec() == 1:
+            output_image = getattr(dialog, "preview_image", None) or getattr(dialog, "processed_image", None)
             if definition is not None:
                 definition["_filter_settings"] = dialog.filter_settings
-                self.load_preview_from_current()
                 self.widget.is_dirty = True
+            else:
+                self.pending_new_definition_filter_settings = deepcopy(dialog.filter_settings)
+                self.pending_new_definition_filter_source_path = source_path
+
+            if output_image is not None and not output_image.isNull():
+                self.update_preview_controls_visibility(source_path)
+                self.show_preview_pixmap(QPixmap.fromImage(output_image))
+            else:
+                self.load_preview_from_current()
 
     def browse_texture_destination(self, texture_edit, property_name: str, title: str, source_edit=None):
         default_path = ""
@@ -1622,8 +1648,11 @@ class GfxEditorController(BaseEditorController):
             return ""
         source_name = os.path.splitext(os.path.basename(source_path))[0]
         settings = self.get_plugin_settings()
-        format_str = settings.get("graphic_texture_file_format", "{file}")
-        formatted_name = format_str.format(file=source_name)
+        format_str = settings.get("graphic_texture_file_format", "GFX_{file}")
+        formatted_name = self.apply_format(format_str, file=source_name, number=1, **{"a-z": "a"}).strip()
+        if not formatted_name:
+            formatted_name = source_name
+        formatted_name = "_".join(formatted_name.split())
         return os.path.join(self.get_mod_root(), "gfx", f"{formatted_name}.dds")
 
     def default_gfx_file_name(self) -> str:
@@ -1882,25 +1911,30 @@ class GfxEditorController(BaseEditorController):
             self.clear_preview()
             return False
 
-        if self.preview_scene:
-            self.preview_scene.clear()
-            
-            try:
-                from plugins.hoi4.interface.ui_image_helpers import create_checker_item
-                checker_item = create_checker_item()
-                checker_item.setRect(0, 0, pixmap.width(), pixmap.height())
-                checker_item.setZValue(-1)
-                self.preview_scene.addItem(checker_item)
-            except Exception as e:
-                print(f"Failed to create checker background: {e}")
-                
-            self.preview_item = QGraphicsPixmapItem(pixmap)
-            self.preview_item.setZValue(0)
-            self.preview_scene.addItem(self.preview_item)
-            self.preview_scene.setSceneRect(self.preview_item.boundingRect())
-            self.fit_preview_to_view()
+        self.show_preview_pixmap(pixmap)
         self.update_preview_placeholder_visibility()
         return True
+
+    def show_preview_pixmap(self, pixmap):
+        if self.preview_scene is None or pixmap is None or pixmap.isNull():
+            return
+
+        self.preview_scene.clear()
+
+        try:
+            from plugins.hoi4.interface.ui_image_helpers import create_checker_item
+            checker_item = create_checker_item()
+            checker_item.setRect(0, 0, pixmap.width(), pixmap.height())
+            checker_item.setZValue(-1)
+            self.preview_scene.addItem(checker_item)
+        except Exception as e:
+            print(f"Failed to create checker background: {e}")
+
+        self.preview_item = QGraphicsPixmapItem(pixmap)
+        self.preview_item.setZValue(0)
+        self.preview_scene.addItem(self.preview_item)
+        self.preview_scene.setSceneRect(self.preview_item.boundingRect())
+        self.fit_preview_to_view()
 
     def clear_preview(self):
         if self.preview_scene:

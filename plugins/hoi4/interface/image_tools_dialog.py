@@ -1,11 +1,12 @@
 import os
-from PySide6.QtCore import QEvent, QFile, Qt, QTimer, QCoreApplication
+from PySide6.QtCore import QEvent, QFile, Qt, QTimer, QCoreApplication, QRectF
 from PySide6.QtGui import QImage, QPixmap, QPen, QColor, QBrush, qRed, qGreen, qBlue, qAlpha
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QGraphicsScene, QGraphicsPixmapItem, QGraphicsRectItem,
     QGraphicsItem, QMessageBox, QColorDialog
 )
 from PySide6.QtUiTools import QUiLoader
+from PIL import Image
 
 try:
     import cv2
@@ -36,9 +37,10 @@ tr = QCoreApplication.translate
 class ImageToolsDialog(QDialog):
     ANIMATED_EXTENSIONS = {".gif", ".webp", ".apng"}
 
-    def __init__(self, image_path: str, parent=None):
+    def __init__(self, image_path: str, parent=None, *, allow_model_prompts: bool = True):
         super().__init__(parent)
         self.image_path = image_path
+        self.allow_model_prompts = allow_model_prompts
         self.saved_png_path = None
         self.original_image = None
         self.original_pil = None
@@ -47,6 +49,8 @@ class ImageToolsDialog(QDialog):
         self.filter_settings = None
         self.remove_bg_key_color = None  # クロマキー透過の基準色（Noneなら左上から自動検出）
         self.edge_color = QColor(255, 255, 255)  # エッジ強調のエッジ色
+        self.canvas_display_x = 0
+        self.canvas_display_y = 0
         
         self.setWindowTitle("🎨 画像アセット調整・加工ツール")
         
@@ -78,6 +82,7 @@ class ImageToolsDialog(QDialog):
         self.scene = QGraphicsScene(self)
         self.scene.setBackgroundBrush(QBrush(QColor(50, 50, 50)))
         self.ui.graphicsViewPreview.setScene(self.scene)
+        self.ui.graphicsViewPreview.viewport().setMouseTracking(True)
         
         self.background_checker_item = create_checker_item()
         self.scene.addItem(self.background_checker_item)
@@ -89,12 +94,21 @@ class ImageToolsDialog(QDialog):
         # トリミング枠のセットアップ
         self.crop_rect_item = QGraphicsRectItem()
         self.crop_rect_item.setPen(QPen(QColor("#efc84a"), 2, Qt.PenStyle.DashLine))
-        self.crop_rect_item.setBrush(QBrush(QColor(0, 0, 0, 80)))
-        self.crop_rect_item.setFlags(
-            QGraphicsItem.GraphicsItemFlag.ItemIsMovable | 
-            QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges
-        )
+        self.crop_rect_item.setBrush(Qt.BrushStyle.NoBrush)
+        self.crop_rect_item.setZValue(2)
         self.scene.addItem(self.crop_rect_item)
+        self.canvas_handle_size = 12
+        self.canvas_handle_items = {}
+        for handle_name in ("left", "top", "right", "bottom", "corner"):
+            handle_item = QGraphicsRectItem(self.crop_rect_item)
+            handle_pen = QPen(QColor("#3d2f05"), 1)
+            handle_pen.setCosmetic(True)
+            handle_item.setPen(handle_pen)
+            handle_item.setBrush(QBrush(QColor("#efc84a")))
+            handle_item.setZValue(3)
+            handle_item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations, True)
+            handle_item.setVisible(False)
+            self.canvas_handle_items[handle_name] = handle_item
         
         # 編集モード ("crop" または "effect")
         self.mode = "crop"
@@ -338,6 +352,7 @@ class ImageToolsDialog(QDialog):
             self.crop_rect_item.setRect(0, 0, w, h)
             self.crop_rect_item.setPos(0, 0)
             self.update_crop_position_ranges()
+            self.update_canvas_overlay()
             
             # マスク位置調整スピンボックスの範囲設定
             self.ui.spinMaskX.setRange(-self.original_image.width(), self.original_image.width())
@@ -416,8 +431,9 @@ class ImageToolsDialog(QDialog):
         if not mask_img or mask_img.width <= 0 or mask_img.height <= 0:
             return
 
-        target_w = self.ui.spinCropWidth.value()
-        target_h = self.ui.spinCropHeight.value()
+        scale_percent = self.ui.spinScale.value()
+        target_w = max(1, int(round(self.ui.spinCropWidth.value() * scale_percent / 100.0)))
+        target_h = max(1, int(round(self.ui.spinCropHeight.value() * scale_percent / 100.0)))
         
         if target_w <= 0 or target_h <= 0:
             return
@@ -442,32 +458,166 @@ class ImageToolsDialog(QDialog):
     def on_crop_position_changed(self):
         self.update_crop_rect_position()
 
-    def update_crop_rect_size(self):
+    def update_crop_rect_size(self, *, refresh_preview: bool = True):
         if not self.original_image or self.original_image.isNull():
             return
-        w = min(self.ui.spinCropWidth.value(), self.original_image.width())
-        h = min(self.ui.spinCropHeight.value(), self.original_image.height())
+        w = max(1, self.ui.spinCropWidth.value())
+        h = max(1, self.ui.spinCropHeight.value())
         self.crop_rect_item.setRect(0, 0, w, h)
         self.update_crop_position_ranges()
-        self.update_crop_rect_position()
+        self.update_crop_rect_position(refresh_preview=refresh_preview)
+        self.update_canvas_overlay()
 
     def update_crop_position_ranges(self):
         if not self.original_image or self.original_image.isNull():
             return
 
-        max_x = max(0, self.original_image.width() - self.ui.spinCropWidth.value())
-        max_y = max(0, self.original_image.height() - self.ui.spinCropHeight.value())
-        self.ui.spinCropX.setRange(0, max_x)
-        self.ui.spinCropY.setRange(0, max_y)
+        scale = self.ui.spinScale.value() / 100.0
+        scaled_width = max(1, int(round(self.original_image.width() * scale)))
+        scaled_height = max(1, int(round(self.original_image.height() * scale)))
+        canvas_width = max(1, self.ui.spinCropWidth.value())
+        canvas_height = max(1, self.ui.spinCropHeight.value())
 
-    def update_crop_rect_position(self):
+        min_x = -scaled_width
+        max_x = canvas_width
+        min_y = -scaled_height
+        max_y = canvas_height
+        self.ui.spinCropX.setRange(min_x, max_x)
+        self.ui.spinCropY.setRange(min_y, max_y)
+
+    def update_crop_rect_position(self, *, refresh_preview: bool = True):
         if not self.original_image or self.original_image.isNull():
             return
 
-        x = self.ui.spinCropX.value()
-        y = self.ui.spinCropY.value()
-        self.crop_rect_item.setPos(x, y)
-        self.update_preview()
+        display_x, display_y = self.preview_display_origin()
+        self.crop_rect_item.setPos(display_x, display_y)
+        if refresh_preview:
+            self.update_preview()
+
+    def preview_display_origin(self):
+        return self.canvas_display_x, self.canvas_display_y
+
+    def update_canvas_overlay(self):
+        visible = bool(self.preview_image) and self.mode == "crop"
+        self.crop_rect_item.setVisible(visible)
+        for handle_item in self.canvas_handle_items.values():
+            handle_item.setVisible(visible)
+
+        if not visible:
+            return
+
+        width = max(1, self.ui.spinCropWidth.value())
+        height = max(1, self.ui.spinCropHeight.value())
+        handle = self.canvas_handle_size
+        half = handle / 2.0
+        display_x, display_y = self.preview_display_origin()
+
+        self.crop_rect_item.setRect(0, 0, width, height)
+        self.crop_rect_item.setPos(display_x, display_y)
+        for handle_item in self.canvas_handle_items.values():
+            handle_item.setRect(QRectF(-half, -half, handle, handle))
+        self.canvas_handle_items["left"].setPos(0, height / 2.0)
+        self.canvas_handle_items["top"].setPos(width / 2.0, 0)
+        self.canvas_handle_items["right"].setPos(width, height / 2.0)
+        self.canvas_handle_items["bottom"].setPos(width / 2.0, height)
+        self.canvas_handle_items["corner"].setPos(width, height)
+
+    def canvas_handle_at(self, scene_pos):
+        if not self.crop_rect_item.isVisible():
+            return None
+        for handle_name, handle_item in self.canvas_handle_items.items():
+            local_pos = handle_item.mapFromScene(scene_pos)
+            if handle_item.rect().contains(local_pos):
+                return handle_name
+        return None
+
+    def update_canvas_hover_cursor(self, scene_pos):
+        viewport = self.ui.graphicsViewPreview.viewport()
+        if getattr(self, "_active_canvas_handle", None):
+            return
+
+        handle_name = self.canvas_handle_at(scene_pos)
+        cursor_map = {
+            "left": Qt.CursorShape.SizeHorCursor,
+            "top": Qt.CursorShape.SizeVerCursor,
+            "right": Qt.CursorShape.SizeHorCursor,
+            "bottom": Qt.CursorShape.SizeVerCursor,
+            "corner": Qt.CursorShape.SizeFDiagCursor,
+        }
+        viewport.setCursor(cursor_map.get(handle_name, Qt.CursorShape.ArrowCursor))
+
+    def apply_canvas_resize_from_drag(self, scene_pos):
+        if not getattr(self, "_canvas_drag_initial", None):
+            return
+
+        delta = scene_pos - self._canvas_drag_origin
+        initial = self._canvas_drag_initial
+        new_width = initial["width"]
+        new_height = initial["height"]
+        new_offset_x = initial["offset_x"]
+        new_offset_y = initial["offset_y"]
+        new_display_x = initial["display_x"]
+        new_display_y = initial["display_y"]
+
+        if self._active_canvas_handle == "left":
+            new_width = max(1, int(round(initial["width"] - delta.x())))
+            new_offset_x = int(round(initial["offset_x"] - delta.x()))
+            new_display_x = initial["display_x"] + delta.x()
+        elif self._active_canvas_handle in ("right", "corner"):
+            new_width = max(1, int(round(initial["width"] + delta.x())))
+        if self._active_canvas_handle == "top":
+            new_height = max(1, int(round(initial["height"] - delta.y())))
+            new_offset_y = int(round(initial["offset_y"] - delta.y()))
+            new_display_y = initial["display_y"] + delta.y()
+        elif self._active_canvas_handle in ("bottom", "corner"):
+            new_height = max(1, int(round(initial["height"] + delta.y())))
+
+        width_changed = new_width != self.ui.spinCropWidth.value()
+        height_changed = new_height != self.ui.spinCropHeight.value()
+        offset_x_changed = new_offset_x != self.ui.spinCropX.value()
+        offset_y_changed = new_offset_y != self.ui.spinCropY.value()
+        if not width_changed and not height_changed and not offset_x_changed and not offset_y_changed:
+            return
+
+        self.ui.spinCropWidth.blockSignals(True)
+        self.ui.spinCropHeight.blockSignals(True)
+        self.ui.spinCropX.blockSignals(True)
+        self.ui.spinCropY.blockSignals(True)
+        self.ui.spinCropWidth.setValue(new_width)
+        self.ui.spinCropHeight.setValue(new_height)
+        self.update_crop_position_ranges()
+        self.ui.spinCropX.setValue(new_offset_x)
+        self.ui.spinCropY.setValue(new_offset_y)
+        self.ui.spinCropWidth.blockSignals(False)
+        self.ui.spinCropHeight.blockSignals(False)
+        self.ui.spinCropX.blockSignals(False)
+        self.ui.spinCropY.blockSignals(False)
+        self.canvas_display_x = new_display_x
+        self.canvas_display_y = new_display_y
+        self.update_crop_rect_size(refresh_preview=False)
+        self.trigger_preview_update()
+
+    def apply_crop_offset_from_drag(self, scene_pos):
+        if not getattr(self, "_crop_drag_start_pos", None):
+            return
+
+        delta = scene_pos - self._crop_drag_start_pos
+        new_x = self._crop_drag_start_x + int(round(delta.x()))
+        new_y = self._crop_drag_start_y + int(round(delta.y()))
+
+        x_changed = new_x != self.ui.spinCropX.value()
+        y_changed = new_y != self.ui.spinCropY.value()
+        if not x_changed and not y_changed:
+            return
+
+        self.ui.spinCropX.blockSignals(True)
+        self.ui.spinCropY.blockSignals(True)
+        self.ui.spinCropX.setValue(new_x)
+        self.ui.spinCropY.setValue(new_y)
+        self.ui.spinCropX.blockSignals(False)
+        self.ui.spinCropY.blockSignals(False)
+        self.update_crop_rect_position(refresh_preview=False)
+        self.trigger_preview_update()
 
     def trigger_preview_update(self):
         self.preview_timer.start()
@@ -487,15 +637,21 @@ class ImageToolsDialog(QDialog):
 
         final_w = self.preview_image.width()
         final_h = self.preview_image.height()
+        display_x, display_y = self.preview_display_origin()
+        self.pixmap_item.setPos(display_x, display_y)
         self.background_checker_item.setRect(0, 0, final_w, final_h)
-        self.background_checker_item.setPos(0, 0)
+        self.background_checker_item.setPos(display_x, display_y)
         self.background_checker_item.setVisible(True)
-        self.scene.setSceneRect(0, 0, final_w, final_h)
+        scene_left = min(0, display_x)
+        scene_top = min(0, display_y)
+        scene_right = max(final_w, display_x + final_w)
+        scene_bottom = max(final_h, display_y + final_h)
+        self.scene.setSceneRect(scene_left, scene_top, scene_right - scene_left, scene_bottom - scene_top)
+        self.update_canvas_overlay()
         self.update_preview_view_scale()
 
     def build_processed_image(self):
         img = self.original_pil.copy()
-        img = self.apply_image_scale(img)
 
         # 2. AIカラー化適用
         if self.ui.chkColorizeEnable.isChecked():
@@ -536,15 +692,13 @@ class ImageToolsDialog(QDialog):
         return img
 
     def build_preview_image(self, img):
-        pos = self.crop_rect_item.pos()
-        rect = self.crop_rect_item.rect()
+        canvas_width = max(1, self.ui.spinCropWidth.value())
+        canvas_height = max(1, self.ui.spinCropHeight.value())
+        offset_x = self.ui.spinCropX.value()
+        offset_y = self.ui.spinCropY.value()
 
-        x = int(max(0, min(pos.x(), self.original_pil.width - rect.width())))
-        y = int(max(0, min(pos.y(), self.original_pil.height - rect.height())))
-        w = int(rect.width())
-        h = int(rect.height())
-
-        img = self.apply_clip_window(img, x, y, w, h)
+        scaled_img = self.apply_image_scale(img)
+        canvas = self.build_canvas_image(scaled_img, canvas_width, canvas_height, offset_x, offset_y)
 
         # 6. マスク画像適用
         mask_index = self.ui.comboMaskImage.currentIndex()
@@ -556,9 +710,9 @@ class ImageToolsDialog(QDialog):
                 if mask_path:
                     mask_img = load_pil_image(mask_path)
                     if not mask_img:
-                        return img
-                    img = apply_alpha_mask_pil(
-                        img,
+                        return canvas
+                    canvas = apply_alpha_mask_pil(
+                        canvas,
                         mask_img,
                         self.ui.spinMaskScale.value(),
                         self.ui.spinMaskX.value(),
@@ -566,21 +720,12 @@ class ImageToolsDialog(QDialog):
                         self.ui.chkCropMaskOutside.isChecked(),
                     )
 
-        return img
+        return canvas
 
-    def apply_clip_window(self, img, x: int, y: int, width: int, height: int):
-        scale_percent = self.ui.spinScale.value()
-        scale = scale_percent / 100.0
-        left = int(round(x * scale))
-        top = int(round(y * scale))
-        right = int(round((x + width) * scale))
-        bottom = int(round((y + height) * scale))
-
-        left = max(0, min(left, img.width))
-        top = max(0, min(top, img.height))
-        right = max(left + 1, min(right, img.width))
-        bottom = max(top + 1, min(bottom, img.height))
-        return img.crop((left, top, right, bottom))
+    def build_canvas_image(self, img, width: int, height: int, offset_x: int, offset_y: int):
+        canvas = Image.new("RGBA", (max(1, width), max(1, height)), (0, 0, 0, 0))
+        canvas.alpha_composite(img.convert("RGBA"), (int(offset_x), int(offset_y)))
+        return canvas
 
     def apply_image_scale(self, img):
         scale_percent = self.ui.spinScale.value()
@@ -615,31 +760,60 @@ class ImageToolsDialog(QDialog):
             if event.type() == QEvent.Type.Resize:
                 if self.ui.chkZoomFit.isChecked():
                     QTimer.singleShot(0, self.update_preview_view_scale)
+            elif event.type() == QEvent.Type.Leave:
+                if not getattr(self, "_active_canvas_handle", None):
+                    self.ui.graphicsViewPreview.viewport().unsetCursor()
             
             elif event.type() == QEvent.Type.MouseButtonPress:
                 if event.button() == Qt.MouseButton.LeftButton:
-                    if self.ui.comboMaskImage.currentIndex() > 0:
+                    scene_pos = self.ui.graphicsViewPreview.mapToScene(event.pos())
+                    handle_name = self.canvas_handle_at(scene_pos)
+                    if handle_name:
+                        self._active_canvas_handle = handle_name
+                        self._canvas_drag_origin = scene_pos
+                        self._canvas_drag_initial = {
+                            "width": self.ui.spinCropWidth.value(),
+                            "height": self.ui.spinCropHeight.value(),
+                            "offset_x": self.ui.spinCropX.value(),
+                            "offset_y": self.ui.spinCropY.value(),
+                            "display_x": self.canvas_display_x,
+                            "display_y": self.canvas_display_y,
+                        }
+                        self.update_canvas_hover_cursor(scene_pos)
+                        return True
+                    if self.ui.comboMaskImage.currentIndex() > 0 and (event.modifiers() & Qt.KeyboardModifier.ShiftModifier):
                         self._dragging_mask = True
                         self._drag_start_pos = event.pos()
                         self._drag_start_mask_x = self.ui.spinMaskX.value()
                         self._drag_start_mask_y = self.ui.spinMaskY.value()
                         return True
+                    self._dragging_crop_image = True
+                    self._crop_drag_start_pos = scene_pos
+                    self._crop_drag_start_x = self.ui.spinCropX.value()
+                    self._crop_drag_start_y = self.ui.spinCropY.value()
+                    return True
                 elif event.button() == Qt.MouseButton.MiddleButton:
                     self._panning_view = True
                     self._pan_start_pos = event.pos()
                     return True
                     
             elif event.type() == QEvent.Type.MouseMove:
+                scene_pos = self.ui.graphicsViewPreview.mapToScene(event.pos())
+                if getattr(self, "_active_canvas_handle", None):
+                    self.apply_canvas_resize_from_drag(scene_pos)
+                    return True
                 if getattr(self, "_dragging_mask", False):
                     start_scene = self.ui.graphicsViewPreview.mapToScene(self._drag_start_pos)
-                    current_scene = self.ui.graphicsViewPreview.mapToScene(event.pos())
-                    delta = current_scene - start_scene
+                    delta = scene_pos - start_scene
                     
                     new_x = self._drag_start_mask_x + int(round(delta.x()))
                     new_y = self._drag_start_mask_y + int(round(delta.y()))
                     
                     self.ui.spinMaskX.setValue(new_x)
                     self.ui.spinMaskY.setValue(new_y)
+                    return True
+                if getattr(self, "_dragging_crop_image", False):
+                    self.apply_crop_offset_from_drag(scene_pos)
                     return True
                     
                 elif getattr(self, "_panning_view", False):
@@ -652,11 +826,23 @@ class ImageToolsDialog(QDialog):
                     
                     self._pan_start_pos = event.pos()
                     return True
+                self.update_canvas_hover_cursor(scene_pos)
                     
             elif event.type() == QEvent.Type.MouseButtonRelease:
-                if event.button() == Qt.MouseButton.LeftButton and getattr(self, "_dragging_mask", False):
-                    self._dragging_mask = False
-                    return True
+                if event.button() == Qt.MouseButton.LeftButton:
+                    if getattr(self, "_active_canvas_handle", None):
+                        self._active_canvas_handle = None
+                        self._canvas_drag_origin = None
+                        self._canvas_drag_initial = None
+                        self.update_canvas_hover_cursor(self.ui.graphicsViewPreview.mapToScene(event.pos()))
+                        return True
+                    if getattr(self, "_dragging_mask", False):
+                        self._dragging_mask = False
+                        return True
+                    if getattr(self, "_dragging_crop_image", False):
+                        self._dragging_crop_image = False
+                        self._crop_drag_start_pos = None
+                        return True
                 elif event.button() == Qt.MouseButton.MiddleButton and getattr(self, "_panning_view", False):
                     self._panning_view = False
                     return True
@@ -710,7 +896,7 @@ class ImageToolsDialog(QDialog):
                 return
             
             # モデルファイルの存在チェック（不足していればダウンロードを促す）
-            if not self.ensure_model_files():
+            if not self.ensure_model_files(interactive=self.allow_model_prompts):
                 self.ui.chkColorizeEnable.blockSignals(True)
                 self.ui.chkColorizeEnable.setChecked(False)
                 self.ui.chkColorizeEnable.blockSignals(False)
@@ -867,6 +1053,12 @@ class ImageToolsDialog(QDialog):
             return mask_config.get("id")
         return None
 
+    @staticmethod
+    def filter_uses_colorize(settings: dict) -> bool:
+        filters = settings.get("filters", {}) if isinstance(settings, dict) else {}
+        colorize = filters.get("colorize", {}) if isinstance(filters, dict) else {}
+        return bool(colorize.get("enabled", False))
+
     def apply_filter_settings(self, settings: dict):
         clip = settings.get("clip", {})
         self.ui.spinCropWidth.setValue(clip.get("width", self.ui.spinCropWidth.value()))
@@ -902,7 +1094,7 @@ class ImageToolsDialog(QDialog):
         edge_filter = filters.get("edge", {})
 
         blur_enabled = blur.get("enabled", False)
-        colorize_enabled = colorize.get("enabled", False)
+        colorize_enabled = self.filter_uses_colorize(settings)
         edge_enabled = edge_filter.get("enabled", False)
 
         # OpenCV不在時にロードされたOpenCV依存機能の一括警告判定
@@ -928,48 +1120,61 @@ class ImageToolsDialog(QDialog):
                 )
 
         self.ui.chkBlurEnable.setChecked(blur_enabled)
-        self.ui.spinBlurRadius.setValue(blur.get("radius", self.ui.spinBlurRadius.value()))
-        self.ui.spinBlurThreshold.setValue(blur.get("threshold", self.ui.spinBlurThreshold.value()))
+        if blur_enabled:
+            self.ui.spinBlurRadius.setValue(blur.get("radius", self.ui.spinBlurRadius.value()))
+            self.ui.spinBlurThreshold.setValue(blur.get("threshold", self.ui.spinBlurThreshold.value()))
 
         sharpen_filter = filters.get("sharpen", {})
-        self.ui.chkSharpenEnable.setChecked(sharpen_filter.get("enabled", False))
-        self.ui.spinSharpenStrength.setValue(sharpen_filter.get("strength", self.ui.spinSharpenStrength.value()))
+        sharpen_enabled = sharpen_filter.get("enabled", False)
+        self.ui.chkSharpenEnable.setChecked(sharpen_enabled)
+        if sharpen_enabled:
+            self.ui.spinSharpenStrength.setValue(sharpen_filter.get("strength", self.ui.spinSharpenStrength.value()))
 
         chroma_key = filters.get("chromaKey", {})
-        self.ui.chkRemoveBgEnable.setChecked(chroma_key.get("enabled", False))
-        color = chroma_key.get("color")
-        self.remove_bg_key_color = QColor(*color) if color else None
-        self.ui.spinRemoveBgTolerance.setValue(chroma_key.get("tolerance", self.ui.spinRemoveBgTolerance.value()))
-        self.ui.spinRemoveBgFeather.setValue(chroma_key.get("feather", self.ui.spinRemoveBgFeather.value()))
+        chroma_enabled = chroma_key.get("enabled", False)
+        self.ui.chkRemoveBgEnable.setChecked(chroma_enabled)
+        if chroma_enabled:
+            color = chroma_key.get("color")
+            self.remove_bg_key_color = QColor(*color) if color else None
+            self.ui.spinRemoveBgTolerance.setValue(chroma_key.get("tolerance", self.ui.spinRemoveBgTolerance.value()))
+            self.ui.spinRemoveBgFeather.setValue(chroma_key.get("feather", self.ui.spinRemoveBgFeather.value()))
         self.update_key_color_preview()
 
+        if colorize_enabled:
+            model_id = colorize.get("model")
+            for i in range(self.ui.comboColorizeModel.count()):
+                if self.ui.comboColorizeModel.itemData(i) == model_id:
+                    self.ui.comboColorizeModel.setCurrentIndex(i)
+                    self.set_active_colorize_model(i)
+                    break
+            if not self.ensure_model_files(interactive=False):
+                colorize_enabled = False
+        self.ui.chkColorizeEnable.blockSignals(True)
         self.ui.chkColorizeEnable.setChecked(colorize_enabled)
-        model_id = colorize.get("model")
-        for i in range(self.ui.comboColorizeModel.count()):
-            if self.ui.comboColorizeModel.itemData(i) == model_id:
-                self.ui.comboColorizeModel.setCurrentIndex(i)
-                self.on_colorize_model_changed(i)
-                break
-        self.ui.spinColorizeHue.setValue(colorize.get("hue", self.ui.spinColorizeHue.value()))
-        self.ui.spinColorizeSaturation.setValue(colorize.get("saturation", self.ui.spinColorizeSaturation.value()))
-        self.ui.spinColorizeLightness.setValue(colorize.get("lightness", self.ui.spinColorizeLightness.value()))
+        self.ui.chkColorizeEnable.blockSignals(False)
+        self.on_colorize_enable_toggled(colorize_enabled)
+        if colorize_enabled:
+            self.ui.spinColorizeHue.setValue(colorize.get("hue", self.ui.spinColorizeHue.value()))
+            self.ui.spinColorizeSaturation.setValue(colorize.get("saturation", self.ui.spinColorizeSaturation.value()))
+            self.ui.spinColorizeLightness.setValue(colorize.get("lightness", self.ui.spinColorizeLightness.value()))
 
         self.ui.chkEdgeEnable.setChecked(edge_enabled)
-        self.ui.comboEdgeMethod.setCurrentIndex(edge_filter.get("method", 0))
-        self.ui.spinEdgeThreshold1.setValue(edge_filter.get("threshold1", 50))
-        self.ui.spinEdgeThreshold2.setValue(edge_filter.get("threshold2", 150))
-        self.ui.spinEdgeStrength.setValue(edge_filter.get("strength", 50))
-        self.ui.spinEdgeWidth.setValue(edge_filter.get("width", 1))
-        self.ui.spinEdgeSmooth.setValue(edge_filter.get("smooth", 1))
-        color_list = edge_filter.get("color", [255, 255, 255])
-        self.edge_color = QColor(*color_list)
+        if edge_enabled:
+            self.ui.comboEdgeMethod.setCurrentIndex(edge_filter.get("method", 0))
+            self.ui.spinEdgeThreshold1.setValue(edge_filter.get("threshold1", 50))
+            self.ui.spinEdgeThreshold2.setValue(edge_filter.get("threshold2", 150))
+            self.ui.spinEdgeStrength.setValue(edge_filter.get("strength", 50))
+            self.ui.spinEdgeWidth.setValue(edge_filter.get("width", 1))
+            self.ui.spinEdgeSmooth.setValue(edge_filter.get("smooth", 1))
+            color_list = edge_filter.get("color", [255, 255, 255])
+            self.edge_color = QColor(*color_list)
         self.update_edge_color_preview()
 
         self.update_preview_real()
 
     @classmethod
     def render_preview_from_settings(cls, image_path: str, settings: dict, parent=None) -> QImage | None:
-        dialog = cls(image_path, parent)
+        dialog = cls(image_path, parent, allow_model_prompts=False)
         dialog.apply_filter_settings(settings)
         return dialog.preview_image
 
@@ -1015,6 +1220,11 @@ class ImageToolsDialog(QDialog):
             self.ui.stackedColorize.setCurrentWidget(self.ui.pageColorizeNone)
 
     def on_colorize_model_changed(self, index: int):
+        self.set_active_colorize_model(index)
+        if self.ensure_model_files(interactive=self.allow_model_prompts) and self.ui.chkColorizeEnable.isChecked():
+            self.trigger_preview_update()
+
+    def set_active_colorize_model(self, index: int):
         selected_id = self.ui.comboColorizeModel.itemData(index)
         for model in self.all_models:
             if model.get_id() == selected_id:
@@ -1026,11 +1236,8 @@ class ImageToolsDialog(QDialog):
             self.ui.stackedColorize.setCurrentWidget(self.ui.pageColorizeEccv2016)
         else:
             self.ui.stackedColorize.setCurrentWidget(self.ui.pageColorizeNone)
-            
-        if self.ensure_model_files() and self.ui.chkColorizeEnable.isChecked():
-            self.trigger_preview_update()
 
-    def ensure_model_files(self) -> bool:
+    def ensure_model_files(self, interactive: bool = True) -> bool:
         if not hasattr(self, "active_model") or self.active_model is None:
             return True
             
@@ -1039,6 +1246,9 @@ class ImageToolsDialog(QDialog):
         status = inspect_model_assets(self.active_model, models_dir)
         missing_files = list(status.missing_files)
         updated_files = list(status.updated_files)
+
+        if not interactive:
+            return not updated_files and not missing_files
                     
         if updated_files:
             reply = QMessageBox.question(
