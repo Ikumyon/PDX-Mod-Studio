@@ -30,3 +30,5 @@ Thumbs.db
 plugins/hoi4/interface/colorize/models/
 AGENTS.md
 
+#古いデータとプロジェクト分離
+hoi4-old/
