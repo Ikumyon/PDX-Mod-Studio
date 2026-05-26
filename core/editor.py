@@ -101,7 +101,7 @@ class EditorWidget(QPlainTextEdit):
                 self.window(),
                 "名前を付けて保存",
                 self.default_save_dialog_path(),
-                "All Files (*.*)",
+                "Text Files (*.txt);;All Files (*)",
             )
             if not target_path:
                 return save_result.save_cancelled()
@@ -158,8 +158,22 @@ class EditorWidget(QPlainTextEdit):
                 if index >= 0:
                     tab_name = editor_tabs.tabText(index)
                     clean_name = self.tab_text_without_dirty_marker(tab_name).replace("[E] ", "").strip() or "untitled"
+                    if not os.path.splitext(clean_name)[1]:
+                        clean_name += ".txt"
                     return os.path.join(project_path, clean_name)
-        return os.getcwd()
+        
+        fallback_dir = os.getcwd()
+        editor_tabs = getattr(self.window(), "editorTabs", None)
+        if editor_tabs:
+            index = editor_tabs.indexOf(self)
+            if index >= 0:
+                tab_name = editor_tabs.tabText(index)
+                clean_name = self.tab_text_without_dirty_marker(tab_name).replace("[E] ", "").strip() or "untitled"
+                if not os.path.splitext(clean_name)[1]:
+                    clean_name += ".txt"
+                return os.path.join(fallback_dir, clean_name)
+                
+        return os.path.join(fallback_dir, "untitled.txt")
 
     @staticmethod
     def tab_text_without_dirty_marker(text):

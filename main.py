@@ -1,6 +1,9 @@
 import sys
 import os
 import json
+import codecs
+import locale
+import re
 import tempfile
 import zipfile
 import fnmatch
@@ -9,6 +12,7 @@ from PySide6.QtWidgets import QApplication, QMenu, QVBoxLayout, QToolButton, QWi
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtCore import QFile, Qt, QSize, QCoreApplication
 import core.api
+from core.dialog import EncodingActionDialog
 from core.i18n import I18nManager
 from core.syntax_engine import GrammarBundle
 tr = QCoreApplication.translate
@@ -279,12 +283,106 @@ def main():
     def get_status_encoding_for_widget(widget):
         if not widget:
             return "utf-8"
-        if editor_registry.is_text_editor(getattr(widget, "editor_id", TEXT_EDITOR_ID)):
-            return get_widget_encoding(widget)
-        file_path = getattr(widget, "file_path", "")
-        if file_path and not str(file_path).startswith("untitled:"):
-            return resolve_default_encoding(file_path)
         return get_widget_encoding(widget)
+
+    def normalize_encoding_name(encoding):
+        if not encoding:
+            return None
+        try:
+            return codecs.lookup(str(encoding).strip()).name
+        except LookupError:
+            return str(encoding).strip().lower() or None
+
+    def extract_declared_encoding(raw):
+        head = raw[:4096].decode("latin-1", errors="ignore")
+        patterns = [
+            r"<\?xml[^>]*encoding\s*=\s*['\"]\s*([^'\"\s>]+)\s*['\"]",
+            r"<meta[^>]+charset\s*=\s*['\"]?\s*([^'\"\s/>]+)",
+            r"<meta[^>]+content\s*=\s*['\"][^>]*charset\s*=\s*([^'\";\s>]+)",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, head, flags=re.IGNORECASE)
+            if match:
+                return normalize_encoding_name(match.group(1))
+        return None
+
+    def autodetect_encoding(raw):
+        try:
+            from charset_normalizer import from_bytes
+            best = from_bytes(raw).best()
+            if best and best.encoding:
+                return normalize_encoding_name(best.encoding)
+        except Exception:
+            pass
+        return None
+
+    def decode_with_encoding(raw, encoding):
+        normalized = normalize_encoding_name(encoding)
+        if not normalized:
+            raise LookupError("encoding is empty")
+        return raw.decode(normalized), normalized
+
+    def detect_text_encoding(raw):
+        bom_candidates = [
+            (b"\xef\xbb\xbf", "utf-8-sig"),
+            (b"\xff\xfe", "utf-16-le"),
+            (b"\xfe\xff", "utf-16-be"),
+        ]
+        for prefix, encoding in bom_candidates:
+            if raw.startswith(prefix):
+                text, normalized = decode_with_encoding(raw, encoding)
+                return text, normalized
+
+        declared_encoding = extract_declared_encoding(raw)
+        if declared_encoding:
+            text, normalized = decode_with_encoding(raw, declared_encoding)
+            return text, normalized
+
+        detected_encoding = autodetect_encoding(raw)
+        if detected_encoding:
+            try:
+                text, normalized = decode_with_encoding(raw, detected_encoding)
+                return text, normalized
+            except UnicodeDecodeError:
+                pass
+
+        try:
+            text, normalized = decode_with_encoding(raw, "utf-8")
+            return text, normalized
+        except UnicodeDecodeError:
+            pass
+
+        if all(byte_value < 0x80 for byte_value in raw):
+            text, normalized = decode_with_encoding(raw, "ascii")
+            return text, normalized
+
+        fallback_encoding = normalize_encoding_name(locale.getpreferredencoding(False)) or "cp932"
+        text, normalized = decode_with_encoding(raw, fallback_encoding)
+        return text, normalized
+
+    def read_text_with_detected_encoding(file_path):
+        with open(file_path, "rb") as handle:
+            raw = handle.read()
+        return detect_text_encoding(raw)
+
+    def reopen_text_widget_with_encoding(widget, encoding):
+        file_path = getattr(widget, "file_path", "")
+        if not file_path or str(file_path).startswith("untitled:"):
+            widget.file_encoding = normalize_encoding_name(encoding) or encoding
+            return True
+
+        with open(file_path, "rb") as handle:
+            raw = handle.read()
+
+        text, normalized_encoding = decode_with_encoding(raw, encoding)
+        widget.blockSignals(True)
+        try:
+            widget.setPlainText(text)
+        finally:
+            widget.blockSignals(False)
+        widget.file_encoding = normalized_encoding
+        mark_tab_clean(widget)
+        return True
 
     # --- ビュー切り替えボタンのメニュー更新ロジック ---
     def update_editor_selector(index):
@@ -558,9 +656,10 @@ def main():
             f"スキーマ: {schema_path}\n診断: {len(result.diagnostics)}件\n\n{diagnostics}",
         )
 
-    def create_editor_widget(editor_id, file_path, content, available_editors, params=None, tab_id=None):
+    def create_editor_widget(editor_id, file_path, content, available_editors, params=None, tab_id=None, file_encoding=None):
         editor_id = editor_registry.normalize_editor_id(editor_id)
-        file_encoding = resolve_default_encoding(file_path) if file_path and not str(file_path).startswith("untitled:") else "utf-8"
+        if not file_encoding:
+            file_encoding = resolve_default_encoding(file_path) if file_path and not str(file_path).startswith("untitled:") else "utf-8"
         if editor_id == TEXT_EDITOR_ID:
             widget = EditorWidget()
             widget.tab_id = tab_id
@@ -667,7 +766,7 @@ def main():
             if editor_definition:
                 available_editors = [editor_definition]
         
-            editor = create_editor_widget(editor_id, virtual_path, content, available_editors, tab_id=next_tab_id())
+        editor = create_editor_widget(editor_id, virtual_path, content, available_editors, tab_id=next_tab_id())
         
         from PySide6.QtGui import QIcon
         icon = QIcon() # デフォルト
@@ -710,14 +809,18 @@ def main():
                 update_editor_selector(i)
                 return
 
-        encoding = resolve_default_encoding(file_path)
-
         try:
-            with open(file_path, 'r', encoding=encoding, errors='replace') as f:
-                content = f.read()
+            content, detected_encoding = read_text_with_detected_encoding(file_path)
 
             # 新しく開く場合は、まずウィジェットを生成
-            editor = create_editor_widget(editor_id, file_path, content, available_editors, tab_id=next_tab_id())
+            editor = create_editor_widget(
+                editor_id,
+                file_path,
+                content,
+                available_editors,
+                tab_id=next_tab_id(),
+                file_encoding=detected_encoding,
+            )
             
             # パラメータがあれば「準備完了後」に適用されるように予約
             if params:
@@ -1049,6 +1152,16 @@ def main():
         if path:
             open_project_file(path)
 
+    def open_file_dialog():
+        path, _ = QFileDialog.getOpenFileName(
+            window,
+            tr("MainWindow", "ファイルを開く"),
+            core.api.get_project_path() or os.getcwd(),
+            tr("MainWindow", "すべてのファイル (*.*)"),
+        )
+        if path:
+            open_file(path)
+
     def apply_required_plugins(metadata):
         missing = []
         for plugin_id in metadata.get("required_plugins", []):
@@ -1143,9 +1256,18 @@ def main():
     if action_save_as:
         action_save_as.triggered.connect(lambda checked=False: save_active_tab(True))
 
+    action_new_file = window.findChild(object, "actionNewFile")
+    if action_new_file:
+        action_new_file.triggered.connect(lambda checked=False: open_untitled_tab(tr("MainWindow", "無題")))
+
+    action_open_file = window.findChild(object, "actionOpenFile")
+    if action_open_file:
+        action_open_file.triggered.connect(lambda checked=False: open_file_dialog())
+
     core.api._message_handler = lambda text, timeout: window.statusBar().showMessage(text, timeout)
 
     encoding_display_names = {
+        "ascii": "ASCII",
         "utf-8": "UTF-8",
         "utf-8-sig": "UTF-8 BOM",
         "cp932": "CP932",
@@ -1167,46 +1289,78 @@ def main():
             return "UTF-8"
         return encoding_display_names.get(encoding.lower(), encoding)
 
-    def on_encoding_selected(encoding):
+    def reopen_with_encoding(encoding):
         widget = window.editorTabs.currentWidget() if window.editorTabs else None
         if not widget:
             return
         if not editor_registry.is_text_editor(getattr(widget, "editor_id", TEXT_EDITOR_ID)):
             return
-        widget.file_encoding = encoding
+        if getattr(widget, "is_dirty", False) and not str(getattr(widget, "file_path", "")).startswith("untitled:"):
+            answer = QMessageBox.question(
+                window,
+                tr("MainWindow", "文字コードの再解釈"),
+                tr("MainWindow", "未保存の変更があります。破棄してこの文字コードで再読込しますか？"),
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+        try:
+            reopen_text_widget_with_encoding(widget, encoding)
+        except Exception as error:
+            QMessageBox.warning(
+                window,
+                tr("MainWindow", "文字コードの再解釈"),
+                tr("MainWindow", "この文字コードでは開き直せませんでした: {error}").format(error=error),
+            )
+            return
         update_encoding_status()
+
+    def save_with_encoding(encoding):
+        widget = window.editorTabs.currentWidget() if window.editorTabs else None
+        if not widget:
+            return
+        if not editor_registry.is_text_editor(getattr(widget, "editor_id", TEXT_EDITOR_ID)):
+            return
+        widget.file_encoding = normalize_encoding_name(encoding) or encoding
+        update_encoding_status()
+        save_active_tab(False)
+
+    def open_encoding_dialog():
+        widget = window.editorTabs.currentWidget() if window.editorTabs else None
+        if not widget:
+            return
+        if not editor_registry.is_text_editor(getattr(widget, "editor_id", TEXT_EDITOR_ID)):
+            return
+
+        dialog = EncodingActionDialog(window, get_widget_encoding(widget), selectable_encodings, format_encoding_label)
+        if dialog.exec() != dialog.DialogCode.Accepted:
+            return
+        if dialog.selected_action == "reopen" and dialog.selected_encoding:
+            reopen_with_encoding(dialog.selected_encoding)
+            return
+        if dialog.selected_action == "save" and dialog.selected_encoding:
+            save_with_encoding(dialog.selected_encoding)
 
     def update_encoding_status():
         widget = window.editorTabs.currentWidget() if window.editorTabs else None
         if not widget:
             encoding_button.setText("UTF-8")
             encoding_button.setEnabled(False)
-            encoding_button.setMenu(None)
             return
 
         current_encoding = get_status_encoding_for_widget(widget)
         encoding_button.setText(format_encoding_label(current_encoding))
 
         if editor_registry.is_text_editor(getattr(widget, "editor_id", TEXT_EDITOR_ID)):
-            menu = QMenu(encoding_button)
-            current_key = (get_widget_encoding(widget) or "").lower()
-            for encoding in selectable_encodings:
-                action = menu.addAction(format_encoding_label(encoding))
-                action.setCheckable(True)
-                action.setChecked(encoding == current_key)
-                action.triggered.connect(lambda checked=False, e=encoding: on_encoding_selected(e))
-            encoding_button.setMenu(menu)
             encoding_button.setEnabled(True)
         else:
             encoding_button.setEnabled(False)
-            encoding_button.setMenu(None)
 
     # 2. 進捗 (ステータスバーにプログレスバーを追加)
     from PySide6.QtWidgets import QProgressBar
     encoding_button = QToolButton()
-    encoding_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
     encoding_button.setText("UTF-8")
     encoding_button.setEnabled(False)
+    encoding_button.clicked.connect(open_encoding_dialog)
     window.statusBar().addPermanentWidget(encoding_button)
 
     progress_bar = QProgressBar()
