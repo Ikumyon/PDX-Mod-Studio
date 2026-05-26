@@ -1,6 +1,14 @@
 import os
 import json
 import importlib.util
+import tomllib
+import core.api
+from core.syntax_engine import (
+    build_element_definitions_from_files,
+    load_plugin_file_map,
+    resolve_manifest_display_text,
+    translate_from_files_map,
+)
 
 class ModElement:
     def __init__(
@@ -35,6 +43,7 @@ class Plugin:
         self.path = path
         self.icon_path = icon_path
         self.raw = raw or {}
+        self.description = self.raw.get("description", "")
         self.elements = [] # ModElementのリスト
         self.module = None # ロードされたPythonモジュール
         self.entry_point = self.raw.get("entry_point")
@@ -88,6 +97,63 @@ class Plugin:
         if callable(self._assistant_widget_factory):
             return self._assistant_widget_factory(parent)
         return None
+
+    def resolve_path(self, relative_path):
+        if not relative_path:
+            return self.path
+        normalized = str(relative_path).replace("/", os.sep)
+        return os.path.normpath(os.path.join(self.path, normalized))
+
+    def read_text_asset(self, relative_path, encoding="utf-8"):
+        with open(self.resolve_path(relative_path), "r", encoding=encoding) as handle:
+            return handle.read()
+
+    def read_json_asset(self, relative_path, encoding="utf-8"):
+        with open(self.resolve_path(relative_path), "r", encoding=encoding) as handle:
+            return json.load(handle)
+
+    def read_toml_asset(self, relative_path):
+        with open(self.resolve_path(relative_path), "rb") as handle:
+            return tomllib.load(handle)
+
+    def get_manifest_file_map(self):
+        return load_plugin_file_map(self.path, self.raw, self.id)
+
+    def load_elements_from_files(self):
+        if not self.raw.get("files"):
+            self.clear_elements()
+            return
+        file_map = self.get_manifest_file_map()
+        self.clear_elements()
+        entries = build_element_definitions_from_files(
+            file_map,
+            translate=lambda key, fallback: self.translate(key, fallback=fallback),
+            plugin_id=self.id,
+        )
+        for entry in entries:
+            self.add_element(
+                id=entry["id"],
+                name=entry["name"],
+                path=entry["path"],
+                raw=entry,
+            )
+
+    def translate(self, key, fallback=None, context=None, metadata=None):
+        if self.module:
+            return core.api.plugin_translate(
+                self.id,
+                key,
+                fallback=fallback,
+                context=context,
+                metadata=metadata or {},
+            )
+        return translate_from_files_map(
+            plugin_root=self.path,
+            manifest=self.raw,
+            key=key,
+            fallback=fallback,
+            language=None,
+        )
 
     def initialize(self):
         func = getattr(self.module, "initialize", None) if self.module else None
@@ -179,19 +245,54 @@ class PluginManager:
             try:
                 # マニフェストの情報に基づき、Plugin オブジェクトを作成
                 # path は discover_plugins で設定済み
+                plugin_root = os.path.join(os.path.dirname(self.plugins_dir), manifest["path"])
+                resolved_name = resolve_manifest_display_text(
+                    manifest,
+                    "name_key",
+                    "name",
+                    default=p_id,
+                    plugin_id=p_id,
+                    translate=lambda key, fallback: translate_from_files_map(
+                        plugin_root=plugin_root,
+                        manifest=manifest,
+                        key=key,
+                        fallback=fallback,
+                        language=None,
+                    ),
+                )
+                resolved_description = resolve_manifest_display_text(
+                    manifest,
+                    "desc_key",
+                    "description",
+                    default="",
+                    plugin_id=p_id,
+                    translate=lambda key, fallback: translate_from_files_map(
+                        plugin_root=plugin_root,
+                        manifest=manifest,
+                        key=key,
+                        fallback=fallback,
+                        language=None,
+                    ),
+                )
                 plugin = Plugin(
                     id=p_id,
-                    name=manifest.get("name", p_id),
+                    name=resolved_name,
                     version=manifest.get("version", "1.0.0"),
-                    path=os.path.join(os.path.dirname(self.plugins_dir), manifest["path"]),
-                    icon_path=os.path.join(os.path.dirname(self.plugins_dir), manifest["path"], manifest.get("icon", "")) if manifest.get("icon") else None,
-                    raw=manifest
+                    path=plugin_root,
+                    icon_path=os.path.join(plugin_root, manifest.get("icon", "")) if manifest.get("icon") else None,
+                    raw={
+                        **manifest,
+                        "name": resolved_name,
+                        "description": resolved_description,
+                    }
                 )
                 
                 # 指定されたエントリーポイントをロード
                 entry_point = manifest.get("entry_point")
                 if entry_point:
                     self._load_plugin_logic(plugin, entry_point)
+
+                plugin.load_elements_from_files()
                 
                 self.plugins.append(plugin)
                 print(f"Successfully loaded plugin: {plugin.name} (via manifest)")

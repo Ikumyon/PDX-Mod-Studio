@@ -3,12 +3,14 @@ import os
 import json
 import tempfile
 import zipfile
+import fnmatch
 from core import save_result as save_result_utils
-from PySide6.QtWidgets import QApplication, QMenu, QVBoxLayout, QToolButton, QWidget, QTabBar, QFileDialog
+from PySide6.QtWidgets import QApplication, QMenu, QVBoxLayout, QToolButton, QWidget, QTabBar, QFileDialog, QMessageBox
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtCore import QFile, Qt, QSize, QCoreApplication
 import core.api
 from core.i18n import I18nManager
+from core.syntax_engine import GrammarBundle
 tr = QCoreApplication.translate
 
 def main():
@@ -161,6 +163,7 @@ def main():
     def on_tab_changed(index):
         project_tree.sync_selection(index)
         update_editor_selector(index)
+        update_encoding_status()
 
     window.editorTabs.currentChanged.connect(on_tab_changed)
     # 初期状態のリスト更新
@@ -260,6 +263,28 @@ def main():
             if plugin:
                 return plugin.id
         return getattr(project_tree.active_plugin, "id", None)
+
+    def resolve_default_encoding(file_path):
+        element = get_element_for_path(file_path)
+        if not element:
+            return "utf-8"
+        encoding = element.plugin.get_element_attribute(element, "encoding", file_path=file_path)
+        if not encoding:
+            raise ValueError(f"Encoding is not defined for file: {file_path}")
+        return encoding
+
+    def get_widget_encoding(widget):
+        return getattr(widget, "file_encoding", None) or "utf-8"
+
+    def get_status_encoding_for_widget(widget):
+        if not widget:
+            return "utf-8"
+        if editor_registry.is_text_editor(getattr(widget, "editor_id", TEXT_EDITOR_ID)):
+            return get_widget_encoding(widget)
+        file_path = getattr(widget, "file_path", "")
+        if file_path and not str(file_path).startswith("untitled:"):
+            return resolve_default_encoding(file_path)
+        return get_widget_encoding(widget)
 
     # --- ビュー切り替えボタンのメニュー更新ロジック ---
     def update_editor_selector(index):
@@ -442,8 +467,100 @@ def main():
         show_save_result_message(write_result)
         return False
 
+    def get_widget_text_content(widget):
+        if widget is None:
+            return None
+        to_plain_text = getattr(widget, "toPlainText", None)
+        if callable(to_plain_text):
+            return to_plain_text()
+        return None
+
+    def resolve_schema_for_file(element, file_path):
+        if not element or not file_path or file_path.startswith("untitled:"):
+            return None
+        project_path = getattr(project_tree, "current_project_path", None)
+        if not project_path:
+            return None
+
+        try:
+            rel_path = os.path.relpath(file_path, project_path).replace("\\", "/")
+        except Exception:
+            return None
+
+        match_glob = element.raw.get("match_glob")
+        if isinstance(match_glob, str) and match_glob and not fnmatch.fnmatch(rel_path, match_glob):
+            return None
+
+        excludes = element.raw.get("exclude") or []
+        for exclude in excludes:
+            if isinstance(exclude, str) and fnmatch.fnmatch(rel_path, exclude):
+                return None
+
+        schema = element.raw.get("schema")
+        if isinstance(schema, str) and schema:
+            return schema
+
+        schema_rules = element.raw.get("schema_rules") or []
+        for rule in schema_rules:
+            if not isinstance(rule, dict):
+                continue
+            schema_path = rule.get("schema")
+            if isinstance(schema_path, str) and schema_path:
+                return schema_path
+        return None
+
+    def run_schema_check():
+        active_tab = get_active_tab_info()
+        if not active_tab:
+            window.statusBar().showMessage("文法チェック対象のタブがありません。", 4000)
+            return
+
+        file_path = active_tab.get("path")
+        widget = window.editorTabs.currentWidget() if window.editorTabs else None
+        text = get_widget_text_content(widget)
+        if text is None:
+            QMessageBox.warning(window, "文法チェック", "現在のタブはテキスト内容の取得に対応していません。")
+            return
+
+        element = get_element_for_path(file_path)
+        if not element:
+            QMessageBox.warning(window, "文法チェック", "このファイルに対応する要素を特定できません。")
+            return
+
+        schema_path = resolve_schema_for_file(element, file_path)
+        if not schema_path:
+            QMessageBox.warning(window, "文法チェック", "このファイルに対応するスキーマを特定できません。")
+            return
+
+        try:
+            bundle = GrammarBundle.from_plugin(element.plugin)
+            result = bundle.validate_schema_path(text, schema_path)
+        except Exception as error:
+            QMessageBox.critical(window, "文法チェック", f"文法チェックに失敗しました: {error}")
+            return
+
+        if result.is_valid:
+            window.statusBar().showMessage(f"文法チェックOK: {schema_path}", 5000)
+            QMessageBox.information(window, "文法チェック", f"スキーマ: {schema_path}\n診断: 0件")
+            return
+
+        diagnostics = "\n".join(f"- {diag.path}: {diag.message}" for diag in result.diagnostics[:20])
+        if len(result.diagnostics) > 20:
+            diagnostics += f"\n... 他 {len(result.diagnostics) - 20} 件"
+
+        window.statusBar().showMessage(
+            f"文法チェックNG: {schema_path} ({len(result.diagnostics)}件)",
+            7000,
+        )
+        QMessageBox.warning(
+            window,
+            "文法チェック",
+            f"スキーマ: {schema_path}\n診断: {len(result.diagnostics)}件\n\n{diagnostics}",
+        )
+
     def create_editor_widget(editor_id, file_path, content, available_editors, params=None, tab_id=None):
         editor_id = editor_registry.normalize_editor_id(editor_id)
+        file_encoding = resolve_default_encoding(file_path) if file_path and not str(file_path).startswith("untitled:") else "utf-8"
         if editor_id == TEXT_EDITOR_ID:
             widget = EditorWidget()
             widget.tab_id = tab_id
@@ -457,6 +574,7 @@ def main():
         
         widget.editor_id = editor_id
         widget.file_path = file_path
+        widget.file_encoding = file_encoding
         widget.content = content
         widget.available_editors = available_editors
         widget.is_dirty = False
@@ -468,9 +586,6 @@ def main():
             widget.active_plugin = element.plugin
         widget._last_notified_content = content # 最後に通知したときの内容
         
-        # 初回のエラー波線診断を実行
-        if hasattr(widget, "run_diagnostics"):
-            widget.run_diagnostics()
         if editor_id != TEXT_EDITOR_ID:
             from PySide6.QtCore import QTimer
 
@@ -595,9 +710,7 @@ def main():
                 update_editor_selector(i)
                 return
 
-        encoding = "utf-8"
-        if element:
-            encoding = element.plugin.get_element_attribute(element, "encoding", file_path=file_path)
+        encoding = resolve_default_encoding(file_path)
 
         try:
             with open(file_path, 'r', encoding=encoding, errors='replace') as f:
@@ -669,8 +782,6 @@ def main():
     def on_plugin_selected(plugin):
         if not plugin:
             return
-        print(f"プラグインが選択されました: {plugin.name} (Version: {plugin.version})")
-        window.statusBar().showMessage(f"プラグイン '{plugin.name}' が選択されました。")
         # ProjectTreeDock にプラグインを通知
         project_tree.set_active_plugin(plugin)
         editor_registry.register_plugin(plugin)
@@ -686,6 +797,8 @@ def main():
                 else:
                     w.available_editors = []
             update_editor_selector(window.editorTabs.currentIndex())
+            if "update_encoding_status" in locals():
+                update_encoding_status()
 
 
     # メニューバーにコンボボックスを配置
@@ -1032,8 +1145,70 @@ def main():
 
     core.api._message_handler = lambda text, timeout: window.statusBar().showMessage(text, timeout)
 
+    encoding_display_names = {
+        "utf-8": "UTF-8",
+        "utf-8-sig": "UTF-8 BOM",
+        "cp932": "CP932",
+        "shift_jis": "Shift_JIS",
+        "utf-16-le": "UTF-16 LE",
+        "utf-16-be": "UTF-16 BE",
+    }
+    selectable_encodings = [
+        "utf-8",
+        "utf-8-sig",
+        "cp932",
+        "shift_jis",
+        "utf-16-le",
+        "utf-16-be",
+    ]
+
+    def format_encoding_label(encoding):
+        if not encoding:
+            return "UTF-8"
+        return encoding_display_names.get(encoding.lower(), encoding)
+
+    def on_encoding_selected(encoding):
+        widget = window.editorTabs.currentWidget() if window.editorTabs else None
+        if not widget:
+            return
+        if not editor_registry.is_text_editor(getattr(widget, "editor_id", TEXT_EDITOR_ID)):
+            return
+        widget.file_encoding = encoding
+        update_encoding_status()
+
+    def update_encoding_status():
+        widget = window.editorTabs.currentWidget() if window.editorTabs else None
+        if not widget:
+            encoding_button.setText("UTF-8")
+            encoding_button.setEnabled(False)
+            encoding_button.setMenu(None)
+            return
+
+        current_encoding = get_status_encoding_for_widget(widget)
+        encoding_button.setText(format_encoding_label(current_encoding))
+
+        if editor_registry.is_text_editor(getattr(widget, "editor_id", TEXT_EDITOR_ID)):
+            menu = QMenu(encoding_button)
+            current_key = (get_widget_encoding(widget) or "").lower()
+            for encoding in selectable_encodings:
+                action = menu.addAction(format_encoding_label(encoding))
+                action.setCheckable(True)
+                action.setChecked(encoding == current_key)
+                action.triggered.connect(lambda checked=False, e=encoding: on_encoding_selected(e))
+            encoding_button.setMenu(menu)
+            encoding_button.setEnabled(True)
+        else:
+            encoding_button.setEnabled(False)
+            encoding_button.setMenu(None)
+
     # 2. 進捗 (ステータスバーにプログレスバーを追加)
     from PySide6.QtWidgets import QProgressBar
+    encoding_button = QToolButton()
+    encoding_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+    encoding_button.setText("UTF-8")
+    encoding_button.setEnabled(False)
+    window.statusBar().addPermanentWidget(encoding_button)
+
     progress_bar = QProgressBar()
     progress_bar.setMaximumWidth(200)
     progress_bar.setTextVisible(True)
@@ -1070,6 +1245,7 @@ def main():
                 widget.params = params
 
     core.api._editor_ready_handler = on_editor_ready
+    update_encoding_status()
 
 
     # ウィンドウを表示

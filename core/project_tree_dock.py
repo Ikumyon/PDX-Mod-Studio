@@ -583,66 +583,68 @@ class ProjectTreeDock:
         tree = []
         for element in elements:
             icon = self._get_element_icon(element, text_color)
-            # 全ての要素はchildrenキーでメニュー項目を定義する必要がある（旧形式は廃止）
-            children = element.raw.get("children")
-            if children:
-                for item in children:
-                    self._merge_into_tree(tree, item, element, icon)
+            self._merge_path_into_tree(tree, element, icon)
         return tree
 
-    def _merge_into_tree(self, current_level, item, element, element_icon):
-        item_id = item.get("id")
-        item_name = item.get("name", "名称未設定")
-        children = item.get("children")
-        
-        # マージ対象を探す (ID優先、なければ名前)
-        target = None
-        if item_id:
-            target = next((node for node in current_level if node.get("id") == item_id), None)
-        else:
-            # アクション（childrenなし）はマージ対象外とする（同名でも別々に表示）
-            target = next((node for node in current_level if node.get("name") == item_name and "children" in node), None)
-            
-        if children:
+    def _merge_path_into_tree(self, current_level, element, element_icon):
+        match_glob = element.raw.get("match_glob") or element.path
+        normalized = str(match_glob).replace("\\", "/")
+        segments = [
+            segment
+            for segment in normalized.split("/")
+            if segment and not any(char in segment for char in "*?[")
+        ]
+
+        target_level = current_level
+        for segment in segments:
+            target = next(
+                (node for node in target_level if node.get("kind") == "folder" and node.get("segment") == segment),
+                None,
+            )
             if not target:
                 target = {
-                    "id": item_id,
-                    "name": item_name,
-                    "icon": self.icon_folder, # 階層にはフォルダアイコンを使用
-                    "children": []
+                    "kind": "folder",
+                    "segment": segment,
+                    "name": segment,
+                    "icon": self.icon_folder,
+                    "children": [],
                 }
-                current_level.append(target)
-            
-            for child in children:
-                self._merge_into_tree(target["children"], child, element, element_icon)
-        else:
-            # リーフ項目（アクション）
-            leaf = {
-                "name": item_name,
-                "icon": element_icon, # アクションには要素のアイコンを使用
+                target_level.append(target)
+            target_level = target["children"]
+
+        target_level.append(
+            {
+                "kind": "file",
+                "name": element.name,
+                "icon": element_icon,
                 "element": element,
-                "path": item.get("path"),
-                "extension": item.get("extension")
+                "path": element.path,
+                "extension": element.raw.get("extension"),
             }
-            current_level.append(leaf)
+        )
 
     def _populate_creation_menu(self, menu, tree_nodes):
-        for node in tree_nodes:
-            name = node.get("name", "名称未設定")
+        def sort_key(node):
+            return (0 if node.get("kind") == "folder" else 1, node.get("name", "").lower())
+
+        for node in sorted(tree_nodes, key=sort_key):
+            name = node.get("name", "Unnamed")
             icon = node.get("icon")
             children = node.get("children")
-            
+
             if children:
                 sub_menu = menu.addMenu(icon, name) if icon else menu.addMenu(name)
                 self._populate_creation_menu(sub_menu, children)
-            else:
-                # アクション
-                action = menu.addAction(icon, name) if icon else menu.addAction(name)
-                element = node.get("element")
-                path = node.get("path")
-                ext = node.get("extension")
-                action.triggered.connect(lambda checked=False, e=element, p=path, x=ext, n=name: 
-                                         self._create_element_file(e, path_override=p, extension_override=x, name_override=n))
+                continue
+
+            action = menu.addAction(icon, name) if icon else menu.addAction(name)
+            element = node.get("element")
+            path = node.get("path")
+            ext = node.get("extension")
+            action.triggered.connect(
+                lambda checked=False, e=element, p=path, x=ext, n=name:
+                self._create_element_file(e, path_override=p, extension_override=x, name_override=n)
+            )
 
     def _get_element_icon(self, element, text_color):
         icon_path = element.plugin.get_element_attribute(element, "icon")

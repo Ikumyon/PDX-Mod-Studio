@@ -15,7 +15,6 @@ UIモックアップ/
 test_project/
 tests/
 test_mod/
-doc/save doc/
 
 #設定保存ファイル
 plugins/**/settings.json
@@ -26,9 +25,9 @@ plugins_registry.json
 .DS_Store
 Thumbs.db
 
-# AI Models
-plugins/hoi4/interface/colorize/models/
+# AI
 AGENTS.md
 
 #古いデータとプロジェクト分離
-hoi4-old/
+hoi4-old
+plugins

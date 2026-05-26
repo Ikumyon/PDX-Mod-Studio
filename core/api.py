@@ -1,4 +1,3 @@
-import os
 from core.i18n import tr
 
 _current_project_path = None
@@ -88,31 +87,6 @@ def _resolve_plugin_object(plugin_id):
     if _plugin_object_resolver:
         return _plugin_object_resolver(plugin_id)
     return None
-
-# --- 診断プロバイダ (Linter) API ---
-_diagnostics_providers = {}  # { extension: provider_func }
-
-def register_diagnostics_provider(extension: str, provider_func):
-    """
-    プラグインがファイル拡張子（例: '.txt'）に対応する診断関数を登録する。
-    provider_func: (file_path: str, content: str) -> list[Diagnostic] を返す関数。
-    """
-    global _diagnostics_providers
-    _diagnostics_providers[extension.lower()] = provider_func
-
-def get_diagnostics(file_path: str, content: str) -> list:
-    """
-    指定されたファイルの診断結果（Diagnostic のリスト）を取得する。
-    """
-    _, ext = os.path.splitext(file_path)
-    provider = _diagnostics_providers.get(ext.lower())
-    if provider:
-        try:
-            return provider(file_path, content)
-        except Exception as e:
-            print(f"Error in diagnostics provider for {ext}: {e}")
-    return []
-
 
 def _call_plugin_hook(plugin, hook_name: str, payload: dict = None, default=None):
     """Call an optional plugin hook."""
