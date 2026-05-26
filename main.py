@@ -1812,6 +1812,278 @@ def main():
     core.api._editor_ready_handler = on_editor_ready
     update_encoding_status()
 
+    # --- 検索・置換ポップアップの初期化とエディタ連携 ---
+    from PySide6.QtGui import QKeySequence, QShortcut, QTextCharFormat, QColor, QTextCursor
+    from PySide6.QtCore import QObject, QEvent
+    from PySide6.QtWidgets import QTextEdit
+    from core.search_popup import SearchPopUpWidget
+    from core.search_engine import TextDocumentSearcher
+
+    # ポップアップウィジェットの作成とメインウィンドウへの配置
+    search_popup = SearchPopUpWidget(window)
+    search_popup.hide()
+
+    # 検索結果のキャッシュ保持用 {editor_widget: {"occurrences": [...], "current_index": -1, "query": SearchQuery}}
+    search_cache = {}
+
+    def get_current_text_editor():
+        """現在のアクティブなエディタがテキストエディタ(QPlainTextEdit)であればそれを返す"""
+        if not window.editorTabs:
+            return None
+        widget = window.editorTabs.currentWidget()
+        if widget and isinstance(widget, QPlainTextEdit):
+            return widget
+        return None
+
+    def update_search_popup_position():
+        """エディタの右上角にポップアップが吸い付くように位置合わせする"""
+        editor = get_current_text_editor()
+        if not editor or search_popup.isHidden():
+            return
+            
+        # ユーザーによって手動ドラッグ移動された場合は、自動配置（追従）をスキップ
+        if search_popup.manually_moved:
+            return
+            
+        # ポップアップのサイズを明示的に最新化（フロート時のサイズ崩れ防止）
+        search_popup._update_widget_size()
+        
+        # エディタの右上端から少しマージンをあけた位置に配置
+        editor_rect = editor.rect()
+        global_pos = editor.mapTo(window, editor_rect.topRight())
+        
+        # ポップアップのサイズに基づいてX座標を調整
+        popup_width = search_popup.width()
+        x = global_pos.x() - popup_width - 30 # 右側のマージン
+        y = global_pos.y() + 10                # 上側のマージン
+        
+        search_popup.move(x, y)
+        search_popup.raise_()
+
+    def clear_search_highlights(editor):
+        """指定したエディタの検索ハイライトをクリアする"""
+        if editor:
+            editor.setExtraSelections([])
+        if editor in search_cache:
+            search_cache.pop(editor)
+
+    def on_query_changed(query):
+        editor = get_current_text_editor()
+        if not editor:
+            search_popup.set_match_count(0, 0)
+            return
+
+        if query.is_empty():
+            clear_search_highlights(editor)
+            search_popup.set_match_count(0, 0)
+            return
+
+        # QTextDocumentに対する検索実行
+        occurrences = TextDocumentSearcher.search(editor.document(), query)
+        total = len(occurrences)
+        
+        # 現在位置の選定（現在のカーソル位置より後ろにある最初の一致を探す）
+        cursor_pos = editor.textCursor().position()
+        current_idx = -1
+        for idx, occ in enumerate(occurrences):
+            if occ.position >= cursor_pos:
+                current_idx = idx
+                break
+        if current_idx == -1 and total > 0:
+            current_idx = 0  # なければ最初に戻る
+
+        search_cache[editor] = {
+            "occurrences": occurrences,
+            "current_index": current_idx,
+            "query": query
+        }
+
+        apply_highlights(editor)
+
+    def apply_highlights(editor):
+        if editor not in search_cache:
+            return
+
+        cache = search_cache[editor]
+        occurrences = cache["occurrences"]
+        current_idx = cache["current_index"]
+        
+        selections = []
+        
+        # 通常の一致箇所のハイライト (薄い暗黄色)
+        normal_format = QTextCharFormat()
+        normal_format.setBackground(QColor(85, 85, 0, 150))
+        normal_format.setForeground(QColor("#ffffff"))
+
+        # 現在選択されている箇所 (明るいオレンジ)
+        active_format = QTextCharFormat()
+        active_format.setBackground(QColor(216, 108, 0, 200))
+        active_format.setForeground(QColor("#ffffff"))
+
+        for idx, occ in enumerate(occurrences):
+            selection = QTextEdit.ExtraSelection()
+            
+            cursor = editor.textCursor()
+            cursor.setPosition(occ.position)
+            cursor.movePosition(QTextCursor.MoveOperation.Right, QTextCursor.MoveMode.KeepAnchor, occ.length)
+            
+            selection.cursor = cursor
+            selection.format = active_format if idx == current_idx else normal_format
+            selections.append(selection)
+
+        editor.setExtraSelections(selections)
+        search_popup.set_match_count(current_idx + 1 if current_idx >= 0 else 0, len(occurrences))
+
+    def on_find_next():
+        editor = get_current_text_editor()
+        if not editor or editor not in search_cache:
+            return
+            
+        cache = search_cache[editor]
+        occurrences = cache["occurrences"]
+        if not occurrences:
+            return
+
+        # インデックスを進める
+        current_idx = (cache["current_index"] + 1) % len(occurrences)
+        cache["current_index"] = current_idx
+        
+        # カーソル移動とスクロール
+        occ = occurrences[current_idx]
+        cursor = editor.textCursor()
+        cursor.setPosition(occ.position)
+        cursor.movePosition(QTextCursor.MoveOperation.Right, QTextCursor.MoveMode.KeepAnchor, occ.length)
+        editor.setTextCursor(cursor)
+        editor.ensureCursorVisible()
+
+        apply_highlights(editor)
+
+    def on_find_previous():
+        editor = get_current_text_editor()
+        if not editor or editor not in search_cache:
+            return
+            
+        cache = search_cache[editor]
+        occurrences = cache["occurrences"]
+        if not occurrences:
+            return
+
+        # インデックスを戻す
+        current_idx = (cache["current_index"] - 1) % len(occurrences)
+        cache["current_index"] = current_idx
+        
+        # カーソル移動とスクロール
+        occ = occurrences[current_idx]
+        cursor = editor.textCursor()
+        cursor.setPosition(occ.position)
+        cursor.movePosition(QTextCursor.MoveOperation.Right, QTextCursor.MoveMode.KeepAnchor, occ.length)
+        editor.setTextCursor(cursor)
+        editor.ensureCursorVisible()
+
+        apply_highlights(editor)
+
+    def on_replace_requested(search_text, replace_text):
+        editor = get_current_text_editor()
+        if not editor or editor not in search_cache:
+            return
+            
+        cache = search_cache[editor]
+        occurrences = cache["occurrences"]
+        current_idx = cache["current_index"]
+        
+        if current_idx < 0 or current_idx >= len(occurrences):
+            return
+            
+        occ = occurrences[current_idx]
+        
+        cursor = editor.textCursor()
+        cursor.setPosition(occ.position)
+        cursor.movePosition(QTextCursor.MoveOperation.Right, QTextCursor.MoveMode.KeepAnchor, occ.length)
+        
+        # 選択部分のテキストを取得して検証
+        if cursor.selectedText() == search_text or not cache["query"].match_case:
+            cursor.insertText(replace_text)
+            
+            # 再検索して結果とハイライトを更新
+            on_query_changed(cache["query"])
+
+    def on_replace_all_requested(search_text, replace_text):
+        editor = get_current_text_editor()
+        if not editor or editor not in search_cache:
+            return
+            
+        cache = search_cache[editor]
+        occurrences = cache["occurrences"]
+        if not occurrences:
+            return
+            
+        # 逆順から置換して位置ズレを防ぐ
+        cursor = editor.textCursor()
+        cursor.beginEditBlock()
+        try:
+            for occ in reversed(occurrences):
+                cursor.setPosition(occ.position)
+                cursor.movePosition(QTextCursor.MoveOperation.Right, QTextCursor.MoveMode.KeepAnchor, occ.length)
+                cursor.insertText(replace_text)
+        finally:
+            cursor.endEditBlock()
+            
+        # 再検索してUIを更新
+        on_query_changed(cache["query"])
+
+    def show_search_popup():
+        editor = get_current_text_editor()
+        if not editor:
+            return
+        
+        # 既に表示されている場合はトグルで非表示にする
+        if not search_popup.isHidden():
+            hide_search_popup()
+            return
+            
+        # 新規オープン時は手動移動フラグをリセットし、初期位置（右上）から開始
+        search_popup.manually_moved = False
+        search_popup.show_popup()
+        update_search_popup_position()
+
+    def hide_search_popup():
+        editor = get_current_text_editor()
+        clear_search_highlights(editor)
+        search_popup.hide_popup()
+        if editor:
+            editor.setFocus()
+
+    # シグナルの接続
+    search_popup.query_changed.connect(on_query_changed)
+    search_popup.find_next.connect(on_find_next)
+    search_popup.find_previous.connect(on_find_previous)
+    search_popup.replace_requested.connect(on_replace_requested)
+    search_popup.replace_all_requested.connect(on_replace_all_requested)
+    search_popup.close_requested.connect(hide_search_popup)
+
+    # ショートカットキー Ctrl+F の登録
+    find_shortcut = QShortcut(QKeySequence("Ctrl+F"), window)
+    find_shortcut.activated.connect(show_search_popup)
+
+    # ウィンドウの移動・リサイズ時に検索バーの位置を自動追従させるためのイベントフィルター
+    class WindowEventFilter(QObject):
+        def eventFilter(self, watched, event):
+            if event.type() in (QEvent.Type.Resize, QEvent.Type.Move):
+                update_search_popup_position()
+            return super().eventFilter(watched, event)
+            
+    filter_obj = WindowEventFilter(window)
+    window.installEventFilter(filter_obj)
+
+    # タブが切り替わった時に古いハイライトを消してポップアップの位置を更新
+    if window.editorTabs:
+        # ラムダの多重定義を避けるため独立したスロットを定義
+        def on_tab_changed(idx):
+            clear_search_highlights(window.editorTabs.widget(idx))
+            if not search_popup.isHidden():
+                update_search_popup_position()
+                on_query_changed(search_popup.get_query())
+        window.editorTabs.currentChanged.connect(on_tab_changed)
 
     # ウィンドウを表示
     window.show()

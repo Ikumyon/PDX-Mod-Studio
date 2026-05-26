@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>ProjectSearchDock</class>
+ <widget class="QDockWidget" name="dockProjectSearch">
+  <property name="windowTitle">
+   <string>プロジェクト検索</string>
+  </property>
+  <widget class="QWidget" name="dockProjectSearchContents">
+   <layout class="QVBoxLayout" name="verticalLayout">
+    <property name="spacing">
+     <number>6</number>
+    </property>
+    <property name="leftMargin">
+     <number>6</number>
+    </property>
+    <property name="topMargin">
+     <number>6</number>
+    </property>
+    <property name="rightMargin">
+     <number>6</number>
+    </property>
+    <property name="bottomMargin">
+     <number>6</number>
+    </property>
+    <item>
+     <widget class="QWidget" name="projectSearchPanel" native="true">
+      <layout class="QVBoxLayout" name="panelLayout">
+       <property name="spacing">
+        <number>6</number>
+       </property>
+       <property name="leftMargin">
+        <number>0</number>
+       </property>
+       <property name="topMargin">
+        <number>0</number>
+       </property>
+       <property name="rightMargin">
+        <number>0</number>
+       </property>
+       <property name="bottomMargin">
+        <number>0</number>
+       </property>
+       <item>
+        <widget class="QWidget" name="searchFieldContainer" native="true">
+         <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>26</height>
+          </size>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QWidget" name="replaceRow" native="true">
+         <layout class="QHBoxLayout" name="replaceRowLayout">
+          <property name="spacing">
+           <number>4</number>
+          </property>
+          <property name="leftMargin">
+           <number>0</number>
+          </property>
+          <property name="topMargin">
+           <number>0</number>
+          </property>
+          <property name="rightMargin">
+           <number>0</number>
+          </property>
+          <property name="bottomMargin">
+           <number>0</number>
+          </property>
+          <item>
+           <widget class="QWidget" name="replaceFieldContainer" native="true">
+            <property name="minimumSize">
+             <size>
+              <width>0</width>
+              <height>26</height>
+             </size>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QToolButton" name="replaceButton">
+            <property name="toolTip">
+             <string>置換 (Ctrl+Shift+1)</string>
+            </property>
+            <property name="text">
+             <string>Replace</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QToolButton" name="replaceAllButton">
+            <property name="toolTip">
+             <string>すべて置換 (Ctrl+Alt+Enter)</string>
+            </property>
+            <property name="text">
+             <string>All</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QWidget" name="filterPanel" native="true">
+         <layout class="QVBoxLayout" name="filterLayout">
+          <property name="spacing">
+           <number>4</number>
+          </property>
+          <property name="leftMargin">
+           <number>0</number>
+          </property>
+          <property name="topMargin">
+           <number>0</number>
+          </property>
+          <property name="rightMargin">
+           <number>0</number>
+          </property>
+          <property name="bottomMargin">
+           <number>0</number>
+          </property>
+          <item>
+           <widget class="QLabel" name="includeLabel">
+            <property name="text">
+             <string>含めるファイル (拡張子/パターン):</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLineEdit" name="includeInput">
+            <property name="placeholderText">
+             <string>*.py, *.json, *.txt</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="excludeLabel">
+            <property name="text">
+             <string>除外するファイル:</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLineEdit" name="excludeInput">
+            <property name="placeholderText">
+             <string>.git, __pycache__, build</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="searchButton">
+         <property name="text">
+          <string>検索</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+    </item>
+    <item>
+     <widget class="QTreeWidget" name="searchResultsTree">
+      <property name="columnCount">
+       <number>1</number>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QLabel" name="searchStatusLabel">
+      <property name="text">
+       <string></string>
+      </property>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
