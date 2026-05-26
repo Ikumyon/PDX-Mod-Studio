@@ -1,10 +1,13 @@
 import os
+import shutil
+import subprocess
+import stat
 from PySide6.QtWidgets import (QDockWidget, QFileDialog, QTreeWidgetItem, 
                              QVBoxLayout, QHBoxLayout, QMenu, QWidget, QLabel, 
                              QToolButton, QStyle, QInputDialog, QMessageBox)
 from PySide6.QtUiTools import QUiLoader
-from PySide6.QtCore import QFile, Qt, QSize
-from PySide6.QtGui import QIcon, QPalette, QAction, QPixmap
+from PySide6.QtCore import QFile, Qt, QSize, QMimeData, QUrl, QByteArray
+from PySide6.QtGui import QIcon, QPalette, QAction, QPixmap, QGuiApplication, QKeySequence
 from core.utils import load_svg_icon
 import core.api
 
@@ -69,6 +72,7 @@ class ProjectTreeDock:
         self.base_dir = os.path.dirname(os.path.dirname(__file__))
         self.show_editors_requested = True
         self.show_plugin_section_requested = True
+        self.show_hidden_files = False
         
         # UIのロード
         loader = QUiLoader()
@@ -188,28 +192,249 @@ class ProjectTreeDock:
             return
             
         file_path = item.data(0, Qt.ItemDataRole.UserRole)
-        if not file_path or not os.path.isfile(file_path):
+        if not file_path or not os.path.exists(file_path):
             return
             
         menu = QMenu(self.modElementsTree)
-        
-        # 1. 外部エディタ（利用可能なら優先して上に表示）
-        try:
-            get_editors = getattr(self.parent_window, "get_available_editors_for_file", None)
-            editors = get_editors(file_path, include_script=False) if callable(get_editors) else []
-            if editors:
-                for editor in editors:
-                    action = menu.addAction(f"{editor['name']} で開く")
-                    action.triggered.connect(lambda checked=False, e_id=editor['id']: self.parent_window.open_file(file_path, e_id))
-                menu.addSeparator()
-        except Exception as e:
-            print(f"Error getting editors for context menu: {e}")
 
-        # 2. デフォルトのテキストエディタ
-        text_action = menu.addAction("テキストエディタで開く")
-        text_action.triggered.connect(lambda: self.parent_window.open_file(file_path, core.api.BUILTIN_TEXT_EDITOR_ID))
+        if os.path.isfile(file_path):
+            # 1. 外部エディタ（利用可能なら優先して上に表示）
+            try:
+                get_editors = getattr(self.parent_window, "get_available_editors_for_file", None)
+                editors = get_editors(file_path, include_script=False) if callable(get_editors) else []
+                if editors:
+                    for editor in editors:
+                        action = menu.addAction(f"{editor['name']} で開く")
+                        action.triggered.connect(lambda checked=False, e_id=editor['id']: self.parent_window.open_file(file_path, e_id))
+                    menu.addSeparator()
+            except Exception as e:
+                print(f"Error getting editors for context menu: {e}")
+
+            # 2. デフォルトのテキストエディタ
+            text_action = menu.addAction("テキストエディタで開く")
+            text_action.triggered.connect(lambda: self.parent_window.open_file(file_path, core.api.BUILTIN_TEXT_EDITOR_ID))
+            menu.addSeparator()
+
+        explorer_action = menu.addAction("エクスプローラーで開く")
+        explorer_action.triggered.connect(lambda checked=False: self.open_in_explorer(file_path))
+        menu.addSeparator()
+
+        self._add_file_operation_actions(menu, file_path)
             
         menu.exec(self.modElementsTree.mapToGlobal(pos))
+
+    def _add_file_operation_actions(self, menu, file_path):
+        cut_action = menu.addAction("切り取り")
+        cut_action.setShortcut(QKeySequence.StandardKey.Cut)
+        cut_action.setShortcutVisibleInContextMenu(True)
+        cut_action.triggered.connect(lambda checked=False: self.copy_paths_to_clipboard([file_path], cut=True))
+
+        copy_action = menu.addAction("コピー")
+        copy_action.setShortcut(QKeySequence.StandardKey.Copy)
+        copy_action.setShortcutVisibleInContextMenu(True)
+        copy_action.triggered.connect(lambda checked=False: self.copy_paths_to_clipboard([file_path], cut=False))
+
+        paste_action = menu.addAction("貼り付け")
+        paste_action.setShortcut(QKeySequence.StandardKey.Paste)
+        paste_action.setShortcutVisibleInContextMenu(True)
+        paste_action.setEnabled(self.clipboard_has_file_paths())
+        paste_action.triggered.connect(lambda checked=False: self.paste_clipboard_paths(file_path))
+
+        menu.addSeparator()
+
+        copy_path_action = menu.addAction("パスのコピー")
+        copy_path_action.setShortcut(QKeySequence("Shift+Alt+C"))
+        copy_path_action.setShortcutVisibleInContextMenu(True)
+        copy_path_action.triggered.connect(lambda checked=False: self.copy_text_to_clipboard(file_path))
+
+        copy_relative_path_action = menu.addAction("相対パスをコピー")
+        copy_relative_path_action.setShortcut(QKeySequence("Ctrl+K, Ctrl+Shift+C"))
+        copy_relative_path_action.setShortcutVisibleInContextMenu(True)
+        copy_relative_path_action.triggered.connect(lambda checked=False: self.copy_text_to_clipboard(self.relative_project_path(file_path)))
+
+        menu.addSeparator()
+
+        rename_action = menu.addAction("名前の変更...")
+        rename_action.setShortcut(QKeySequence("F2"))
+        rename_action.setShortcutVisibleInContextMenu(True)
+        rename_action.triggered.connect(lambda checked=False: self.rename_path(file_path))
+
+        delete_action = menu.addAction("削除")
+        delete_action.setShortcut(QKeySequence.StandardKey.Delete)
+        delete_action.setShortcutVisibleInContextMenu(True)
+        delete_action.triggered.connect(lambda checked=False: self.delete_path(file_path))
+
+    def copy_paths_to_clipboard(self, paths, cut=False):
+        mime_data = QMimeData()
+        mime_data.setUrls([QUrl.fromLocalFile(path) for path in paths])
+        mime_data.setText("\n".join(paths))
+
+        # Windows Explorer 等に移動/コピー意図を渡すための DropEffect。
+        drop_effect = 2 if cut else 5
+        mime_data.setData(
+            'application/x-qt-windows-mime;value="Preferred DropEffect"',
+            QByteArray(bytes([drop_effect, 0, 0, 0])),
+        )
+        mime_data.setData("x-kde-cutselection", QByteArray(b"1" if cut else b"0"))
+        QGuiApplication.clipboard().setMimeData(mime_data)
+
+    def clipboard_has_file_paths(self):
+        mime_data = QGuiApplication.clipboard().mimeData()
+        return bool(mime_data and mime_data.hasUrls())
+
+    def clipboard_file_paths(self):
+        mime_data = QGuiApplication.clipboard().mimeData()
+        if not mime_data or not mime_data.hasUrls():
+            return []
+        return [url.toLocalFile() for url in mime_data.urls() if url.isLocalFile() and url.toLocalFile()]
+
+    def clipboard_is_cut_operation(self):
+        mime_data = QGuiApplication.clipboard().mimeData()
+        if not mime_data:
+            return False
+
+        kde_cut = bytes(mime_data.data("x-kde-cutselection"))
+        if kde_cut == b"1":
+            return True
+
+        drop_effect = bytes(mime_data.data('application/x-qt-windows-mime;value="Preferred DropEffect"'))
+        return len(drop_effect) >= 1 and drop_effect[0] == 2
+
+    def paste_clipboard_paths(self, target_path):
+        destination_dir = target_path if os.path.isdir(target_path) else os.path.dirname(target_path)
+        if not destination_dir or not os.path.isdir(destination_dir):
+            QMessageBox.warning(self.dock_widget, "貼り付け", "貼り付け先のフォルダを特定できません。")
+            return
+
+        source_paths = self.clipboard_file_paths()
+        if not source_paths:
+            QMessageBox.warning(self.dock_widget, "貼り付け", "貼り付けるファイルまたはフォルダがありません。")
+            return
+
+        is_cut = self.clipboard_is_cut_operation()
+        changed_path = None
+        try:
+            for source_path in source_paths:
+                if not os.path.exists(source_path):
+                    raise FileNotFoundError(source_path)
+
+                destination_path = os.path.join(destination_dir, os.path.basename(source_path))
+                if os.path.normcase(os.path.abspath(source_path)) == os.path.normcase(os.path.abspath(destination_path)):
+                    raise FileExistsError(destination_path)
+                if os.path.exists(destination_path):
+                    raise FileExistsError(destination_path)
+
+                if is_cut:
+                    shutil.move(source_path, destination_path)
+                elif os.path.isdir(source_path):
+                    shutil.copytree(source_path, destination_path)
+                else:
+                    shutil.copy2(source_path, destination_path)
+                changed_path = destination_path
+        except Exception as error:
+            QMessageBox.critical(self.dock_widget, "貼り付け", f"貼り付けに失敗しました: {error}")
+            return
+
+        if is_cut:
+            QGuiApplication.clipboard().clear()
+        self.refresh_parent_after_path_change(new_path=changed_path)
+
+    def open_in_explorer(self, file_path):
+        try:
+            if os.path.isdir(file_path):
+                subprocess.Popen(["explorer", os.path.normpath(file_path)])
+            else:
+                subprocess.Popen(["explorer", "/select,", os.path.normpath(file_path)])
+        except Exception as error:
+            QMessageBox.critical(self.dock_widget, "エクスプローラーで開く", f"エクスプローラーを開けませんでした: {error}")
+
+    def copy_text_to_clipboard(self, text):
+        QGuiApplication.clipboard().setText(text)
+
+    def relative_project_path(self, file_path):
+        project_path = getattr(self, "current_project_path", None)
+        if not project_path:
+            return file_path
+        try:
+            return os.path.relpath(file_path, project_path).replace("\\", "/")
+        except ValueError:
+            return file_path
+
+    def refresh_parent_after_path_change(self, old_path=None, new_path=None):
+        if not hasattr(self, "current_project_path") or not self.current_project_path:
+            return
+        self.load_project(self.current_project_path)
+
+        target_path = new_path or old_path
+        if target_path and self.modElementsTree:
+            matches = self.modElementsTree.findItems(
+                os.path.basename(target_path),
+                Qt.MatchFlag.MatchExactly | Qt.MatchFlag.MatchRecursive,
+                0,
+            )
+            for item in matches:
+                if item.data(0, Qt.ItemDataRole.UserRole) == target_path:
+                    self.modElementsTree.setCurrentItem(item)
+                    break
+
+    def rename_path(self, file_path):
+        parent_dir = os.path.dirname(file_path)
+        old_name = os.path.basename(file_path)
+        new_name, accepted = QInputDialog.getText(
+            self.dock_widget,
+            "名前の変更",
+            "新しい名前:",
+            text=old_name,
+        )
+        if not accepted:
+            return
+
+        new_name = new_name.strip()
+        if not new_name or new_name == old_name:
+            return
+        if os.path.basename(new_name) != new_name:
+            QMessageBox.warning(self.dock_widget, "名前の変更", "名前にパス区切りを含めることはできません。")
+            return
+
+        new_path = os.path.join(parent_dir, new_name)
+        if os.path.exists(new_path):
+            QMessageBox.warning(self.dock_widget, "名前の変更", "同じ名前の項目が既に存在します。")
+            return
+
+        try:
+            os.rename(file_path, new_path)
+        except Exception as error:
+            QMessageBox.critical(self.dock_widget, "名前の変更", f"名前の変更に失敗しました: {error}")
+            return
+
+        self.refresh_parent_after_path_change(file_path, new_path)
+
+    def delete_path(self, file_path):
+        name = os.path.basename(file_path)
+        message = f"「{name}」を削除しますか？"
+        if os.path.isdir(file_path):
+            message += "\nフォルダ内の項目もすべて削除されます。"
+
+        answer = QMessageBox.question(
+            self.dock_widget,
+            "削除",
+            message,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            if os.path.isdir(file_path):
+                shutil.rmtree(file_path)
+            else:
+                os.remove(file_path)
+        except Exception as error:
+            QMessageBox.critical(self.dock_widget, "削除", f"削除に失敗しました: {error}")
+            return
+
+        self.refresh_parent_after_path_change(file_path)
 
             
     def setup_title_bar(self):
@@ -357,7 +582,11 @@ class ProjectTreeDock:
             return
             
         try:
-            items = os.listdir(path)
+            items = [
+                item
+                for item in os.listdir(path)
+                if self.show_hidden_files or not self.is_hidden_path(os.path.join(path, item))
+            ]
             items.sort()
             
             # ディレクトリの処理
@@ -398,6 +627,22 @@ class ProjectTreeDock:
                     tree_item.setData(0, Qt.ItemDataRole.UserRole, full_path)
         except Exception as e:
             print(f"ツリーの構築中にエラーが発生しました: {e}")
+
+    def set_show_hidden_files(self, enabled):
+        self.show_hidden_files = bool(enabled)
+        if hasattr(self, "current_project_path") and self.current_project_path:
+            self.load_project(self.current_project_path)
+
+    def is_hidden_path(self, path):
+        name = os.path.basename(path)
+        if name.startswith("."):
+            return True
+        if os.name != "nt":
+            return False
+        try:
+            return bool(os.stat(path).st_file_attributes & stat.FILE_ATTRIBUTE_HIDDEN)
+        except (AttributeError, OSError):
+            return False
 
     def get_icon_for_path(self, file_path):
         """指定されたパスに最適なアイコン（専用アイコンまたは汎用ファイルアイコン）を返す"""

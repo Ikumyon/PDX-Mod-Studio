@@ -8,9 +8,10 @@ import tempfile
 import zipfile
 import fnmatch
 from core import save_result as save_result_utils
-from PySide6.QtWidgets import QApplication, QMenu, QVBoxLayout, QHBoxLayout, QToolButton, QWidget, QTabBar, QStackedWidget, QFileDialog, QMessageBox
+from PySide6.QtWidgets import QApplication, QMenu, QVBoxLayout, QHBoxLayout, QToolButton, QWidget, QTabBar, QStackedWidget, QFileDialog, QMessageBox, QPlainTextEdit
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtCore import QFile, Qt, QSize, QCoreApplication, Signal
+from PySide6.QtGui import QAction
 import core.api
 from core.dialog import EncodingActionDialog
 from core.i18n import I18nManager
@@ -71,6 +72,7 @@ def main():
     window.current_project_file = None
     window.current_project_type = "reference"
     window.embedded_project_workspace = None
+    window.editor_word_wrap_enabled = False
 
     from PySide6.QtGui import QIcon
     icon_path = os.path.join(base_dir, "assets", "app_icon.ico")
@@ -100,6 +102,12 @@ def main():
     if view_menu:
         for dock in docks:
             view_menu.addAction(dock.toggleViewAction())
+        view_menu.addSeparator()
+        action_show_hidden_files = QAction(tr("MainWindow", "隠しファイルも表示"), window)
+        action_show_hidden_files.setCheckable(True)
+        action_show_hidden_files.setChecked(project_tree.show_hidden_files)
+        action_show_hidden_files.toggled.connect(project_tree.set_show_hidden_files)
+        view_menu.addAction(action_show_hidden_files)
 
     # --- エディタータブの設定 (QTabBar + QStackedWidget への適応) ---
     tab_bar_container = window.findChild(object, "editorTabBarContainer")
@@ -891,6 +899,37 @@ def main():
             return to_plain_text()
         return None
 
+    def apply_word_wrap_to_widget(widget):
+        if not widget:
+            return
+        editor_id = editor_registry.normalize_editor_id(getattr(widget, "editor_id", TEXT_EDITOR_ID))
+        if not editor_registry.is_text_editor(editor_id):
+            return
+        line_wrap_mode = (
+            QPlainTextEdit.LineWrapMode.WidgetWidth
+            if window.editor_word_wrap_enabled
+            else QPlainTextEdit.LineWrapMode.NoWrap
+        )
+        widget.setLineWrapMode(line_wrap_mode)
+
+    def apply_word_wrap_to_open_editors():
+        if not window.editorTabs:
+            return
+        for index in range(window.editorTabs.count()):
+            apply_word_wrap_to_widget(window.editorTabs.widget(index))
+
+    def set_editor_word_wrap(enabled):
+        window.editor_word_wrap_enabled = bool(enabled)
+        apply_word_wrap_to_open_editors()
+
+    if view_menu:
+        view_menu.addSeparator()
+        action_word_wrap = QAction(tr("MainWindow", "折り返しする"), window)
+        action_word_wrap.setCheckable(True)
+        action_word_wrap.setChecked(window.editor_word_wrap_enabled)
+        action_word_wrap.toggled.connect(set_editor_word_wrap)
+        view_menu.addAction(action_word_wrap)
+
     def resolve_schema_for_file(element, file_path):
         if not element or not file_path or file_path.startswith("untitled:"):
             return None
@@ -1019,6 +1058,7 @@ def main():
             widget._dirty_timer = QTimer(widget)
             widget._dirty_timer.timeout.connect(check_content_change)
             widget._dirty_timer.start(100)
+        apply_word_wrap_to_widget(widget)
         return widget
 
     def split_active_editor_right():
