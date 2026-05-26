@@ -87,17 +87,23 @@ def main():
 
     # --- ドックの初期化 ---
     from core.project_tree_dock import ProjectTreeDock
+    from core.project_search_dock import ProjectSearchDock
     from core.plugin_manager import PluginManager
     from core.editor_registry import EditorRegistry
     from core.editor import EditorWidget
     project_tree = ProjectTreeDock(window)
     project_tree_dock = project_tree.get_widget()
+    project_search = ProjectSearchDock(window)
+    project_search_dock = project_search.get_widget()
     
     view_menu = window.findChild(QMenu, "menuView")
     docks = []
     if project_tree_dock:
         window.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, project_tree_dock)
         docks.append(project_tree_dock)
+    if project_search_dock:
+        window.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, project_search_dock)
+        docks.append(project_search_dock)
 
     if view_menu:
         for dock in docks:
@@ -1278,9 +1284,20 @@ def main():
         activity_bar.setIconSize(QSize(28, 28))
         activity_bar.setMovable(False)
 
+    def handle_dock_visibility(changed_dock, visible):
+        if not visible:
+            return
+        if window.dockWidgetArea(changed_dock) == Qt.DockWidgetArea.LeftDockWidgetArea:
+            for d in docks:
+                if d is not changed_dock and window.dockWidgetArea(d) == Qt.DockWidgetArea.LeftDockWidgetArea:
+                    d.blockSignals(True)
+                    d.setVisible(False)
+                    d.blockSignals(False)
+
     for dock in docks:
         dock.dockLocationChanged.connect(lambda area, d=dock: update_activity_bar(d, area))
         dock.topLevelChanged.connect(lambda floating, d=dock: update_activity_bar(d, window.dockWidgetArea(d)))
+        dock.visibilityChanged.connect(lambda visible, d=dock: handle_dock_visibility(d, visible))
         current_area = window.dockWidgetArea(dock)
         update_activity_bar(dock, current_area)
 
@@ -2070,7 +2087,7 @@ def main():
         def eventFilter(self, watched, event):
             if event.type() in (QEvent.Type.Resize, QEvent.Type.Move):
                 update_search_popup_position()
-            return super().eventFilter(watched, event)
+            return False
             
     filter_obj = WindowEventFilter(window)
     window.installEventFilter(filter_obj)

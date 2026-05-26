@@ -325,7 +325,7 @@ class SearchPopUpWidget(QWidget):
             elif event.type() == QEvent.Type.Leave:
                 self.setCursor(Qt.CursorShape.ArrowCursor)
 
-        return super().eventFilter(watched, event)
+        return False
 
     def _update_icons(self):
         """現在のパレット色（テーマのテキストカラー）に基づいて、すべてのSVGアイコンを着色して適用します"""

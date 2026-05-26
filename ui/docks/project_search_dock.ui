@@ -1,12 +1,30 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
- <class>ProjectSearchDock</class>
+ <class>dockProjectSearch</class>
  <widget class="QDockWidget" name="dockProjectSearch">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>268</width>
+    <height>515</height>
+   </rect>
+  </property>
   <property name="windowTitle">
    <string>プロジェクト検索</string>
   </property>
+  <property name="styleSheet">
+   <string>QWidget#dockProjectSearchContents {
+    background-color: palette(window);
+}
+QToolButton#toggleReplaceButton:checked, QToolButton#toggleFilterButton:checked {
+    background-color: palette(button);
+    border: 1px solid palette(dark);
+    border-radius: 4px;
+}</string>
+  </property>
   <widget class="QWidget" name="dockProjectSearchContents">
-   <layout class="QVBoxLayout" name="verticalLayout">
+   <layout class="QVBoxLayout" name="verticalLayout" stretch="0,0,0,1,0">
     <property name="spacing">
      <number>6</number>
     </property>
@@ -22,6 +40,91 @@
     <property name="bottomMargin">
      <number>6</number>
     </property>
+    <item>
+     <layout class="QHBoxLayout" name="horizontalLayout">
+      <item>
+       <widget class="QToolButton" name="toggleReplaceButton">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Fixed" vsizetype="Expanding">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="text">
+         <string>...</string>
+        </property>
+        <property name="checkable">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <layout class="QVBoxLayout" name="verticalLayout_2">
+        <item>
+         <widget class="QWidget" name="searchFieldContainer" native="true">
+          <property name="minimumSize">
+           <size>
+            <width>0</width>
+            <height>26</height>
+           </size>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QWidget" name="replaceRow" native="true">
+          <layout class="QHBoxLayout" name="replaceRowLayout">
+           <property name="spacing">
+            <number>4</number>
+           </property>
+           <property name="leftMargin">
+            <number>0</number>
+           </property>
+           <property name="topMargin">
+            <number>0</number>
+           </property>
+           <property name="rightMargin">
+            <number>0</number>
+           </property>
+           <property name="bottomMargin">
+            <number>0</number>
+           </property>
+           <item>
+            <widget class="QWidget" name="replaceFieldContainer" native="true">
+             <property name="minimumSize">
+              <size>
+               <width>0</width>
+               <height>26</height>
+              </size>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QToolButton" name="replaceAllButton">
+             <property name="toolTip">
+              <string>すべて置換 (Ctrl+Alt+Enter)</string>
+             </property>
+             <property name="text">
+              <string>All</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </item>
+    <item>
+     <widget class="QToolButton" name="toggleFilterButton">
+      <property name="text">
+       <string>これでフィルターの表示切り替え</string>
+      </property>
+      <property name="checkable">
+       <bool>true</bool>
+      </property>
+     </widget>
+    </item>
     <item>
      <widget class="QWidget" name="projectSearchPanel" native="true">
       <layout class="QVBoxLayout" name="panelLayout">
@@ -41,67 +144,6 @@
         <number>0</number>
        </property>
        <item>
-        <widget class="QWidget" name="searchFieldContainer" native="true">
-         <property name="minimumSize">
-          <size>
-           <width>0</width>
-           <height>26</height>
-          </size>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QWidget" name="replaceRow" native="true">
-         <layout class="QHBoxLayout" name="replaceRowLayout">
-          <property name="spacing">
-           <number>4</number>
-          </property>
-          <property name="leftMargin">
-           <number>0</number>
-          </property>
-          <property name="topMargin">
-           <number>0</number>
-          </property>
-          <property name="rightMargin">
-           <number>0</number>
-          </property>
-          <property name="bottomMargin">
-           <number>0</number>
-          </property>
-          <item>
-           <widget class="QWidget" name="replaceFieldContainer" native="true">
-            <property name="minimumSize">
-             <size>
-              <width>0</width>
-              <height>26</height>
-             </size>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QToolButton" name="replaceButton">
-            <property name="toolTip">
-             <string>置換 (Ctrl+Shift+1)</string>
-            </property>
-            <property name="text">
-             <string>Replace</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QToolButton" name="replaceAllButton">
-            <property name="toolTip">
-             <string>すべて置換 (Ctrl+Alt+Enter)</string>
-            </property>
-            <property name="text">
-             <string>All</string>
-            </property>
-           </widget>
-          </item>
-         </layout>
-        </widget>
-       </item>
-       <item>
         <widget class="QWidget" name="filterPanel" native="true">
          <layout class="QVBoxLayout" name="filterLayout">
           <property name="spacing">
@@ -119,6 +161,16 @@
           <property name="bottomMargin">
            <number>0</number>
           </property>
+          <item>
+           <widget class="QCheckBox" name="searchOpenFilesCheckBox">
+            <property name="text">
+             <string>開いているファイルも対象にする</string>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
           <item>
            <widget class="QLabel" name="includeLabel">
             <property name="text">
@@ -150,27 +202,20 @@
          </layout>
         </widget>
        </item>
-       <item>
-        <widget class="QPushButton" name="searchButton">
-         <property name="text">
-          <string>検索</string>
-         </property>
-        </widget>
-       </item>
       </layout>
      </widget>
     </item>
     <item>
      <widget class="QTreeWidget" name="searchResultsTree">
       <property name="columnCount">
-       <number>1</number>
+       <number>2</number>
       </property>
      </widget>
     </item>
     <item>
      <widget class="QLabel" name="searchStatusLabel">
       <property name="text">
-       <string></string>
+       <string/>
       </property>
      </widget>
     </item>
