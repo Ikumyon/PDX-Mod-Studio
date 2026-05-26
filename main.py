@@ -8,9 +8,9 @@ import tempfile
 import zipfile
 import fnmatch
 from core import save_result as save_result_utils
-from PySide6.QtWidgets import QApplication, QMenu, QVBoxLayout, QToolButton, QWidget, QTabBar, QFileDialog, QMessageBox
+from PySide6.QtWidgets import QApplication, QMenu, QVBoxLayout, QHBoxLayout, QToolButton, QWidget, QTabBar, QStackedWidget, QFileDialog, QMessageBox
 from PySide6.QtUiTools import QUiLoader
-from PySide6.QtCore import QFile, Qt, QSize, QCoreApplication
+from PySide6.QtCore import QFile, Qt, QSize, QCoreApplication, Signal
 import core.api
 from core.dialog import EncodingActionDialog
 from core.i18n import I18nManager
@@ -54,6 +54,19 @@ def main():
         print(tr("Main", "UIのロードに失敗しました: {error}").format(error=loader.errorString()))
         sys.exit(-1)
 
+    tab_ui_file_path = os.path.join(base_dir, "ui", "widgets", "tab.ui")
+    tab_ui_file = QFile(tab_ui_file_path)
+    if not tab_ui_file.open(QFile.OpenModeFlag.ReadOnly):
+        print(tr("Main", "UIファイルを開けませんでした: {path}").format(path=tab_ui_file_path))
+        sys.exit(-1)
+
+    tab_widget = loader.load(tab_ui_file, window)
+    tab_ui_file.close()
+    if not tab_widget:
+        print(tr("Main", "UIのロードに失敗しました: {error}").format(error=loader.errorString()))
+        sys.exit(-1)
+    window.setCentralWidget(tab_widget)
+
     # --- アプリケーションアイコンの設定 ---
     window.current_project_file = None
     window.current_project_type = "reference"
@@ -91,67 +104,330 @@ def main():
     # --- エディタータブの設定 (QTabBar + QStackedWidget への適応) ---
     tab_bar_container = window.findChild(object, "editorTabBarContainer")
     editor_stacked = window.findChild(object, "editorStackedWidget")
+    editor_splitter = window.findChild(object, "editorSplitter")
+    editor_pane = window.findChild(object, "editorPane")
     tab_corner_container = window.findChild(object, "tabCornerContainer")
 
-    if not tab_bar_container or not editor_stacked:
-        print("Error: editorTabBarContainer or editorStackedWidget not found in UI")
+    if not tab_bar_container or not editor_stacked or not editor_splitter or not editor_pane or not tab_corner_container:
+        print("Error: required editor tab widgets not found in UI")
         sys.exit(-1)
 
     # QTabBar をプログラム側で生成（QUiLoader の制限回避）
-    editor_tab_bar = QTabBar(tab_bar_container)
-    editor_tab_bar.setDocumentMode(True)
-    editor_tab_bar.setTabsClosable(True)
-    editor_tab_bar.setExpanding(False)
+    def create_editor_tab_bar(parent):
+        tab_bar = QTabBar(parent)
+        tab_bar.setDocumentMode(True)
+        tab_bar.setTabsClosable(True)
+        tab_bar.setExpanding(False)
+        return tab_bar
+
+    editor_tab_bar = create_editor_tab_bar(tab_bar_container)
     if tab_bar_container.layout():
         tab_bar_container.layout().addWidget(editor_tab_bar)
 
-    class EditorTabProxy(QWidget):
-        def __init__(self, tab_bar, stacked_widget):
-            super().__init__()
-            self.tab_bar = tab_bar
-            self.stacked_widget = stacked_widget
-            self.tabCloseRequested = tab_bar.tabCloseRequested
-            self.currentChanged = tab_bar.currentChanged
+    def set_zero_margins(layout):
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
-        def count(self): return self.tab_bar.count()
-        def currentIndex(self): return self.tab_bar.currentIndex()
-        def currentWidget(self): return self.stacked_widget.currentWidget()
+    def create_editor_pane(index):
+        pane = QWidget(editor_splitter)
+        pane.setObjectName(f"editorPane{index}")
+
+        pane_layout = QVBoxLayout(pane)
+        set_zero_margins(pane_layout)
+
+        header_layout = QHBoxLayout()
+        set_zero_margins(header_layout)
+
+        tab_container = QWidget(pane)
+        tab_container.setObjectName(f"editorTabBarContainer{index}")
+        tab_container_layout = QHBoxLayout(tab_container)
+        set_zero_margins(tab_container_layout)
+
+        tab_bar = create_editor_tab_bar(tab_container)
+        tab_container_layout.addWidget(tab_bar)
+
+        corner_container = QWidget(pane)
+        corner_container.setObjectName(f"tabCornerContainer{index}")
+        corner_layout = QHBoxLayout(corner_container)
+        corner_layout.setContentsMargins(0, 0, 10, 0)
+        corner_layout.setSpacing(6)
+
+        header_layout.addWidget(tab_container)
+        header_layout.addStretch(1)
+        header_layout.addWidget(corner_container)
+
+        stack = QStackedWidget(pane)
+        stack.setObjectName(f"editorStackedWidget{index}")
+
+        pane_layout.addLayout(header_layout)
+        pane_layout.addWidget(stack)
+
+        return {
+            "id": f"pane:{index}",
+            "widget": pane,
+            "tab_bar": tab_bar,
+            "stack": stack,
+            "corner": corner_container,
+        }
+
+    class EditorTabProxy(QWidget):
+        tabCloseRequested = Signal(int)
+        currentChanged = Signal(int)
+
+        def __init__(self, splitter, first_pane):
+            super().__init__()
+            self.splitter = splitter
+            self._panes = []
+            self._records = []
+            self._active_pane = first_pane
+            self._current_index = -1
+            self._mutating_tabs = False
+            self._next_pane_id = 1
+            self._register_pane(first_pane)
+
+        def _register_pane(self, pane):
+            self._panes.append(pane)
+            pane["tab_bar"].currentChanged.connect(
+                lambda local_index, p=pane: self._on_local_current_changed(p, local_index)
+            )
+            pane["tab_bar"].tabCloseRequested.connect(
+                lambda local_index, p=pane: self._on_local_tab_close_requested(p, local_index)
+            )
+
+        def _pane_index(self, pane):
+            for index, candidate in enumerate(self._panes):
+                if candidate is pane:
+                    return index
+            return -1
+
+        def _create_pane_after(self, pane):
+            new_pane = create_editor_pane(self._next_pane_id)
+            self._next_pane_id += 1
+            pane_index = self._pane_index(pane)
+            insert_at = pane_index + 1 if pane_index >= 0 else len(self._panes)
+            self._panes.insert(insert_at, new_pane)
+            self.splitter.insertWidget(insert_at, new_pane["widget"])
+            new_pane["tab_bar"].currentChanged.connect(
+                lambda local_index, p=new_pane: self._on_local_current_changed(p, local_index)
+            )
+            new_pane["tab_bar"].tabCloseRequested.connect(
+                lambda local_index, p=new_pane: self._on_local_tab_close_requested(p, local_index)
+            )
+            self._active_pane = new_pane
+            self._rebalance_splitter()
+            return new_pane
+
+        def createPaneAfterActive(self):
+            return self._create_pane_after(self._active_pane)
+
+        def _records_for_pane(self, pane):
+            return [record for record in self._records if record["pane"] is pane]
+
+        def _pane_for_tab(self, pane):
+            return pane if self._pane_index(pane) >= 0 else self._active_pane
+
+        def _remove_empty_pane(self, pane):
+            pane_index = self._pane_index(pane)
+            if pane_index < 0 or len(self._panes) <= 1 or self._records_for_pane(pane):
+                return
+            self._panes.pop(pane_index)
+            pane["widget"].setParent(None)
+            pane["widget"].deleteLater()
+            if self._active_pane is pane:
+                self._active_pane = self._panes[min(pane_index, len(self._panes) - 1)]
+            self._rebalance_splitter()
+
+        def _rebalance_splitter(self):
+            pane_count = len(self._panes)
+            if pane_count > 0:
+                self.splitter.setSizes([1] * pane_count)
+
+        def _global_index_for_local(self, pane, local_index):
+            if local_index < 0:
+                return -1
+            current_local_index = -1
+            for global_index, record in enumerate(self._records):
+                if record["pane"] is not pane:
+                    continue
+                current_local_index += 1
+                if current_local_index == local_index:
+                    return global_index
+            return -1
+
+        def _local_index_for_global(self, index):
+            if index < 0 or index >= len(self._records):
+                return None, -1
+            record = self._records[index]
+            pane = record["pane"]
+            local_index = 0
+            for i, candidate in enumerate(self._records):
+                if i == index:
+                    return pane, local_index
+                if candidate["pane"] is pane:
+                    local_index += 1
+            return None, -1
+
+        def _activate_index(self, index, should_emit=False):
+            if index < 0 or index >= len(self._records):
+                return
+            previous_index = self._current_index
+            record = self._records[index]
+            pane = record["pane"]
+            stack = pane["stack"]
+            widget = record["widget"]
+            if stack.indexOf(widget) >= 0:
+                stack.setCurrentWidget(widget)
+            self._active_pane = pane
+            self._current_index = index
+            if should_emit and previous_index != index:
+                self.currentChanged.emit(index)
+
+        def _on_local_current_changed(self, pane, local_index):
+            if self._mutating_tabs:
+                return
+            index = self._global_index_for_local(pane, local_index)
+            if index >= 0:
+                self._activate_index(index, should_emit=True)
+
+        def _on_local_tab_close_requested(self, pane, local_index):
+            index = self._global_index_for_local(pane, local_index)
+            if index >= 0:
+                self.tabCloseRequested.emit(index)
+
+        def setCurrentWidget(self, widget):
+            index = self.indexOf(widget)
+            if index >= 0:
+                self.setCurrentIndex(index)
+                return True
+            return False
+
+        def focusWidgetChanged(self, widget):
+            while widget:
+                if self.setCurrentWidget(widget):
+                    return True
+                widget = widget.parentWidget()
+            return False
+
+        def count(self): return len(self._records)
+        def activePane(self): return self._active_pane
+        def activeCornerLayout(self):
+            corner = self._active_pane.get("corner") if self._active_pane else None
+            return corner.layout() if corner else None
+        def currentIndex(self): return self._current_index
+        def currentWidget(self): return self.widget(self.currentIndex())
         def setCurrentIndex(self, index):
-            self.tab_bar.setCurrentIndex(index)
-            self.stacked_widget.setCurrentIndex(index)
-        def widget(self, index): return self.stacked_widget.widget(index)
-        def tabText(self, index): return self.tab_bar.tabText(index)
-        def setTabText(self, index, text): self.tab_bar.setTabText(index, text)
-        def tabToolTip(self, index): return self.tab_bar.tabToolTip(index)
-        def setTabToolTip(self, index, tip): self.tab_bar.setTabToolTip(index, tip)
-        def setTabIcon(self, index, icon): self.tab_bar.setTabIcon(index, icon)
+            if index < 0 or index >= self.count():
+                if self._current_index != -1:
+                    self._current_index = -1
+                    self.currentChanged.emit(-1)
+                return
+            pane, local_index = self._local_index_for_global(index)
+            if pane is None:
+                return
+            tab_bar = pane["tab_bar"]
+            if tab_bar.currentIndex() == local_index:
+                self._activate_index(index, should_emit=True)
+            else:
+                tab_bar.setCurrentIndex(local_index)
+        def widget(self, index):
+            if index < 0 or index >= len(self._records):
+                return None
+            return self._records[index]["widget"]
+
+        def _tab_bar_and_local_index(self, index):
+            pane, local_index = self._local_index_for_global(index)
+            if pane is None:
+                return None, -1
+            return pane["tab_bar"], local_index
+
+        def tabText(self, index):
+            tab_bar, local_index = self._tab_bar_and_local_index(index)
+            return tab_bar.tabText(local_index) if tab_bar else ""
+        def setTabText(self, index, text):
+            tab_bar, local_index = self._tab_bar_and_local_index(index)
+            if tab_bar:
+                tab_bar.setTabText(local_index, text)
+        def tabToolTip(self, index):
+            tab_bar, local_index = self._tab_bar_and_local_index(index)
+            return tab_bar.tabToolTip(local_index) if tab_bar else ""
+        def setTabToolTip(self, index, tip):
+            tab_bar, local_index = self._tab_bar_and_local_index(index)
+            if tab_bar:
+                tab_bar.setTabToolTip(local_index, tip)
+        def tabIcon(self, index):
+            tab_bar, local_index = self._tab_bar_and_local_index(index)
+            return tab_bar.tabIcon(local_index) if tab_bar else None
+        def setTabIcon(self, index, icon):
+            tab_bar, local_index = self._tab_bar_and_local_index(index)
+            if tab_bar:
+                tab_bar.setTabIcon(local_index, icon)
         def removeTab(self, index):
-            w = self.stacked_widget.widget(index)
-            self.tab_bar.removeTab(index)
-            if w: self.stacked_widget.removeWidget(w)
+            if index < 0 or index >= len(self._records):
+                return
+            tab_bar, local_index = self._tab_bar_and_local_index(index)
+            record = self._records.pop(index)
+            w = record["widget"]
+            pane = record["pane"]
+            stack = pane["stack"]
+            self._mutating_tabs = True
+            if tab_bar:
+                tab_bar.removeTab(local_index)
+            if w:
+                stack.removeWidget(w)
+                w.deleteLater()
+            self._mutating_tabs = False
+            self._remove_empty_pane(pane)
+            if self.count() > 0:
+                self.setCurrentIndex(min(index, self.count() - 1))
+            elif self._current_index != -1:
+                self._current_index = -1
+                self.currentChanged.emit(-1)
         def addTab(self, widget, icon, text):
-            self.stacked_widget.addWidget(widget)
-            idx = self.tab_bar.addTab(icon, text)
-            return idx
+            return self.addTabToPane(widget, icon, text, self._active_pane)
+        def addTabToPane(self, widget, icon, text, pane):
+            pane = self._pane_for_tab(pane)
+            pane["stack"].addWidget(widget)
+            self._records.append({"widget": widget, "pane": pane})
+            self._mutating_tabs = True
+            pane["tab_bar"].addTab(icon, text)
+            self._mutating_tabs = False
+            return len(self._records) - 1
         def insertTab(self, index, widget, icon, text):
-            self.stacked_widget.insertWidget(index, widget)
-            idx = self.tab_bar.insertTab(index, icon, text)
-            return idx
-        def indexOf(self, widget): return self.stacked_widget.indexOf(widget)
+            if index < 0 or index > len(self._records):
+                index = len(self._records)
+            pane = self._active_pane
+            pane["stack"].addWidget(widget)
+            local_index = sum(1 for record in self._records[:index] if record["pane"] is pane)
+            self._records.insert(index, {"widget": widget, "pane": pane})
+            self._mutating_tabs = True
+            pane["tab_bar"].insertTab(local_index, icon, text)
+            self._mutating_tabs = False
+            return index
+        def indexOf(self, widget):
+            for index, record in enumerate(self._records):
+                if record["widget"] is widget:
+                    return index
+            return -1
         def setCornerWidget(self, widget, corner):
-            if tab_corner_container and tab_corner_container.layout():
-                # 既存のウィジェットのうち、modeSelectorButton 以外を削除
-                layout = tab_corner_container.layout()
+            if self._active_pane and self._active_pane.get("corner"):
+                # 既存のウィジェットのうち、固定ボタン以外を削除
+                layout = self._active_pane["corner"].layout()
                 for i in reversed(range(layout.count())):
                     item = layout.itemAt(i)
                     w = item.widget()
-                    if w and w.objectName() != "modeSelectorButton":
+                    if w and w.objectName() not in ("modeSelectorButton", "splitEditorButton"):
                         layout.removeItem(item)
                         w.deleteLater()
                 layout.addWidget(widget)
 
-    window.editorTabs = EditorTabProxy(editor_tab_bar, editor_stacked)
-    editor_tab_bar.currentChanged.connect(editor_stacked.setCurrentIndex)
+    initial_pane = {
+        "id": "pane:0",
+        "widget": editor_pane,
+        "tab_bar": editor_tab_bar,
+        "stack": editor_stacked,
+        "corner": tab_corner_container,
+    }
+    window.editorTabs = EditorTabProxy(editor_splitter, initial_pane)
 
     # シグナルの接続
     def close_editor_tab(index):
@@ -161,15 +437,25 @@ def main():
             del window.pending_params[tab_id]
         window.editorTabs.removeTab(index)
         project_tree.update_open_editors(window.editorTabs)
+        update_editor_corner_controls_pane()
+        update_split_editor_button()
 
     window.editorTabs.tabCloseRequested.connect(close_editor_tab)
 
     def on_tab_changed(index):
         project_tree.sync_selection(index)
+        update_editor_corner_controls_pane()
         update_editor_selector(index)
+        update_split_editor_button()
         update_encoding_status()
 
     window.editorTabs.currentChanged.connect(on_tab_changed)
+
+    def on_focus_changed(old_widget, new_widget):
+        if window.editorTabs and new_widget:
+            window.editorTabs.focusWidgetChanged(new_widget)
+
+    app.focusChanged.connect(on_focus_changed)
     # 初期状態のリスト更新
     project_tree.update_open_editors(window.editorTabs)
 
@@ -192,6 +478,38 @@ def main():
             view_selector.setIcon(load_svg_icon(mode_icon_path, icon_color))
         view_selector.setStyleSheet("QToolButton::menu-indicator { image: none; }") # 三角マークを隠す場合は設定
 
+    split_editor_button = window.findChild(QToolButton, "splitEditorButton")
+    if split_editor_button:
+        split_editor_button.setVisible(False)
+        split_editor_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        split_editor_button.setIconSize(QSize(20, 20))
+        split_editor_button.setFixedSize(32, 28)
+        split_editor_button.setToolTip(tr("MainWindow", "エディタを右に分割"))
+        split_icon_path = os.path.join(base_dir, "assets", "icons", "split-editor-right.svg")
+        if os.path.exists(split_icon_path):
+            from core.utils import load_svg_icon
+            icon_color = window.palette().color(window.foregroundRole()).name()
+            split_editor_button.setIcon(load_svg_icon(split_icon_path, icon_color))
+
+    def update_split_editor_button():
+        if not split_editor_button:
+            return
+        split_editor_button.setVisible(bool(window.editorTabs and window.editorTabs.count() > 0))
+
+    def move_widget_to_layout(widget, target_layout):
+        if not widget or not target_layout:
+            return
+        parent = widget.parentWidget()
+        if parent and parent.layout():
+            parent.layout().removeWidget(widget)
+        target_layout.addWidget(widget)
+
+    def update_editor_corner_controls_pane():
+        if not window.editorTabs:
+            return
+        target_layout = window.editorTabs.activeCornerLayout()
+        move_widget_to_layout(split_editor_button, target_layout)
+        move_widget_to_layout(view_selector, target_layout)
 
     def get_element_for_path(file_path):
         """ファイルパスが属するプラグイン内のエレメントを特定する"""
@@ -702,6 +1020,59 @@ def main():
             widget._dirty_timer.timeout.connect(check_content_change)
             widget._dirty_timer.start(100)
         return widget
+
+    def split_active_editor_right():
+        if not window.editorTabs:
+            return
+
+        source_index = window.editorTabs.currentIndex()
+        source_widget = window.editorTabs.currentWidget()
+        if source_index < 0 or not source_widget:
+            return
+
+        file_path = window.editorTabs.tabToolTip(source_index)
+        editor_id = editor_registry.normalize_editor_id(getattr(source_widget, "editor_id", TEXT_EDITOR_ID))
+        content = get_widget_text_content(source_widget)
+        if content is None:
+            content = getattr(source_widget, "content", "")
+        if content is None:
+            content = ""
+
+        split_tab_id = next_tab_id()
+        split_widget = create_editor_widget(
+            editor_id,
+            file_path,
+            content,
+            getattr(source_widget, "available_editors", []),
+            params=getattr(source_widget, "params", None),
+            tab_id=split_tab_id,
+            file_encoding=get_widget_encoding(source_widget),
+        )
+
+        if getattr(source_widget, "params", None) is not None:
+            window.pending_params[split_tab_id] = getattr(source_widget, "params")
+
+        tab_name = window.editorTabs.tabText(source_index)
+        icon = window.editorTabs.tabIcon(source_index)
+        target_pane = window.editorTabs.createPaneAfterActive()
+        new_index = window.editorTabs.addTabToPane(
+            split_widget,
+            icon,
+            tab_name,
+            target_pane,
+        )
+        window.editorTabs.setTabToolTip(new_index, file_path)
+        window.editorTabs.setCurrentIndex(new_index)
+
+        if getattr(source_widget, "is_dirty", False):
+            mark_tab_dirty(split_widget)
+
+        project_tree.update_open_editors(window.editorTabs)
+        update_split_editor_button()
+        window.statusBar().showMessage(tr("MainWindow", "エディタを右に分割しました。"), 3000)
+
+    if split_editor_button:
+        split_editor_button.clicked.connect(lambda checked=False: split_active_editor_right())
 
     def _open_file_legacy_unused(file_path, editor_id=None):
         if not window.editorTabs:
