@@ -487,30 +487,45 @@ fn read_text_file(path: &Path) -> io::Result<(String, String)> {
     }
 
     let raw = fs::read(path)?;
-    if raw.contains(&0) && !(raw.starts_with(&[0xff, 0xfe]) || raw.starts_with(&[0xfe, 0xff])) {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "binary file"));
+    
+    match pdx_inspector::detect_file_type(&raw) {
+        pdx_inspector::FileType::Binary => {
+            Err(io::Error::new(io::ErrorKind::InvalidData, "binary file"))
+        }
+        pdx_inspector::FileType::Text(enc) => {
+            match enc {
+                pdx_inspector::EncodingType::Utf8Bom => {
+                    let (text, _, _) = UTF_8.decode(&raw[3..]);
+                    Ok((text.into_owned(), "utf-8-sig".to_string()))
+                }
+                pdx_inspector::EncodingType::Utf16Le => {
+                    let (text, _, _) = UTF_16LE.decode(&raw[2..]);
+                    Ok((text.into_owned(), "utf-16-le".to_string()))
+                }
+                pdx_inspector::EncodingType::Utf16Be => {
+                    let (text, _, _) = UTF_16BE.decode(&raw[2..]);
+                    Ok((text.into_owned(), "utf-16-be".to_string()))
+                }
+                pdx_inspector::EncodingType::Utf8 => {
+                    let (text, _, _) = UTF_8.decode(&raw);
+                    Ok((text.into_owned(), "utf-8".to_string()))
+                }
+                pdx_inspector::EncodingType::Cp932 => {
+                    let (text, _, _) = SHIFT_JIS.decode(&raw);
+                    Ok((text.into_owned(), "cp932".to_string()))
+                }
+                pdx_inspector::EncodingType::Unknown => {
+                    let (text, _, had_errors) = UTF_8.decode(&raw);
+                    if !had_errors {
+                        Ok((text.into_owned(), "utf-8".to_string()))
+                    } else {
+                        let (text, _, _) = SHIFT_JIS.decode(&raw);
+                        Ok((text.into_owned(), "cp932".to_string()))
+                    }
+                }
+            }
+        }
     }
-
-    if raw.starts_with(&[0xef, 0xbb, 0xbf]) {
-        let (text, _, _) = UTF_8.decode(&raw[3..]);
-        return Ok((text.into_owned(), "utf-8-sig".to_string()));
-    }
-    if raw.starts_with(&[0xff, 0xfe]) {
-        let (text, _, _) = UTF_16LE.decode(&raw[2..]);
-        return Ok((text.into_owned(), "utf-16-le".to_string()));
-    }
-    if raw.starts_with(&[0xfe, 0xff]) {
-        let (text, _, _) = UTF_16BE.decode(&raw[2..]);
-        return Ok((text.into_owned(), "utf-16-be".to_string()));
-    }
-
-    let (utf8_text, _, had_errors) = UTF_8.decode(&raw);
-    if !had_errors {
-        return Ok((utf8_text.into_owned(), "utf-8".to_string()));
-    }
-
-    let (text, _, _) = SHIFT_JIS.decode(&raw);
-    Ok((text.into_owned(), "cp932".to_string()))
 }
 
 fn write_text_file(path: &Path, text: &str, encoding: &str) -> io::Result<()> {
