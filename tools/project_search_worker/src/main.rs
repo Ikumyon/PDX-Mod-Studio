@@ -12,14 +12,28 @@ use walkdir::{DirEntry, WalkDir};
 
 const MAX_FILE_BYTES: u64 = 5 * 1024 * 1024;
 
+fn default_operation() -> String {
+    "search".to_string()
+}
+
 #[derive(Debug, Deserialize)]
 struct SearchRequest {
+    #[serde(default = "default_operation")]
+    operation: String,
     project_path: Option<String>,
+    #[serde(default)]
     include_patterns: Vec<String>,
+    #[serde(default)]
     exclude_patterns: Vec<String>,
     query: SearchQuery,
+    #[serde(default)]
     open_editors: Vec<OpenEditor>,
+    #[serde(default)]
     ignored_occurrences: Vec<IgnoredOccurrence>,
+    #[serde(default)]
+    replace_text: String,
+    #[serde(default)]
+    targets: Vec<ReplaceTarget>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -35,6 +49,10 @@ struct SearchQuery {
 struct OpenEditor {
     path: String,
     content: String,
+    #[serde(default)]
+    dirty: bool,
+    #[serde(default)]
+    encoding: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -46,11 +64,30 @@ struct IgnoredOccurrence {
     line_text: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct ReplaceTarget {
+    path: String,
+    occurrences: Vec<ReplaceOccurrence>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct ReplaceOccurrence {
+    line_number: usize,
+    pos: usize,
+    length: usize,
+}
+
 #[derive(Debug, Serialize)]
 struct SearchResponse {
+    operation: String,
     files_found: usize,
     matches_found: usize,
+    replaced_files: usize,
+    replaced_count: usize,
     files: Vec<FileResult>,
+    updated_open_editors: Vec<UpdatedOpenEditor>,
+    saved_files: Vec<String>,
+    failed_files: Vec<FailedFile>,
 }
 
 #[derive(Debug, Serialize)]
@@ -68,6 +105,21 @@ struct Occurrence {
     pos: usize,
     length: usize,
     encoding: String,
+}
+
+#[derive(Debug, Serialize)]
+struct UpdatedOpenEditor {
+    path: String,
+    new_text: String,
+    dirty: bool,
+    saved: bool,
+    encoding: String,
+}
+
+#[derive(Debug, Serialize)]
+struct FailedFile {
+    path: String,
+    error: String,
 }
 
 struct PatternFilters {
@@ -122,7 +174,11 @@ fn run() -> Result<(), String> {
 
     let request_text = fs::read_to_string(&args[2]).map_err(|error| format!("cannot read request file: {error}"))?;
     let request: SearchRequest = serde_json::from_str(&request_text).map_err(|error| format!("invalid request json: {error}"))?;
-    let response = search_project(request)?;
+    let response = match request.operation.as_str() {
+        "search" => search_project(request)?,
+        "replace" => replace_targets(request),
+        operation => return Err(format!("unknown operation: {operation}")),
+    };
     let response_text = serde_json::to_string(&response).map_err(|error| format!("cannot serialize response json: {error}"))?;
     fs::write(&args[4], response_text).map_err(|error| format!("cannot write response file: {error}"))?;
     Ok(())
@@ -147,10 +203,183 @@ fn search_project(request: SearchRequest) -> Result<SearchResponse, String> {
 
     let matches_found = files.iter().map(|file| file.occurrences.len()).sum();
     Ok(SearchResponse {
+        operation: "search".to_string(),
         files_found: files.len(),
         matches_found,
+        replaced_files: 0,
+        replaced_count: 0,
         files,
+        updated_open_editors: Vec::new(),
+        saved_files: Vec::new(),
+        failed_files: Vec::new(),
     })
+}
+
+fn replace_targets(request: SearchRequest) -> SearchResponse {
+    let open_editors: HashMap<String, OpenEditor> = request
+        .open_editors
+        .into_iter()
+        .map(|editor| (normalize_path_text(&editor.path), editor))
+        .collect();
+
+    let replace_text = request.replace_text;
+    let mut replaced_files = 0;
+    let mut replaced_count = 0;
+    let mut updated_open_editors = Vec::new();
+    let mut saved_files = Vec::new();
+    let mut failed_files = Vec::new();
+
+    for target in request.targets {
+        let path = normalize_path_text(&target.path);
+        let result = replace_one_target(&path, &target.occurrences, &replace_text, open_editors.get(&path));
+        match result {
+            Ok(replace_result) => {
+                if replace_result.replaced_count == 0 {
+                    continue;
+                }
+                replaced_files += 1;
+                replaced_count += replace_result.replaced_count;
+                if let Some(updated_editor) = replace_result.updated_open_editor {
+                    updated_open_editors.push(updated_editor);
+                }
+                if let Some(saved_file) = replace_result.saved_file {
+                    saved_files.push(saved_file);
+                }
+            }
+            Err(error) => failed_files.push(FailedFile { path, error }),
+        }
+    }
+
+    SearchResponse {
+        operation: "replace".to_string(),
+        files_found: 0,
+        matches_found: 0,
+        replaced_files,
+        replaced_count,
+        files: Vec::new(),
+        updated_open_editors,
+        saved_files,
+        failed_files,
+    }
+}
+
+struct ReplaceOneResult {
+    replaced_count: usize,
+    updated_open_editor: Option<UpdatedOpenEditor>,
+    saved_file: Option<String>,
+}
+
+fn replace_one_target(
+    path: &str,
+    occurrences: &[ReplaceOccurrence],
+    replace_text: &str,
+    open_editor: Option<&OpenEditor>,
+) -> Result<ReplaceOneResult, String> {
+    let (text, encoding, dirty) = match open_editor {
+        Some(editor) => (
+            editor.content.clone(),
+            editor.encoding.clone().unwrap_or_else(|| "utf-8".to_string()),
+            editor.dirty,
+        ),
+        None => {
+            let (text, encoding) = read_text_file(Path::new(path)).map_err(|error| error.to_string())?;
+            (text, encoding, false)
+        }
+    };
+
+    let (new_text, replaced_count) = replace_occurrences_in_text(&text, occurrences, replace_text);
+    if replaced_count == 0 {
+        return Ok(ReplaceOneResult {
+            replaced_count: 0,
+            updated_open_editor: None,
+            saved_file: None,
+        });
+    }
+
+    if let Some(_editor) = open_editor {
+        let saved = !dirty;
+        if saved {
+            write_text_file(Path::new(path), &new_text, &encoding).map_err(|error| error.to_string())?;
+        }
+        Ok(ReplaceOneResult {
+            replaced_count,
+            updated_open_editor: Some(UpdatedOpenEditor {
+                path: path.to_string(),
+                new_text,
+                dirty,
+                saved,
+                encoding,
+            }),
+            saved_file: if saved { Some(path.to_string()) } else { None },
+        })
+    } else {
+        write_text_file(Path::new(path), &new_text, &encoding).map_err(|error| error.to_string())?;
+        Ok(ReplaceOneResult {
+            replaced_count,
+            updated_open_editor: None,
+            saved_file: Some(path.to_string()),
+        })
+    }
+}
+
+fn replace_occurrences_in_text(text: &str, occurrences: &[ReplaceOccurrence], replace_text: &str) -> (String, usize) {
+    let mut lines: Vec<String> = text
+        .split_inclusive('\n')
+        .map(ToString::to_string)
+        .collect();
+    if lines.is_empty() {
+        lines.push(String::new());
+    }
+
+    let mut by_line: HashMap<usize, Vec<ReplaceOccurrence>> = HashMap::new();
+    for occurrence in occurrences {
+        by_line.entry(occurrence.line_number).or_default().push(occurrence.clone());
+    }
+
+    let mut replaced_count = 0;
+    for (line_number, mut line_occurrences) in by_line {
+        if line_number == 0 || line_number > lines.len() {
+            continue;
+        }
+        let line = &lines[line_number - 1];
+        let (body, ending) = split_line_ending(line);
+        let mut body = body.to_string();
+        line_occurrences.sort_by(|left, right| right.pos.cmp(&left.pos));
+        for occurrence in line_occurrences {
+            if let Some((start, end)) = char_range_to_byte_range(&body, occurrence.pos, occurrence.length) {
+                body.replace_range(start..end, replace_text);
+                replaced_count += 1;
+            }
+        }
+        lines[line_number - 1] = format!("{body}{ending}");
+    }
+
+    (lines.concat(), replaced_count)
+}
+
+fn split_line_ending(line: &str) -> (&str, &str) {
+    if let Some(body) = line.strip_suffix("\r\n") {
+        (body, "\r\n")
+    } else if let Some(body) = line.strip_suffix('\n') {
+        (body, "\n")
+    } else if let Some(body) = line.strip_suffix('\r') {
+        (body, "\r")
+    } else {
+        (line, "")
+    }
+}
+
+fn char_range_to_byte_range(text: &str, pos: usize, length: usize) -> Option<(usize, usize)> {
+    let start = char_index_to_byte_index(text, pos)?;
+    let end = char_index_to_byte_index(text, pos + length)?;
+    Some((start, end))
+}
+
+fn char_index_to_byte_index(text: &str, char_index: usize) -> Option<usize> {
+    if char_index == text.chars().count() {
+        return Some(text.len());
+    }
+    text.char_indices().nth(char_index).map(|(byte_index, _)| byte_index)
 }
 
 fn collect_target_files(project_path: Option<&str>, open_editors: &HashMap<String, String>, filters: &PatternFilters) -> Vec<String> {
@@ -282,6 +511,36 @@ fn read_text_file(path: &Path) -> io::Result<(String, String)> {
 
     let (text, _, _) = SHIFT_JIS.decode(&raw);
     Ok((text.into_owned(), "cp932".to_string()))
+}
+
+fn write_text_file(path: &Path, text: &str, encoding: &str) -> io::Result<()> {
+    let bytes = match encoding.to_ascii_lowercase().as_str() {
+        "utf-8-sig" => {
+            let mut bytes = vec![0xef, 0xbb, 0xbf];
+            bytes.extend_from_slice(text.as_bytes());
+            bytes
+        }
+        "utf-16-le" => {
+            let mut bytes = vec![0xff, 0xfe];
+            for code_unit in text.encode_utf16() {
+                bytes.extend_from_slice(&code_unit.to_le_bytes());
+            }
+            bytes
+        }
+        "utf-16-be" => {
+            let mut bytes = vec![0xfe, 0xff];
+            for code_unit in text.encode_utf16() {
+                bytes.extend_from_slice(&code_unit.to_be_bytes());
+            }
+            bytes
+        }
+        "cp932" | "shift_jis" | "shift-jis" => {
+            let (encoded, _, _) = SHIFT_JIS.encode(text);
+            encoded.into_owned()
+        }
+        _ => text.as_bytes().to_vec(),
+    };
+    fs::write(path, bytes)
 }
 
 fn ignored_set(ignored_occurrences: Vec<IgnoredOccurrence>) -> HashSet<String> {

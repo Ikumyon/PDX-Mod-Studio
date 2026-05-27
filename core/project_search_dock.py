@@ -10,50 +10,13 @@ from PySide6.QtCore import QFile, Qt, QTimer, QEvent, QObject, QAbstractItemMode
 from PySide6.QtWidgets import (
     QDockWidget, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QToolButton, 
     QPushButton, QTreeView, QLabel, QMessageBox, QStyle,
-    QCheckBox, QHeaderView, QStyledItemDelegate
+    QCheckBox, QHeaderView, QStyledItemDelegate, QStyleOptionViewItem
 )
 from PySide6.QtUiTools import QUiLoader
-from PySide6.QtGui import QPalette, QTextCursor
+from PySide6.QtGui import QPalette, QTextCursor, QBrush
 from core.search_engine import SearchQuery
 from core.utils import load_svg_icon
 import core.api
-
-def autodetect_encoding(raw):
-    try:
-        from charset_normalizer import from_bytes
-        best = from_bytes(raw).best()
-        if best and best.encoding:
-            return best.encoding
-    except Exception:
-        pass
-    return None
-
-def detect_text_encoding(raw):
-    bom_candidates = [
-        (b"\xef\xbb\xbf", "utf-8-sig"),
-        (b"\xff\xfe", "utf-16-le"),
-        (b"\xfe\xff", "utf-16-be"),
-    ]
-    for prefix, encoding in bom_candidates:
-        if raw.startswith(prefix):
-            try:
-                return raw.decode(encoding), encoding
-            except Exception:
-                pass
-
-    try:
-        return raw.decode("utf-8"), "utf-8"
-    except UnicodeDecodeError:
-        pass
-
-    detected_encoding = autodetect_encoding(raw)
-    if detected_encoding:
-        try:
-            return raw.decode(detected_encoding), detected_encoding
-        except UnicodeDecodeError:
-            pass
-
-    return raw.decode("cp932", errors="replace"), "cp932"
 
 
 @dataclass(frozen=True)
@@ -190,13 +153,21 @@ class SearchResultDelegate(QStyledItemDelegate):
 
     def _action_rects(self, option):
         size = self.owner.RESULT_ACTION_BUTTON_SIZE
-        spacing = 2
+        spacing = self.owner.RESULT_ACTION_BUTTON_SPACING
         total_width = size * 2 + spacing
         left = option.rect.left() + max(0, (option.rect.width() - total_width) // 2)
         top = option.rect.top() + max(0, (option.rect.height() - size) // 2)
         replace_rect = QRect(left, top, size, size)
         ignore_rect = QRect(left + size + spacing, top, size, size)
         return replace_rect, ignore_rect
+
+    def action_at(self, option, pos):
+        replace_rect, ignore_rect = self._action_rects(option)
+        if replace_rect.contains(pos):
+            return "replace"
+        if ignore_rect.contains(pos):
+            return "ignore"
+        return None
 
     def paint(self, painter, option, index):
         data = index.data(Qt.ItemDataRole.UserRole) or {}
@@ -215,6 +186,16 @@ class SearchResultDelegate(QStyledItemDelegate):
         else:
             replace_icon = self.owner._cached_icon("replace.svg")
         ignore_icon = self.owner._cached_icon("close.svg")
+        hover_action = self.owner._hovered_result_action if hovered else None
+        hover_color = option.palette.color(QPalette.ColorRole.Light)
+        if hover_action == "replace":
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QBrush(hover_color))
+            painter.drawRoundedRect(replace_rect.adjusted(-2, -2, 2, 2), 4, 4)
+        elif hover_action == "ignore":
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QBrush(hover_color))
+            painter.drawRoundedRect(ignore_rect.adjusted(-2, -2, 2, 2), 4, 4)
         replace_icon.paint(painter, replace_rect, Qt.AlignmentFlag.AlignCenter)
         ignore_icon.paint(painter, ignore_rect, Qt.AlignmentFlag.AlignCenter)
 
@@ -224,22 +205,22 @@ class SearchResultDelegate(QStyledItemDelegate):
         data = index.data(Qt.ItemDataRole.UserRole) or {}
         if not data:
             return False
-        replace_rect, ignore_rect = self._action_rects(option)
-        pos = event.position().toPoint()
-        if replace_rect.contains(pos):
+        action = self.action_at(option, event.position().toPoint())
+        if action == "replace":
             self.owner._activate_result_action(data, "replace")
             return True
-        if ignore_rect.contains(pos):
+        if action == "ignore":
             self.owner._activate_result_action(data, "ignore")
             return True
         return False
 
 
 class ProjectSearchDock(QObject):
-    RESULT_COUNT_COLUMN_MIN_WIDTH = 28
+    RESULT_COUNT_COLUMN_MIN_WIDTH = 34
     RESULT_COUNT_COLUMN_MAX_WIDTH = 72
     RESULT_COUNT_COLUMN_PADDING = 14
     RESULT_ACTION_BUTTON_SIZE = 14
+    RESULT_ACTION_BUTTON_SPACING = 6
 
     def __init__(self, parent_window):
         super().__init__(parent_window)
@@ -249,6 +230,7 @@ class ProjectSearchDock(QObject):
         self.ignored_occurrences = set()
         self._last_search_signature = None
         self._hovered_result_index = QModelIndex()
+        self._hovered_result_action = None
         self._result_action_column_width = self.RESULT_COUNT_COLUMN_MIN_WIDTH
         self._icon_cache = {}
         self._search_results_model = None
@@ -466,9 +448,9 @@ class ProjectSearchDock(QObject):
             if event.type() == QEvent.Type.MouseMove:
                 index = self.searchResultsTree.indexAt(event.position().toPoint())
                 if index.isValid():
-                    self._set_hovered_result_index(index)
+                    self._set_hovered_result_index(index, event.position().toPoint())
             elif event.type() == QEvent.Type.Leave:
-                self._set_hovered_result_index(QModelIndex())
+                self._set_hovered_result_index(QModelIndex(), None)
 
         return False
 
@@ -603,12 +585,19 @@ class ProjectSearchDock(QObject):
     def _file_result_icon(self):
         return self._cached_icon("file.svg")
 
-    def _set_hovered_result_index(self, index: QModelIndex):
+    def _set_hovered_result_index(self, index: QModelIndex, pos=None):
         if index.isValid() and index.column() != 1:
             index = index.siblingAtColumn(1)
-        if index == self._hovered_result_index:
+        action = None
+        if index.isValid() and pos is not None:
+            option = QStyleOptionViewItem()
+            option.rect = self.searchResultsTree.visualRect(index)
+            action = self._search_result_delegate.action_at(option, pos)
+
+        if index == self._hovered_result_index and action == self._hovered_result_action:
             return
         old_index = self._hovered_result_index
+        self._hovered_result_action = action
         self._hovered_result_index = index
         for changed_index in (old_index, index):
             if changed_index.isValid():
@@ -644,6 +633,7 @@ class ProjectSearchDock(QObject):
 
     def _build_results_tree(self, project_path: str | None):
         self._hovered_result_index = QModelIndex()
+        self._hovered_result_action = None
         self._update_result_action_column_width()
         self._search_results_model.rebuild(self.current_results, project_path)
         self.searchResultsTree.expandAll()
@@ -678,8 +668,8 @@ class ProjectSearchDock(QObject):
                 "regex_pattern": request.regex_pattern,
             },
             "open_editors": [
-                {"path": path, "content": content}
-                for path, content in request.open_editors.items()
+                dict(editor)
+                for editor in request.open_editors.values()
             ],
             "ignored_occurrences": request.ignored_occurrences,
         }
@@ -706,28 +696,42 @@ class ProjectSearchDock(QObject):
         with open(response_path, "r", encoding="utf-8") as handle:
             return handle.read()
 
-    def _run_search_background(self, request: ProjectSearchRequest):
+    def _run_worker_payload(self, payload: dict, cancel_event: threading.Event | None = None):
         request_path = None
         response_path = None
+        cancel_event = cancel_event or threading.Event()
         try:
-            if request.cancel_event.is_set():
-                return None
-
             worker_path = self._search_worker_path()
             if not os.path.exists(worker_path):
                 raise FileNotFoundError(f"Rust検索workerが見つかりません: {worker_path}")
 
             with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".json", delete=False) as handle:
-                json.dump(self._worker_request_payload(request), handle, ensure_ascii=False)
+                json.dump(payload, handle, ensure_ascii=False)
                 request_path = handle.name
             with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".json", delete=False) as handle:
                 response_path = handle.name
 
-            stdout = self._run_worker_process(worker_path, request_path, response_path, request.cancel_event)
-            if stdout is None or request.cancel_event.is_set():
+            stdout = self._run_worker_process(worker_path, request_path, response_path, cancel_event)
+            if stdout is None or cancel_event.is_set():
+                return None
+            return json.loads(stdout)
+        finally:
+            for path in (request_path, response_path):
+                if path:
+                    try:
+                        os.remove(path)
+                    except OSError:
+                        pass
+
+    def _run_search_background(self, request: ProjectSearchRequest):
+        try:
+            if request.cancel_event.is_set():
                 return None
 
-            worker_result = json.loads(stdout)
+            worker_result = self._run_worker_payload(self._worker_request_payload(request), request.cancel_event)
+            if worker_result is None or request.cancel_event.is_set():
+                return None
+
             current_results = {}
             for file_result in worker_result.get("files", []):
                 file_path = os.path.normpath(file_result.get("path", ""))
@@ -754,17 +758,6 @@ class ProjectSearchDock(QObject):
                     project_path=request.project_path,
                     status_text=f"検索に失敗しました: {error}",
                 )
-        finally:
-            if request_path:
-                try:
-                    os.remove(request_path)
-                except OSError:
-                    pass
-            if response_path:
-                try:
-                    os.remove(response_path)
-                except OSError:
-                    pass
         return None
 
     def _poll_search_result(self):
@@ -796,6 +789,7 @@ class ProjectSearchDock(QObject):
 
     def _clear_search_results(self, message: str):
         self._hovered_result_index = QModelIndex()
+        self._hovered_result_action = None
         self.current_results = {}
         self._update_result_action_column_width()
         self._search_results_model.rebuild(self.current_results, None)
@@ -805,7 +799,7 @@ class ProjectSearchDock(QObject):
         include_patterns = tuple(p.strip() for p in self.includeInput.text().split(",") if p.strip())
         exclude_patterns = tuple(p.strip() for p in self.excludeInput.text().split(",") if p.strip())
         if not exclude_patterns:
-            exclude_patterns = (".git", "__pycache__", "build", ".vs")
+            exclude_patterns = (".git", "__pycache__", ".vs")
         return include_patterns, exclude_patterns
 
     def _search_signature(self, query: SearchQuery, include_patterns, exclude_patterns):
@@ -836,8 +830,18 @@ class ProjectSearchDock(QObject):
             if tab_path and widget and not tab_path.startswith("untitled:"):
                 to_plain_text = getattr(widget, "toPlainText", None)
                 if callable(to_plain_text):
-                    open_editors[os.path.normpath(tab_path)] = to_plain_text()
+                    path = os.path.normpath(tab_path)
+                    open_editors[path] = {
+                        "path": path,
+                        "content": to_plain_text(),
+                        "dirty": bool(getattr(widget, "is_dirty", False)),
+                        "encoding": getattr(widget, "file_encoding", "utf-8") or "utf-8",
+                    }
         return open_editors
+
+    def _collect_open_editors_for_worker(self):
+        has_open_tabs = hasattr(self.parent_window, "editorTabs") and self.parent_window.editorTabs.count() > 0
+        return self._collect_open_editors(has_open_tabs)
 
     def _create_search_request(self, query: SearchQuery, project_path: str | None, has_open_tabs: bool):
         include_patterns, exclude_patterns = self._read_filter_patterns()
@@ -863,6 +867,7 @@ class ProjectSearchDock(QObject):
     def _start_search_request(self, request: ProjectSearchRequest):
         self.searchStatusLabel.setText("検索中...")
         self._hovered_result_index = QModelIndex()
+        self._hovered_result_action = None
         self.current_results = {}
         self._update_result_action_column_width()
         self._search_results_model.rebuild(self.current_results, request.project_path)
@@ -956,12 +961,12 @@ class ProjectSearchDock(QObject):
             return
 
         try:
-            replaced_count = self._replace_file_without_opening_tab(file_path, [occurrence], self.replaceInput.text())
+            replace_result = self._replace_with_worker({file_path: [occurrence]}, self.replaceInput.text())
         except Exception as error:
             QMessageBox.warning(self.dock_widget, "この箇所を置換", f"置換に失敗しました。\n{error}")
             return
 
-        if replaced_count <= 0:
+        if replace_result.get("replaced_count", 0) <= 0:
             self.ignore_occurrence(occurrence)
             return
 
@@ -973,12 +978,12 @@ class ProjectSearchDock(QObject):
             return
 
         try:
-            replaced_count = self._replace_file_without_opening_tab(file_path, list(occurrences), self.replaceInput.text())
+            replace_result = self._replace_with_worker({file_path: list(occurrences)}, self.replaceInput.text())
         except Exception as error:
             QMessageBox.warning(self.dock_widget, "このファイル内の全件を置換", f"置換に失敗しました。\n{error}")
             return
 
-        if replaced_count <= 0:
+        if replace_result.get("replaced_count", 0) <= 0:
             self.ignore_file(file_path)
             return
 
@@ -1023,6 +1028,47 @@ class ProjectSearchDock(QObject):
             QTimer.singleShot(200, jump_to_line)
 
 
+    def _replace_occurrence_payload(self, occurrence):
+        return {
+            "line_number": occurrence.get("line_number"),
+            "pos": occurrence.get("pos"),
+            "length": occurrence.get("length"),
+        }
+
+    def _replace_with_worker(self, occurrences_by_path, replace_text: str):
+        payload = {
+            "operation": "replace",
+            "project_path": core.api.get_project_path(),
+            "include_patterns": [],
+            "exclude_patterns": [],
+            "query": {
+                "search_text": "",
+                "match_case": True,
+                "use_regex": False,
+                "whole_word": False,
+                "regex_pattern": "",
+            },
+            "open_editors": list(self._collect_open_editors_for_worker().values()),
+            "ignored_occurrences": [],
+            "replace_text": replace_text,
+            "targets": [
+                {
+                    "path": os.path.normpath(file_path),
+                    "occurrences": [self._replace_occurrence_payload(occ) for occ in occurrences],
+                }
+                for file_path, occurrences in occurrences_by_path.items()
+            ],
+        }
+        result = self._run_worker_payload(payload)
+        if result is None:
+            raise RuntimeError("置換がキャンセルされました。")
+        self._apply_replace_result(result)
+        failed_files = result.get("failed_files", [])
+        if failed_files:
+            first_failure = failed_files[0]
+            raise RuntimeError(f"{first_failure.get('path')}: {first_failure.get('error')}")
+        return result
+
     def _open_editors_for_path(self, file_path: str):
         editor_tabs = getattr(self.parent_window, "editorTabs", None)
         if not editor_tabs:
@@ -1038,52 +1084,7 @@ class ProjectSearchDock(QObject):
                     widgets.append(widget)
         return widgets
 
-    def _text_and_encoding_for_replace(self, file_path: str):
-        open_widgets = self._open_editors_for_path(file_path)
-        for widget in open_widgets:
-            to_plain_text = getattr(widget, "toPlainText", None)
-            if callable(to_plain_text):
-                return to_plain_text(), getattr(widget, "file_encoding", "utf-8") or "utf-8", open_widgets
-
-        with open(file_path, "rb") as handle:
-            raw = handle.read()
-        text, encoding = detect_text_encoding(raw)
-        return text, encoding, open_widgets
-
-    def _split_line_ending(self, line: str):
-        if line.endswith("\r\n"):
-            return line[:-2], "\r\n"
-        if line.endswith("\n"):
-            return line[:-1], "\n"
-        if line.endswith("\r"):
-            return line[:-1], "\r"
-        return line, ""
-
-    def _replace_occurrences_in_text(self, text: str, occurrences, replace_text: str):
-        lines = text.splitlines(keepends=True)
-        occurrences_by_line = {}
-        for occ in occurrences:
-            occurrences_by_line.setdefault(occ["line_number"], []).append(occ)
-
-        replaced_count = 0
-        for line_number, line_occurrences in occurrences_by_line.items():
-            line_index = line_number - 1
-            if line_index < 0 or line_index >= len(lines):
-                continue
-
-            body, line_ending = self._split_line_ending(lines[line_index])
-            for occ in sorted(line_occurrences, key=lambda item: item["pos"], reverse=True):
-                pos = occ["pos"]
-                length = occ["length"]
-                if pos < 0 or pos > len(body):
-                    continue
-                body = body[:pos] + replace_text + body[pos + length:]
-                replaced_count += 1
-            lines[line_index] = body + line_ending
-
-        return "".join(lines), replaced_count
-
-    def _sync_open_editors_after_replace(self, widgets, text: str, encoding: str):
+    def _sync_open_editors_after_replace(self, widgets, text: str, encoding: str, dirty: bool):
         editor_tabs = getattr(self.parent_window, "editorTabs", None)
         for widget in widgets:
             set_plain_text = getattr(widget, "setPlainText", None)
@@ -1099,27 +1100,28 @@ class ProjectSearchDock(QObject):
                 widget.content = text
             if hasattr(widget, "_last_notified_content"):
                 widget._last_notified_content = text
-            widget.is_dirty = False
+            widget.is_dirty = dirty
 
             if editor_tabs:
                 index = editor_tabs.indexOf(widget)
                 if index >= 0:
                     tab_text = editor_tabs.tabText(index)
-                    if tab_text.startswith("*"):
+                    if dirty and not tab_text.startswith("*"):
+                        editor_tabs.setTabText(index, "*" + tab_text)
+                    elif not dirty and tab_text.startswith("*"):
                         editor_tabs.setTabText(index, tab_text[1:])
 
-    def _replace_file_without_opening_tab(self, file_path: str, occurrences, replace_text: str):
-        text, encoding, open_widgets = self._text_and_encoding_for_replace(file_path)
-        replaced_text, replaced_count = self._replace_occurrences_in_text(text, occurrences, replace_text)
-        if replaced_count == 0:
-            return 0
-
-        with open(file_path, "w", encoding=encoding, newline="") as handle:
-            handle.write(replaced_text)
-
-        core.api.emit_event("file_saved", file_path)
-        self._sync_open_editors_after_replace(open_widgets, replaced_text, encoding)
-        return replaced_count
+    def _apply_replace_result(self, result):
+        for updated in result.get("updated_open_editors", []):
+            widgets = self._open_editors_for_path(updated.get("path", ""))
+            self._sync_open_editors_after_replace(
+                widgets,
+                updated.get("new_text", ""),
+                updated.get("encoding", "utf-8") or "utf-8",
+                bool(updated.get("dirty", False)),
+            )
+        for file_path in result.get("saved_files", []):
+            core.api.emit_event("file_saved", file_path)
 
 
     def on_replace_all_clicked(self):
@@ -1141,16 +1143,14 @@ class ProjectSearchDock(QObject):
         replaced_files = 0
         replaced_count = 0
         failed_files = []
-        for file_path, occs in self.current_results.items():
-            try:
-                file_replaced_count = self._replace_file_without_opening_tab(file_path, occs, replace_text)
-            except Exception as error:
-                failed_files.append((file_path, error))
-                continue
-
-            if file_replaced_count > 0:
-                replaced_files += 1
-                replaced_count += file_replaced_count
+        try:
+            replace_result = self._replace_with_worker(self.current_results, replace_text)
+            replaced_files = replace_result.get("replaced_files", 0)
+            replaced_count = replace_result.get("replaced_count", 0)
+            failed_files = replace_result.get("failed_files", [])
+        except Exception as error:
+            QMessageBox.warning(self.dock_widget, "すべて置換", f"置換に失敗しました。\n{error}")
+            return
 
         # 再検索
         self.on_search_clicked()
