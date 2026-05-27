@@ -795,12 +795,76 @@ class ProjectSearchDock(QObject):
         self._search_results_model.rebuild(self.current_results, None)
         self.searchStatusLabel.setText(message)
 
+    def _read_gitignore_patterns(self, file_path) -> list[str]:
+        patterns = []
+        if os.path.exists(file_path):
+            try:
+                with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith("#"):
+                            patterns.append(line)
+            except Exception as e:
+                print(f"Failed to read ignore file {file_path}: {e}")
+        return patterns
+
+    def _read_vscode_exclude_patterns(self, settings_path, key) -> list[str]:
+        patterns = []
+        if os.path.exists(settings_path):
+            try:
+                with open(settings_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    excludes = data.get(key, {})
+                    for pattern, enabled in excludes.items():
+                        if enabled:
+                            patterns.append(pattern)
+            except Exception as e:
+                print(f"Failed to read vscode settings {settings_path}: {e}")
+        return patterns
+
     def _read_filter_patterns(self):
-        include_patterns = tuple(p.strip() for p in self.includeInput.text().split(",") if p.strip())
-        exclude_patterns = tuple(p.strip() for p in self.excludeInput.text().split(",") if p.strip())
+        from core.settings import settings_manager
+        
+        include_patterns = list(p.strip() for p in self.includeInput.text().split(",") if p.strip())
+        
+        # 1. UIの除外入力
+        exclude_patterns = list(p.strip() for p in self.excludeInput.text().split(",") if p.strip())
+        
+        # 2. UIの入力が無い場合は、設定からデフォルト除外パターンを読み込む
         if not exclude_patterns:
-            exclude_patterns = (".git", "__pycache__", ".vs")
-        return include_patterns, exclude_patterns
+            default_ex = settings_manager.get("default_excludes", ".git, __pycache__, .vs")
+            exclude_patterns = list(p.strip() for p in default_ex.split(",") if p.strip())
+            
+        # 3. 各種除外ファイルの読み込みとマージ
+        project_path = core.api.get_project_path()
+        if project_path:
+            # .gitignore の除外
+            if settings_manager.get("ignore_gitignore", True):
+                gitignore_path = os.path.join(project_path, ".gitignore")
+                exclude_patterns.extend(self._read_gitignore_patterns(gitignore_path))
+                
+            # .ignore の除外
+            if settings_manager.get("ignore_ignore", True):
+                ignore_path = os.path.join(project_path, ".ignore")
+                exclude_patterns.extend(self._read_gitignore_patterns(ignore_path))
+                
+            # vscode settings.json
+            vscode_settings_path = os.path.join(project_path, ".vscode", "settings.json")
+            if os.path.exists(vscode_settings_path):
+                # files.exclude
+                if settings_manager.get("ignore_files_exclude", True):
+                    exclude_patterns.extend(self._read_vscode_exclude_patterns(vscode_settings_path, "files.exclude"))
+                # search.exclude
+                if settings_manager.get("ignore_search_exclude", True):
+                    exclude_patterns.extend(self._read_vscode_exclude_patterns(vscode_settings_path, "search.exclude"))
+                    
+        # 重複排除
+        unique_excludes = []
+        for p in exclude_patterns:
+            if p not in unique_excludes:
+                unique_excludes.append(p)
+                
+        return tuple(include_patterns), tuple(unique_excludes)
 
     def _search_signature(self, query: SearchQuery, include_patterns, exclude_patterns):
         return (

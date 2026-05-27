@@ -32,3 +32,4 @@ AGENTS.md
 tools/project_search_worker/target
 tools/project_search_worker/Cargo.lock
 project_search_worker.obj
+settings.json

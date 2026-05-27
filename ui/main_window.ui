@@ -46,6 +46,7 @@
     </property>
     <addaction name="actionUndo"/>
     <addaction name="actionRedo"/>
+    <addaction name="actionSettings"/>
    </widget>
    <widget class="QMenu" name="menuView">
     <property name="title">
@@ -170,6 +171,11 @@
   <action name="actionExportCurrentTab">
    <property name="text">
     <string>現在のタブを出力</string>
+   </property>
+  </action>
+  <action name="actionSettings">
+   <property name="text">
+    <string>設定</string>
    </property>
   </action>
  </widget>

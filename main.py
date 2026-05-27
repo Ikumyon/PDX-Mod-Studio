@@ -1047,6 +1047,17 @@ def main():
         if element:
             widget.active_plugin = element.plugin
         widget._last_notified_content = content # 最後に通知したときの内容
+
+        # エディタ用フォントの初期適用
+        from core.settings import settings_manager
+        from PySide6.QtGui import QFont
+        editor_family = settings_manager.get("editor_font_family", "")
+        editor_size = int(settings_manager.get("editor_font_size", 12))
+        font_editor = QFont()
+        if editor_family:
+            font_editor.setFamily(editor_family)
+        font_editor.setPointSize(editor_size)
+        widget.setFont(font_editor)
         
         if editor_id != TEXT_EDITOR_ID:
             from PySide6.QtCore import QTimer
@@ -1692,6 +1703,15 @@ def main():
     if action_open_file:
         action_open_file.triggered.connect(lambda checked=False: open_file_dialog())
 
+    def open_settings_dialog():
+        from core.dialog.settings_dialog import SettingsDialog
+        dialog = SettingsDialog(window)
+        dialog.exec()
+
+    action_settings = window.findChild(object, "actionSettings")
+    if action_settings:
+        action_settings.triggered.connect(open_settings_dialog)
+
     core.api._message_handler = lambda text, timeout: window.statusBar().showMessage(text, timeout)
 
     encoding_display_names = {
@@ -2101,6 +2121,10 @@ def main():
                 update_search_popup_position()
                 on_query_changed(search_popup.get_query())
         window.editorTabs.currentChanged.connect(on_tab_changed)
+
+    # 起動時のフォント設定適用
+    from core.settings import settings_manager
+    settings_manager.apply_fonts(window)
 
     # ウィンドウを表示
     window.show()
