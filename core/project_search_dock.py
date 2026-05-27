@@ -823,7 +823,7 @@ class ProjectSearchDock(QObject):
         return patterns
 
     def _read_filter_patterns(self):
-        from core.settings import settings_manager
+        from core.dialog.settings import settings_manager
         
         include_patterns = list(p.strip() for p in self.includeInput.text().split(",") if p.strip())
         

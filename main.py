@@ -1049,7 +1049,7 @@ def main():
         widget._last_notified_content = content # 最後に通知したときの内容
 
         # エディタ用フォントの初期適用
-        from core.settings import settings_manager
+        from core.dialog.settings import settings_manager
         from PySide6.QtGui import QFont
         editor_family = settings_manager.get("editor_font_family", "")
         editor_size = int(settings_manager.get("editor_font_size", 12))
@@ -1704,7 +1704,7 @@ def main():
         action_open_file.triggered.connect(lambda checked=False: open_file_dialog())
 
     def open_settings_dialog():
-        from core.dialog.settings_dialog import SettingsDialog
+        from core.dialog.settings import SettingsDialog
         dialog = SettingsDialog(window)
         dialog.exec()
 
@@ -2123,7 +2123,7 @@ def main():
         window.editorTabs.currentChanged.connect(on_tab_changed)
 
     # 起動時のフォント設定適用
-    from core.settings import settings_manager
+    from core.dialog.settings import settings_manager
     settings_manager.apply_fonts(window)
 
     # ウィンドウを表示
