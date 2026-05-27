@@ -1,0 +1,12 @@
+[package]
+name = "pdx_inspector"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "pdx_inspector"
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.27", features = ["extension-module"] }
+encoding_rs = "0.8"

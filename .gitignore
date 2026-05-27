@@ -33,3 +33,9 @@ tools/project_search_worker/target
 tools/project_search_worker/Cargo.lock
 project_search_worker.obj
 settings.json
+
+# Rust (pdx_inspector) Build Artifacts
+core/pdx_inspector.pyd
+tools/pdx_inspector/target
+tools/pdx_inspector/Cargo.lock
+tools/pdx_inspector/Cargo.lock

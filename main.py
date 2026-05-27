@@ -16,6 +16,7 @@ import core.api
 from core.dialog import EncodingActionDialog, LanguageSelectDialog
 from core.i18n import I18nManager
 from core.syntax_engine import GrammarBundle
+from core.inspector import FileType as InspectorFileType, EncodingType as InspectorEncodingType, inspect_file
 tr = QCoreApplication.translate
 
 def main():
@@ -1229,6 +1230,17 @@ def main():
         if not window.editorTabs:
             return
 
+        # 事前のバイナリ・文字コード判別
+        file_type, encoding_type = inspect_file(file_path)
+
+        if file_type == InspectorFileType.Binary:
+            QMessageBox.warning(
+                window,
+                tr("MainWindow", "ファイルオープン"),
+                tr("MainWindow", "このファイルはバイナリファイル（または極めて巨大なファイル）のため、テキストエディタで開くことはできません。")
+            )
+            return
+
         element = get_element_for_path(file_path)
         available_editors = editor_registry.get_editors_for_element(element) if element else []
         if editor_id is None:
@@ -1250,7 +1262,12 @@ def main():
                 return
 
         try:
-            content, detected_encoding = read_text_with_detected_encoding(file_path)
+            if encoding_type != InspectorEncodingType.Unknown:
+                with open(file_path, "rb") as handle:
+                    raw = handle.read()
+                content, detected_encoding = decode_with_encoding(raw, encoding_type.value)
+            else:
+                content, detected_encoding = read_text_with_detected_encoding(file_path)
 
             # 新しく開く場合は、まずウィジェットを生成
             editor = create_editor_widget(
