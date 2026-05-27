@@ -1,0 +1,3 @@
+[submodule "plugins/hoi4"]
+	path = plugins/hoi4
+	url = https://github.com/Ikumyon/Hoi4-PDX-Mod-Studio.git
