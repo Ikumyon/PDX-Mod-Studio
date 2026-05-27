@@ -13,7 +13,7 @@ from PySide6.QtUiTools import QUiLoader
 from PySide6.QtCore import QFile, Qt, QSize, QCoreApplication, Signal
 from PySide6.QtGui import QAction
 import core.api
-from core.dialog import EncodingActionDialog
+from core.dialog import EncodingActionDialog, LanguageSelectDialog
 from core.i18n import I18nManager
 from core.syntax_engine import GrammarBundle
 tr = QCoreApplication.translate
@@ -527,6 +527,18 @@ def main():
 
     def get_element_for_path(file_path):
         """ファイルパスが属するプラグイン内のエレメントを特定する"""
+        # 手動指定されている場合はそれを優先して返す
+        if window.editorTabs:
+            for i in range(window.editorTabs.count()):
+                widget = window.editorTabs.widget(i)
+                if widget and getattr(widget, "file_path", "") == file_path:
+                    forced = getattr(widget, "forced_element", None)
+                    if forced == "plain_text":
+                        return None
+                    elif forced is not None:
+                        return forced
+                    break
+
         if not file_path or file_path.startswith("untitled:"):
             return None
             
@@ -1788,11 +1800,66 @@ def main():
         if dialog.selected_action == "save" and dialog.selected_encoding:
             save_with_encoding(dialog.selected_encoding)
 
+    def open_language_dialog():
+        widget = window.editorTabs.currentWidget() if window.editorTabs else None
+        if not widget:
+            return
+        if not editor_registry.is_text_editor(getattr(widget, "editor_id", TEXT_EDITOR_ID)):
+            return
+
+        forced = getattr(widget, "forced_element", None)
+        current_mode = forced if forced is not None else "auto"
+
+        plugin = project_tree.active_plugin
+        available_elements = plugin.elements if plugin and hasattr(plugin, "elements") else []
+
+        dialog = LanguageSelectDialog(window, current_mode, available_elements)
+        if dialog.exec() == dialog.DialogCode.Accepted:
+            selected = dialog.selected_mode
+            if selected == "auto":
+                widget.forced_element = None
+            elif selected == "plain_text":
+                widget.forced_element = "plain_text"
+            else:
+                widget.forced_element = selected
+
+            update_language_status()
+
+    def update_language_status():
+        widget = window.editorTabs.currentWidget() if window.editorTabs else None
+        if not widget:
+            language_button.setText("プレーンテキスト")
+            language_button.setEnabled(False)
+            return
+
+        is_text = editor_registry.is_text_editor(getattr(widget, "editor_id", TEXT_EDITOR_ID))
+        language_button.setEnabled(is_text)
+
+        if not is_text:
+            language_button.setText("プレーンテキスト")
+            return
+
+        forced = getattr(widget, "forced_element", None)
+        if forced == "plain_text":
+            language_button.setText("プレーンテキスト")
+        elif forced is not None:
+            name = getattr(forced, "name", getattr(forced, "id", "不明なモード"))
+            language_button.setText(f"{name} (手動)")
+        else:
+            file_path = getattr(widget, "file_path", "")
+            element = get_element_for_path(file_path)
+            if element:
+                name = getattr(element, "name", getattr(element, "id", "不明なモード"))
+                language_button.setText(name)
+            else:
+                language_button.setText("プレーンテキスト")
+
     def update_encoding_status():
         widget = window.editorTabs.currentWidget() if window.editorTabs else None
         if not widget:
             encoding_button.setText("UTF-8")
             encoding_button.setEnabled(False)
+            update_language_status()
             return
 
         current_encoding = get_status_encoding_for_widget(widget)
@@ -1802,9 +1869,16 @@ def main():
             encoding_button.setEnabled(True)
         else:
             encoding_button.setEnabled(False)
+        update_language_status()
 
     # 2. 進捗 (ステータスバーにプログレスバーを追加)
     from PySide6.QtWidgets import QProgressBar
+    language_button = QToolButton()
+    language_button.setText("プレーンテキスト")
+    language_button.setEnabled(False)
+    language_button.clicked.connect(open_language_dialog)
+    window.statusBar().addPermanentWidget(language_button)
+
     encoding_button = QToolButton()
     encoding_button.setText("UTF-8")
     encoding_button.setEnabled(False)
@@ -2125,6 +2199,27 @@ def main():
     # 起動時のフォント設定適用
     from core.dialog.settings import settings_manager
     settings_manager.apply_fonts(window)
+
+    # ドラッグ＆ドロップによるファイルオープンの有効化
+    window.setAcceptDrops(True)
+
+    def window_dragEnterEvent(event):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def window_dropEvent(event):
+        for url in event.mimeData().urls():
+            file_path = url.toLocalFile()
+            if not file_path:
+                continue
+            if os.path.isfile(file_path):
+                # ファイルの場合のみそのままエディタで開く（プロジェクト外でも同様に開く）
+                open_file(file_path)
+
+    window.dragEnterEvent = window_dragEnterEvent
+    window.dropEvent = window_dropEvent
 
     # ウィンドウを表示
     window.show()

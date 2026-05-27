@@ -3,10 +3,36 @@ import os
 import core.api
 from core import save_result
 from PySide6.QtWidgets import (
-    QFileDialog, QPlainTextEdit, QTextEdit, QWidget
+    QFileDialog, QPlainTextEdit, QTextEdit, QWidget, QScrollBar
 )
 from PySide6.QtGui import QFont, QColor, QPainter, QTextFormat
 from PySide6.QtCore import Qt, QSize, QRect
+
+
+class HighlightScrollBar(QScrollBar):
+    def __init__(self, editor, parent=None):
+        super().__init__(Qt.Orientation.Vertical, parent)
+        self.editor = editor
+        self.editor.cursorPositionChanged.connect(self.update)
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        
+        total_blocks = self.editor.blockCount()
+        if total_blocks <= 1:
+            return
+
+        cursor_block = self.editor.textCursor().blockNumber()
+        
+        painter = QPainter(self)
+        btn_size = self.width()
+        track_height = self.height() - btn_size * 2
+        
+        if track_height > 0:
+            ratio = cursor_block / total_blocks
+            y = btn_size + int(ratio * track_height)
+            
+            painter.fillRect(QRect(0, y - 1, self.width(), 2), QColor(255, 140, 0, 200))
 
 
 class LineNumberArea(QWidget):
@@ -20,21 +46,17 @@ class LineNumberArea(QWidget):
     def paintEvent(self, event):
         self.editor.lineNumberAreaPaintEvent(event)
 
-class MinimapWidget(QPlainTextEdit):
+class MinimapWidget(QWidget):
     def __init__(self, editor):
         super().__init__(editor)
         self.editor = editor
-        self.setReadOnly(True)
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.setFrameShape(QPlainTextEdit.Shape.NoFrame)
+        self._lines = []
+        self.is_dragging = False
+        self.is_viewport_hovered = False
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents) # とりあえずクリック無効
+        self.setMouseTracking(True)
         
-        # 極小フォントの設定
-        font = QFont(self.editor.font())
-        font.setPointSize(2)
-        self.setFont(font)
+        self.apply_minimap_font()
         
         # 背景色を少し透明にするか変える
         palette = self.palette()
@@ -44,6 +66,115 @@ class MinimapWidget(QPlainTextEdit):
         self.setPalette(palette)
         
         self.setStyleSheet("background-color: rgba(0, 0, 0, 0.1); border-left: 1px solid rgba(255, 255, 255, 0.1);")
+
+    def _get_viewport_y_range(self):
+        bar = self.editor.verticalScrollBar()
+        total_range = bar.maximum() + bar.pageStep()
+        if total_range > 0 and self.height() > 0:
+            start_ratio = bar.value() / total_range
+            end_ratio = (bar.value() + bar.pageStep()) / total_range
+            y_start = int(self.height() * start_ratio)
+            y_end = int(self.height() * end_ratio)
+            h = max(4, y_end - y_start)
+            return y_start, h
+        return 0, 0
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.is_dragging = True
+            self._scroll_to_pos(event.position().y())
+
+    def mouseMoveEvent(self, event):
+        if self.is_dragging:
+            self._scroll_to_pos(event.position().y())
+        else:
+            # 白い領域（ビューポート）にホバーしているか判定
+            y_start, h = self._get_viewport_y_range()
+            my = event.position().y()
+            is_hover = (y_start <= my <= y_start + h)
+            if is_hover != self.is_viewport_hovered:
+                self.is_viewport_hovered = is_hover
+                self.update()
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.is_dragging = False
+            # リリース時にもう一度ホバー状態を判定し直す
+            y_start, h = self._get_viewport_y_range()
+            my = event.position().y()
+            is_hover = (y_start <= my <= y_start + h)
+            if is_hover != self.is_viewport_hovered:
+                self.is_viewport_hovered = is_hover
+                self.update()
+
+    def leaveEvent(self, event):
+        if self.is_viewport_hovered:
+            self.is_viewport_hovered = False
+            self.update()
+
+    def _scroll_to_pos(self, y):
+        bar = self.editor.verticalScrollBar()
+        total_range = bar.maximum() + bar.pageStep()
+        if total_range > 0 and self.height() > 0:
+            ratio = y / self.height()
+            target_value = int(ratio * total_range - bar.pageStep() / 2)
+            target_value = max(0, min(bar.maximum(), target_value))
+            bar.setValue(target_value)
+
+    def apply_minimap_font(self):
+        self.update()
+
+    def setPlainText(self, text):
+        self._lines = text.splitlines() or [""]
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        rect = self.rect()
+        painter.fillRect(rect, QColor(0, 0, 0, 25))
+        painter.fillRect(QRect(rect.left(), rect.top(), 1, rect.height()), QColor(255, 255, 255, 25))
+
+        if not self._lines or rect.width() <= 2 or rect.height() <= 0:
+            return
+
+        line_color = self.editor.palette().color(self.editor.foregroundRole())
+        line_color.setAlpha(65)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(line_color)
+
+        rows = [0] * rect.height()
+        line_count = len(self._lines)
+        draw_width = max(1, rect.width() - 4)
+        for index, line in enumerate(self._lines):
+            y = min(rect.height() - 1, index * rect.height() // line_count)
+            width = min(draw_width, max(1, len(line.expandtabs(4)) // 2))
+            if width > rows[y]:
+                rows[y] = width
+
+        for y, width in enumerate(rows):
+            if width:
+                painter.drawRect(2, y, width, 1)
+
+        y_start, h = self._get_viewport_y_range()
+        if h > 0:
+            # 状態に応じたビジュアルスタイルの決定
+            if self.is_dragging:
+                fill_color = QColor(255, 255, 255, 40)
+                border_color = QColor(255, 255, 255, 130)
+            elif self.is_viewport_hovered:
+                fill_color = QColor(255, 255, 255, 28)
+                border_color = QColor(255, 255, 255, 80)
+            else:
+                fill_color = QColor(255, 255, 255, 15)
+                border_color = QColor(255, 255, 255, 35)
+
+            # 半透明の白い表示領域の描画
+            viewport_rect = QRect(0, y_start, rect.width(), h)
+            painter.fillRect(viewport_rect, fill_color)
+
+            # 境界線の描画
+            painter.setPen(border_color)
+            painter.drawRect(0, y_start, rect.width() - 1, h - 1)
 
 class EditorWidget(QPlainTextEdit):
     def __init__(self, parent=None):
@@ -67,6 +198,9 @@ class EditorWidget(QPlainTextEdit):
         
         # 行番号エリアの設定
         self.line_number_area = LineNumberArea(self)
+
+        # 縦スクロールバーをカスタムスクロールバーに差し替え
+        self.setVerticalScrollBar(HighlightScrollBar(self))
         
         # ミニマップの設定
         self.minimap = MinimapWidget(self)
@@ -80,6 +214,15 @@ class EditorWidget(QPlainTextEdit):
         self.update_line_number_area_width(0)
         self.highlight_current_line()
         self.save_plan = None
+
+    def setFont(self, font):
+        super().setFont(font)
+        self.document().setDefaultFont(font)
+        self.setTabStopDistance(self.fontMetrics().horizontalAdvance(' ') * 4)
+        if hasattr(self, "minimap"):
+            self.minimap.apply_minimap_font()
+        if hasattr(self, "line_number_area"):
+            self.update_line_number_area_width(0)
 
     def on_save_triggered(self):
         return self.build_save_plan(save_as=False)
@@ -194,7 +337,7 @@ class EditorWidget(QPlainTextEdit):
         self.setViewportMargins(self.lineNumberAreaWidth(), 0, self.minimap_width(), 0)
 
     def minimap_width(self):
-        return 80 # 固定幅
+        return 80
 
     def update_minimap_text(self):
         self.minimap.setPlainText(self.toPlainText())
@@ -202,11 +345,7 @@ class EditorWidget(QPlainTextEdit):
 
     def sync_minimap_scroll(self):
         # メインエディタのスクロール位置を割合でミニマップに反映
-        main_bar = self.verticalScrollBar()
-        if main_bar.maximum() > 0:
-            ratio = main_bar.value() / main_bar.maximum()
-            mini_bar = self.minimap.verticalScrollBar()
-            mini_bar.setValue(int(ratio * mini_bar.maximum()))
+        self.minimap.update()
 
     def update_line_number_area(self, rect, dy):
         if dy:
@@ -224,6 +363,13 @@ class EditorWidget(QPlainTextEdit):
         
         m_width = self.minimap_width()
         self.minimap.setGeometry(QRect(cr.right() - m_width, cr.top(), m_width, cr.height()))
+
+        # 横スクロールバーがミニマップまで伸びないように制限
+        hbar = self.horizontalScrollBar()
+        if hbar and hbar.isVisible():
+            geom = hbar.geometry()
+            new_width = max(0, geom.width() - m_width)
+            hbar.setGeometry(geom.left(), geom.top(), new_width, geom.height())
 
     def highlight_current_line(self):
         self.update_extra_selections()

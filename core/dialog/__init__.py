@@ -1,2 +1,3 @@
 from .encoding_action_dialog import EncodingActionDialog
+from .language_select_dialog import LanguageSelectDialog
 

@@ -29,7 +29,7 @@ class SettingsManager:
         if self._initialized:
             return
         self._initialized = True
-        self.base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        self.base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         self.settings_path = os.path.join(self.base_dir, "settings.json")
         self.defaults = {
             "ui_font_family": "",
@@ -79,22 +79,14 @@ class SettingsManager:
         ui_family = self.get("ui_font_family", "")
         ui_size = int(self.get("ui_font_size", 9))
         
-        # QApplication.instance().setStyleSheet() を使ってアプリ全体のフォントを強制反映
         app = QApplication.instance()
         if app:
-            css = f"QWidget {{ font-size: {ui_size}pt; }}"
-            if ui_family:
-                css = f"QWidget {{ font-family: '{ui_family}'; font-size: {ui_size}pt; }}"
-            app.setStyleSheet(css)
-            
-            # 念のため QFont も設定
             if ui_family:
                 font = QFont(ui_family, ui_size)
-                app.setFont(font)
             else:
                 font = app.font()
                 font.setPointSize(ui_size)
-                app.setFont(font)
+            app.setFont(font)
             
         # 2. エディタフォントの適用（開いているエディタ全てに対して）
         if window and hasattr(window, "editorTabs") and window.editorTabs:
