@@ -29,11 +29,6 @@ Thumbs.db
 # AI
 AGENTS.md
 
-#古いデータとプロジェクト分離
-hoi4-old
-plugins
-
-
 tools/project_search_worker/target
 tools/project_search_worker/Cargo.lock
 project_search_worker.obj
