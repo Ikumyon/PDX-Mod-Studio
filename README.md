@@ -19,7 +19,11 @@ Paradox Interactive社のゲーム用MOD開発を強力にサポートする、�
    # または
    pip install .
    ```
-3. アプリケーションの実行:
+3. プロジェクト検索workerのビルド:
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File tools\project_search_worker\build_project_search_worker.ps1
+   ```
+4. アプリケーションの実行:
    ```bash
    python main.py
    ```

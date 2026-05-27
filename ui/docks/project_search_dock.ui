@@ -206,11 +206,7 @@ QToolButton#toggleReplaceButton:checked, QToolButton#toggleFilterButton:checked 
      </widget>
     </item>
     <item>
-     <widget class="QTreeWidget" name="searchResultsTree">
-      <property name="columnCount">
-       <number>2</number>
-      </property>
-     </widget>
+     <widget class="QTreeView" name="searchResultsTree"/>
     </item>
     <item>
      <widget class="QLabel" name="searchStatusLabel">

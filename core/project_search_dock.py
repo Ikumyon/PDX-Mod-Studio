@@ -1,14 +1,19 @@
 import os
-import fnmatch
-import re
-from PySide6.QtCore import QFile, Qt, QTimer, QSize, QEvent, QObject
+import json
+import subprocess
+import tempfile
+import time
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
+from PySide6.QtCore import QFile, Qt, QTimer, QEvent, QObject, QAbstractItemModel, QModelIndex, QRect
 from PySide6.QtWidgets import (
     QDockWidget, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QToolButton, 
-    QPushButton, QTreeWidget, QTreeWidgetItem, QLabel, QMessageBox, QStyle,
-    QCheckBox, QHeaderView
+    QPushButton, QTreeView, QLabel, QMessageBox, QStyle,
+    QCheckBox, QHeaderView, QStyledItemDelegate
 )
 from PySide6.QtUiTools import QUiLoader
-from PySide6.QtGui import QIcon, QPalette, QTextCursor, QBrush, QColor
+from PySide6.QtGui import QPalette, QTextCursor
 from core.search_engine import SearchQuery
 from core.utils import load_svg_icon
 import core.api
@@ -36,6 +41,11 @@ def detect_text_encoding(raw):
             except Exception:
                 pass
 
+    try:
+        return raw.decode("utf-8"), "utf-8"
+    except UnicodeDecodeError:
+        pass
+
     detected_encoding = autodetect_encoding(raw)
     if detected_encoding:
         try:
@@ -43,14 +53,194 @@ def detect_text_encoding(raw):
         except UnicodeDecodeError:
             pass
 
-    try:
-        return raw.decode("utf-8"), "utf-8"
-    except UnicodeDecodeError:
-        pass
-
     return raw.decode("cp932", errors="replace"), "cp932"
 
+
+@dataclass(frozen=True)
+class ProjectSearchRequest:
+    generation: int
+    cancel_event: threading.Event
+    project_path: str | None
+    include_patterns: tuple[str, ...]
+    exclude_patterns: tuple[str, ...]
+    open_editors: dict
+    query: SearchQuery
+    regex_pattern: str
+    ignored_occurrences: list
+
+
+@dataclass(frozen=True)
+class ProjectSearchResult:
+    generation: int
+    current_results: dict
+    project_path: str | None
+    status_text: str
+
+
+class SearchResultNode:
+    def __init__(self, node_type: str, data: dict, parent=None):
+        self.node_type = node_type
+        self.data = data
+        self.parent = parent
+        self.children = []
+
+    def row(self):
+        if self.parent is None:
+            return 0
+        return self.parent.children.index(self)
+
+
+class SearchResultsModel(QAbstractItemModel):
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = owner
+        self.root = SearchResultNode("root", {})
+
+    def rebuild(self, current_results: dict, project_path: str | None):
+        self.beginResetModel()
+        self.root = SearchResultNode("root", {})
+        for file_path in sorted(current_results.keys(), key=lambda path: self.owner._display_path(path, project_path).lower()):
+            occurrences = current_results[file_path]
+            file_node = SearchResultNode("file", {
+                "type": "file",
+                "path": file_path,
+                "display_path": self.owner._display_path(file_path, project_path),
+                "count": len(occurrences),
+            }, self.root)
+            self.root.children.append(file_node)
+            for occurrence in occurrences:
+                occurrence_data = dict(occurrence)
+                occurrence_data["path"] = file_path
+                file_node.children.append(SearchResultNode("occurrence", {
+                    "type": "occurrence",
+                    "path": file_path,
+                    "line_number": occurrence.get("line_number"),
+                    "line_text": occurrence.get("line_text"),
+                    "pos": occurrence.get("pos"),
+                    "length": occurrence.get("length"),
+                    "occurrence": occurrence_data,
+                    "display_text": occurrence.get("display_text", ""),
+                    "tooltip_text": occurrence.get("tooltip_text", ""),
+                }, file_node))
+        self.endResetModel()
+
+    def index(self, row, column, parent=QModelIndex()):
+        if not self.hasIndex(row, column, parent):
+            return QModelIndex()
+        parent_node = parent.internalPointer() if parent.isValid() else self.root
+        if row < 0 or row >= len(parent_node.children):
+            return QModelIndex()
+        return self.createIndex(row, column, parent_node.children[row])
+
+    def parent(self, index):
+        if not index.isValid():
+            return QModelIndex()
+        node = index.internalPointer()
+        parent_node = node.parent
+        if parent_node is None or parent_node is self.root:
+            return QModelIndex()
+        return self.createIndex(parent_node.row(), 0, parent_node)
+
+    def rowCount(self, parent=QModelIndex()):
+        parent_node = parent.internalPointer() if parent.isValid() else self.root
+        return len(parent_node.children)
+
+    def columnCount(self, parent=QModelIndex()):
+        return 2
+
+    def data(self, index, role=Qt.ItemDataRole.DisplayRole):
+        if not index.isValid():
+            return None
+        node = index.internalPointer()
+        data = node.data
+        column = index.column()
+
+        if role == Qt.ItemDataRole.DisplayRole:
+            if node.node_type == "file":
+                if column == 0:
+                    return data["display_path"]
+                if column == 1:
+                    return str(data["count"])
+            elif node.node_type == "occurrence" and column == 0:
+                return data["display_text"]
+            return ""
+        if role == Qt.ItemDataRole.ToolTipRole:
+            if node.node_type == "file" and column == 0:
+                return data["path"]
+            if node.node_type == "occurrence" and column == 0:
+                return data["tooltip_text"]
+        if role == Qt.ItemDataRole.DecorationRole and node.node_type == "file" and column == 0:
+            return self.owner._file_result_icon()
+        if role == Qt.ItemDataRole.TextAlignmentRole and column == 1:
+            return Qt.AlignmentFlag.AlignCenter
+        if role == Qt.ItemDataRole.UserRole:
+            return data
+        return None
+
+    def flags(self, index):
+        if not index.isValid():
+            return Qt.ItemFlag.NoItemFlags
+        return Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
+
+
+class SearchResultDelegate(QStyledItemDelegate):
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = owner
+
+    def _action_rects(self, option):
+        size = self.owner.RESULT_ACTION_BUTTON_SIZE
+        spacing = 2
+        total_width = size * 2 + spacing
+        left = option.rect.left() + max(0, (option.rect.width() - total_width) // 2)
+        top = option.rect.top() + max(0, (option.rect.height() - size) // 2)
+        replace_rect = QRect(left, top, size, size)
+        ignore_rect = QRect(left + size + spacing, top, size, size)
+        return replace_rect, ignore_rect
+
+    def paint(self, painter, option, index):
+        data = index.data(Qt.ItemDataRole.UserRole) or {}
+        if index.column() != 1 or not data:
+            super().paint(painter, option, index)
+            return
+
+        hovered = index == self.owner._hovered_result_index
+        if not hovered:
+            super().paint(painter, option, index)
+            return
+
+        replace_rect, ignore_rect = self._action_rects(option)
+        if data.get("type") == "file":
+            replace_icon = self.owner._cached_icon("replace-all.svg")
+        else:
+            replace_icon = self.owner._cached_icon("replace.svg")
+        ignore_icon = self.owner._cached_icon("close.svg")
+        replace_icon.paint(painter, replace_rect, Qt.AlignmentFlag.AlignCenter)
+        ignore_icon.paint(painter, ignore_rect, Qt.AlignmentFlag.AlignCenter)
+
+    def editorEvent(self, event, model, option, index):
+        if event.type() != QEvent.Type.MouseButtonRelease or index.column() != 1:
+            return super().editorEvent(event, model, option, index)
+        data = index.data(Qt.ItemDataRole.UserRole) or {}
+        if not data:
+            return False
+        replace_rect, ignore_rect = self._action_rects(option)
+        pos = event.position().toPoint()
+        if replace_rect.contains(pos):
+            self.owner._activate_result_action(data, "replace")
+            return True
+        if ignore_rect.contains(pos):
+            self.owner._activate_result_action(data, "ignore")
+            return True
+        return False
+
+
 class ProjectSearchDock(QObject):
+    RESULT_COUNT_COLUMN_MIN_WIDTH = 28
+    RESULT_COUNT_COLUMN_MAX_WIDTH = 72
+    RESULT_COUNT_COLUMN_PADDING = 14
+    RESULT_ACTION_BUTTON_SIZE = 14
+
     def __init__(self, parent_window):
         super().__init__(parent_window)
         self.parent_window = parent_window
@@ -58,14 +248,24 @@ class ProjectSearchDock(QObject):
         self.current_results = {} # {file_path: [SearchOccurrence, ...]}
         self.ignored_occurrences = set()
         self._last_search_signature = None
-        self._result_item_action_buttons = {}
-        self._result_item_count_badges = {}
+        self._hovered_result_index = QModelIndex()
+        self._result_action_column_width = self.RESULT_COUNT_COLUMN_MIN_WIDTH
+        self._icon_cache = {}
+        self._search_results_model = None
+        self._search_result_delegate = None
+        self._search_generation = 0
+        self._search_cancel_event = None
+        self._active_search_future = None
+        self._search_dispatch_executor = ThreadPoolExecutor(max_workers=1)
         
         # リアルタイム（ライブ）検索用デバウンスタイマー
         self.search_timer = QTimer(self)
         self.search_timer.setSingleShot(True)
         self.search_timer.setInterval(300) # 300ms後に検索を実行
         self.search_timer.timeout.connect(self.on_search_clicked)
+        self.search_result_timer = QTimer(self)
+        self.search_result_timer.setInterval(30)
+        self.search_result_timer.timeout.connect(self._poll_search_result)
         
         self._setup_ui()
         self._setup_connections()
@@ -93,7 +293,7 @@ class ProjectSearchDock(QObject):
         self.excludeInput = self.dock_widget.findChild(QLineEdit, "excludeInput")
         self.searchOpenFilesCheckBox = self.dock_widget.findChild(QCheckBox, "searchOpenFilesCheckBox")
         self.searchButton = self.dock_widget.findChild(QPushButton, "searchButton")
-        self.searchResultsTree = self.dock_widget.findChild(QTreeWidget, "searchResultsTree")
+        self.searchResultsTree = self.dock_widget.findChild(QTreeView, "searchResultsTree")
         self.searchStatusLabel = self.dock_widget.findChild(QLabel, "searchStatusLabel")
 
         # 新規追加されたトグルボタンの取得
@@ -138,7 +338,10 @@ class ProjectSearchDock(QObject):
         self._update_icons()
 
         # ツリー表示の設定
-        self.searchResultsTree.setColumnCount(2)
+        self._search_results_model = SearchResultsModel(self)
+        self._search_result_delegate = SearchResultDelegate(self)
+        self.searchResultsTree.setModel(self._search_results_model)
+        self.searchResultsTree.setItemDelegate(self._search_result_delegate)
         self.searchResultsTree.setHeaderHidden(True)
         self.searchResultsTree.setRootIsDecorated(True)
         self.searchResultsTree.setItemsExpandable(True)
@@ -148,8 +351,11 @@ class ProjectSearchDock(QObject):
         self.searchResultsTree.viewport().setMouseTracking(True)
         self.searchResultsTree.viewport().installEventFilter(self)
         header = self.searchResultsTree.header()
+        header.setStretchLastSection(False)
+        header.setMinimumSectionSize(20)
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
+        self.searchResultsTree.setColumnWidth(1, self._result_action_column_width)
         
         # デフォルトで置換行は非表示（検索のみの状態）
         self.replaceRow.setVisible(False)
@@ -186,9 +392,8 @@ class ProjectSearchDock(QObject):
             self.searchInput.textChanged.connect(self.trigger_live_search)
             self.searchInput.returnPressed.connect(self.trigger_instant_search)
         if self.searchResultsTree:
-            self.searchResultsTree.itemDoubleClicked.connect(self.on_item_double_clicked)
-            self.searchResultsTree.itemActivated.connect(self.on_item_double_clicked)
-            self.searchResultsTree.itemEntered.connect(self._on_result_item_entered)
+            self.searchResultsTree.doubleClicked.connect(self.on_item_double_clicked)
+            self.searchResultsTree.activated.connect(self.on_item_double_clicked)
         if self.replaceAllButton:
             self.replaceAllButton.clicked.connect(self.on_replace_all_clicked)
 
@@ -198,6 +403,7 @@ class ProjectSearchDock(QObject):
             self.toggleFilterButton.toggled.connect(self.on_toggle_filter)
 
     def trigger_live_search(self):
+        self._cancel_running_search()
         if hasattr(self, "search_timer"):
             self.search_timer.start()
 
@@ -209,6 +415,13 @@ class ProjectSearchDock(QObject):
     def _cleanup_event_filters(self, *args):
         if hasattr(self, "search_timer"):
             self.search_timer.stop()
+        if hasattr(self, "search_result_timer"):
+            self.search_result_timer.stop()
+        self._cancel_running_search()
+        try:
+            self._search_dispatch_executor.shutdown(wait=False, cancel_futures=True)
+        except TypeError:
+            self._search_dispatch_executor.shutdown(wait=False)
         for widget_name in ("searchInput", "replaceInput"):
             try:
                 widget = getattr(self, widget_name, None)
@@ -220,6 +433,15 @@ class ProjectSearchDock(QObject):
                 widget.removeEventFilter(self)
             except RuntimeError:
                 pass
+
+    def _cancel_running_search(self):
+        self._search_generation += 1
+        if self._search_cancel_event:
+            self._search_cancel_event.set()
+        if self._active_search_future:
+            self._active_search_future.cancel()
+        if hasattr(self, "search_result_timer"):
+            self.search_result_timer.stop()
 
     def eventFilter(self, watched, event):
         results_viewport = None
@@ -242,10 +464,11 @@ class ProjectSearchDock(QObject):
                 self.replace_field.style().polish(self.replace_field)
         elif watched == results_viewport:
             if event.type() == QEvent.Type.MouseMove:
-                item = self.searchResultsTree.itemAt(event.position().toPoint())
-                self._set_hovered_result_item(item)
+                index = self.searchResultsTree.indexAt(event.position().toPoint())
+                if index.isValid():
+                    self._set_hovered_result_index(index)
             elif event.type() == QEvent.Type.Leave:
-                self._set_hovered_result_item(None)
+                self._set_hovered_result_index(QModelIndex())
 
         return False
 
@@ -357,109 +580,58 @@ class ProjectSearchDock(QObject):
                 pass
         return file_path
 
-    def _create_count_badge(self, count: int) -> QLabel:
-        badge = QLabel(str(count), self.searchResultsTree)
-        badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        badge.setMinimumWidth(24)
-        badge.setFixedHeight(22)
-        badge.setStyleSheet("""
-            QLabel {
-                background-color: palette(mid);
-                color: palette(bright-text);
-                border-radius: 11px;
-                padding: 0 7px;
-            }
-        """)
-        return badge
-
-    def _register_result_action_button(self, item: QTreeWidgetItem, button: QToolButton):
-        button.setVisible(False)
-        self._result_item_action_buttons.setdefault(id(item), []).append(button)
-
-    def _register_result_count_badge(self, item: QTreeWidgetItem, badge: QLabel):
-        self._result_item_count_badges[id(item)] = badge
-
-    def _set_hovered_result_item(self, item):
-        hovered_id = id(item) if item else None
-        for item_id, buttons in list(self._result_item_action_buttons.items()):
-            visible = item_id == hovered_id
-            for button in buttons:
-                try:
-                    button.setVisible(visible)
-                except RuntimeError:
-                    pass
-        for item_id, badge in list(self._result_item_count_badges.items()):
-            try:
-                badge.setVisible(item_id != hovered_id)
-            except RuntimeError:
-                pass
-
-    def _on_result_item_entered(self, item, column):
-        self._set_hovered_result_item(item)
-
-    def _create_file_actions(self, item: QTreeWidgetItem, file_path: str, count: int):
-        container = QWidget(self.searchResultsTree)
-        container.setMinimumWidth(76)
-        layout = QHBoxLayout(container)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(2)
-
+    def _cached_icon(self, icon_name: str):
         text_color = self.parent_window.palette().color(QPalette.ColorRole.WindowText).name()
-        icons_dir = os.path.join(self.base_dir, "assets", "icons")
+        cache_key = (icon_name, text_color)
+        icon = self._icon_cache.get(cache_key)
+        if icon is None:
+            icons_dir = os.path.join(self.base_dir, "assets", "icons")
+            icon = load_svg_icon(os.path.join(icons_dir, icon_name), text_color)
+            self._icon_cache[cache_key] = icon
+        return icon
 
-        count_badge = self._create_count_badge(count)
-        self._register_result_count_badge(item, count_badge)
-        layout.addWidget(count_badge)
+    def _update_result_action_column_width(self):
+        max_count = max((len(occs) for occs in self.current_results.values()), default=0)
+        count_text = str(max_count) if max_count else ""
+        text_width = self.searchResultsTree.fontMetrics().horizontalAdvance(count_text)
+        column_width = text_width + self.RESULT_COUNT_COLUMN_PADDING
+        column_width = max(self.RESULT_COUNT_COLUMN_MIN_WIDTH, column_width)
+        column_width = min(self.RESULT_COUNT_COLUMN_MAX_WIDTH, column_width)
+        self._result_action_column_width = column_width
+        self.searchResultsTree.setColumnWidth(1, column_width)
 
-        replace_button = QToolButton(container)
-        replace_button.setIcon(load_svg_icon(os.path.join(icons_dir, "replace-all.svg"), text_color))
-        replace_button.setToolTip("このファイル内の全件を置換")
-        replace_button.setAutoRaise(True)
-        replace_button.setFixedSize(22, 22)
-        replace_button.clicked.connect(lambda checked=False, path=file_path: self.replace_file_occurrences(path))
-        self._register_result_action_button(item, replace_button)
+    def _file_result_icon(self):
+        return self._cached_icon("file.svg")
 
-        ignore_button = QToolButton(container)
-        ignore_button.setIcon(load_svg_icon(os.path.join(icons_dir, "close.svg"), text_color))
-        ignore_button.setToolTip("このファイルを無視")
-        ignore_button.setAutoRaise(True)
-        ignore_button.setFixedSize(22, 22)
-        ignore_button.clicked.connect(lambda checked=False, path=file_path: self.ignore_file(path))
-        self._register_result_action_button(item, ignore_button)
+    def _set_hovered_result_index(self, index: QModelIndex):
+        if index.isValid() and index.column() != 1:
+            index = index.siblingAtColumn(1)
+        if index == self._hovered_result_index:
+            return
+        old_index = self._hovered_result_index
+        self._hovered_result_index = index
+        for changed_index in (old_index, index):
+            if changed_index.isValid():
+                self.searchResultsTree.viewport().update(self.searchResultsTree.visualRect(changed_index))
 
-        layout.addWidget(replace_button)
-        layout.addWidget(ignore_button)
-        return container
-
-    def _create_occurrence_actions(self, item: QTreeWidgetItem, occurrence):
-        container = QWidget(self.searchResultsTree)
-        container.setMinimumWidth(48)
-        layout = QHBoxLayout(container)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(2)
-
-        text_color = self.parent_window.palette().color(QPalette.ColorRole.WindowText).name()
-        icons_dir = os.path.join(self.base_dir, "assets", "icons")
-
-        replace_button = QToolButton(container)
-        replace_button.setIcon(load_svg_icon(os.path.join(icons_dir, "replace.svg"), text_color))
-        replace_button.setToolTip("この箇所を置換")
-        replace_button.setAutoRaise(True)
-        replace_button.setFixedSize(22, 22)
-        replace_button.clicked.connect(lambda checked=False, occ=dict(occurrence): self.replace_occurrence(occ))
-        self._register_result_action_button(item, replace_button)
-
-        ignore_button = QToolButton(container)
-        ignore_button.setIcon(load_svg_icon(os.path.join(icons_dir, "close.svg"), text_color))
-        ignore_button.setToolTip("この箇所を無視")
-        ignore_button.setAutoRaise(True)
-        ignore_button.setFixedSize(22, 22)
-        ignore_button.clicked.connect(lambda checked=False, occ=dict(occurrence): self.ignore_occurrence(occ))
-        self._register_result_action_button(item, ignore_button)
-
-        layout.addWidget(replace_button)
-        layout.addWidget(ignore_button)
-        return container
+    def _activate_result_action(self, data: dict, action: str):
+        item_type = data.get("type")
+        if item_type == "file":
+            file_path = data.get("path")
+            if not file_path:
+                return
+            if action == "replace":
+                self.replace_file_occurrences(file_path)
+            elif action == "ignore":
+                self.ignore_file(file_path)
+        elif item_type == "occurrence":
+            occurrence = data.get("occurrence")
+            if not occurrence:
+                return
+            if action == "replace":
+                self.replace_occurrence(dict(occurrence))
+            elif action == "ignore":
+                self.ignore_occurrence(dict(occurrence))
 
     def _results_counts(self):
         file_count = len(self.current_results)
@@ -471,74 +643,173 @@ class ProjectSearchDock(QObject):
         self.searchStatusLabel.setText(f"{files_found} 個のファイルで {matches_found} 個の一致が見つかりました。")
 
     def _build_results_tree(self, project_path: str | None):
-        self.searchResultsTree.clear()
-        self._result_item_action_buttons = {}
-        self._result_item_count_badges = {}
-        text_color = self.parent_window.palette().color(QPalette.ColorRole.WindowText).name()
-        icons_dir = os.path.join(self.base_dir, "assets", "icons")
-        icon_file = load_svg_icon(os.path.join(icons_dir, "file.svg"), text_color)
+        self._hovered_result_index = QModelIndex()
+        self._update_result_action_column_width()
+        self._search_results_model.rebuild(self.current_results, project_path)
+        self.searchResultsTree.expandAll()
+        return sum(len(occs) for occs in self.current_results.values())
 
-        self.searchResultsTree.setUpdatesEnabled(False)
+    def _search_worker_path(self):
+        executable = "project_search_worker.exe" if os.name == "nt" else "project_search_worker"
+        return os.path.join(self.base_dir, "bin", executable)
+
+    def _ignored_occurrences_payload(self):
+        payload = []
+        for file_path, line_number, pos, length, line_text in self.ignored_occurrences:
+            payload.append({
+                "path": file_path,
+                "line_number": line_number,
+                "pos": pos,
+                "length": length,
+                "line_text": line_text,
+            })
+        return payload
+
+    def _worker_request_payload(self, request: ProjectSearchRequest):
+        return {
+            "project_path": request.project_path,
+            "include_patterns": list(request.include_patterns),
+            "exclude_patterns": list(request.exclude_patterns),
+            "query": {
+                "search_text": request.query.search_text,
+                "match_case": request.query.match_case,
+                "use_regex": request.query.use_regex,
+                "whole_word": request.query.whole_word,
+                "regex_pattern": request.regex_pattern,
+            },
+            "open_editors": [
+                {"path": path, "content": content}
+                for path, content in request.open_editors.items()
+            ],
+            "ignored_occurrences": request.ignored_occurrences,
+        }
+
+    def _run_worker_process(self, worker_path: str, request_path: str, response_path: str, cancel_event: threading.Event):
+        process = subprocess.Popen(
+            [worker_path, "--request", request_path, "--response", response_path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+        )
+        while process.poll() is None:
+            if cancel_event.is_set():
+                process.kill()
+                process.communicate()
+                return None
+            time.sleep(0.02)
+
+        stdout, stderr = process.communicate()
+        if process.returncode != 0:
+            error = stderr.strip() or stdout.strip() or f"worker exited with code {process.returncode}"
+            raise RuntimeError(error)
+        with open(response_path, "r", encoding="utf-8") as handle:
+            return handle.read()
+
+    def _run_search_background(self, request: ProjectSearchRequest):
+        request_path = None
+        response_path = None
         try:
-            for file_path in sorted(self.current_results.keys(), key=lambda path: self._display_path(path, project_path).lower()):
-                occs = self.current_results[file_path]
-                display_path = self._display_path(file_path, project_path)
-                file_item = QTreeWidgetItem(self.searchResultsTree)
-                file_item.setText(0, display_path)
-                file_item.setText(1, str(len(occs)))
-                file_item.setTextAlignment(1, Qt.AlignmentFlag.AlignCenter)
-                file_item.setToolTip(0, file_path)
-                file_item.setIcon(0, icon_file)
-                file_item.setData(0, Qt.ItemDataRole.UserRole, {"type": "file", "path": file_path})
-                file_item.setExpanded(True)
-                self.searchResultsTree.setItemWidget(file_item, 1, self._create_file_actions(file_item, file_path, len(occs)))
+            if request.cancel_event.is_set():
+                return None
 
-                for occ in occs:
-                    child_item = QTreeWidgetItem(file_item)
-                    occurrence = dict(occ)
-                    occurrence["path"] = file_path
-                    trimmed = occ["line_text"].strip()
-                    child_item.setText(0, f"{occ['line_number']}: {trimmed}")
-                    child_item.setToolTip(0, occ["line_text"])
-                    child_item.setData(0, Qt.ItemDataRole.UserRole, {
-                        "type": "occurrence",
-                        "path": file_path,
-                        "line_number": occ["line_number"],
-                        "line_text": occ["line_text"],
-                        "pos": occ["pos"],
-                        "length": occ["length"]
-                    })
-                    self.searchResultsTree.setItemWidget(child_item, 1, self._create_occurrence_actions(child_item, occurrence))
+            worker_path = self._search_worker_path()
+            if not os.path.exists(worker_path):
+                raise FileNotFoundError(f"C++検索workerが見つかりません: {worker_path}")
+
+            with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".json", delete=False) as handle:
+                json.dump(self._worker_request_payload(request), handle, ensure_ascii=False)
+                request_path = handle.name
+            with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".json", delete=False) as handle:
+                response_path = handle.name
+
+            stdout = self._run_worker_process(worker_path, request_path, response_path, request.cancel_event)
+            if stdout is None or request.cancel_event.is_set():
+                return None
+
+            worker_result = json.loads(stdout)
+            current_results = {}
+            for file_result in worker_result.get("files", []):
+                file_path = os.path.normpath(file_result.get("path", ""))
+                occurrences = file_result.get("occurrences", [])
+                if file_path and occurrences:
+                    for occurrence in occurrences:
+                        occurrence["path"] = file_path
+                    current_results[file_path] = occurrences
+
+            files_found = len(current_results)
+            matches_found = sum(len(occs) for occs in current_results.values())
+            status_text = f"{files_found} 個のファイルで {matches_found} 個の一致が見つかりました。"
+            return ProjectSearchResult(
+                generation=request.generation,
+                current_results=current_results,
+                project_path=request.project_path,
+                status_text=status_text,
+            )
+        except Exception as error:
+            if not request.cancel_event.is_set():
+                return ProjectSearchResult(
+                    generation=request.generation,
+                    current_results={},
+                    project_path=request.project_path,
+                    status_text=f"検索に失敗しました: {error}",
+                )
         finally:
-            self.searchResultsTree.setUpdatesEnabled(True)
+            if request_path:
+                try:
+                    os.remove(request_path)
+                except OSError:
+                    pass
+            if response_path:
+                try:
+                    os.remove(response_path)
+                except OSError:
+                    pass
+        return None
 
-    def on_search_clicked(self):
-        query = self.get_query()
-        if query.is_empty():
-            self.searchResultsTree.clear()
-            self.searchStatusLabel.setText("検索語を入力してください。")
+    def _poll_search_result(self):
+        future = self._active_search_future
+        if not future or not future.done():
             return
 
-        project_path = core.api.get_project_path()
-        # プロジェクトフォルダが開かれていないかつエディタでも何も開かれていない場合はエラーにする
-        has_open_tabs = hasattr(self.parent_window, "editorTabs") and self.parent_window.editorTabs.count() > 0
-        if not project_path and not has_open_tabs:
-            self.searchResultsTree.clear()
-            self.searchStatusLabel.setText("プロジェクトフォルダが開かれていないか、ファイルが開かれていません。")
+        self.search_result_timer.stop()
+        self._active_search_future = None
+        try:
+            result = future.result()
+        except Exception as error:
+            self.searchStatusLabel.setText(f"検索に失敗しました: {error}")
             return
 
-        self.searchStatusLabel.setText("検索中...")
-        self.searchResultsTree.clear()
+        if result:
+            self._on_search_completed(result)
+
+    def _on_search_completed(self, result: ProjectSearchResult):
+        if result.generation != self._search_generation:
+            return
+        if result.status_text.startswith("検索に失敗しました:"):
+            self._clear_search_results(result.status_text)
+            return
+        self.current_results = result.current_results
+        self._build_results_tree(result.project_path)
+        files_found, matches_found = self._results_counts()
+        self.searchStatusLabel.setText(f"{files_found} 個のファイルで {matches_found} 個の一致が見つかりました。")
+
+    def _clear_search_results(self, message: str):
+        self._hovered_result_index = QModelIndex()
         self.current_results = {}
+        self._update_result_action_column_width()
+        self._search_results_model.rebuild(self.current_results, None)
+        self.searchStatusLabel.setText(message)
 
-        # フィルタパターンのパース
-        include_patterns = [p.strip() for p in self.includeInput.text().split(",") if p.strip()]
-        exclude_patterns = [p.strip() for p in self.excludeInput.text().split(",") if p.strip()]
-        # 除外の既定値
+    def _read_filter_patterns(self):
+        include_patterns = tuple(p.strip() for p in self.includeInput.text().split(",") if p.strip())
+        exclude_patterns = tuple(p.strip() for p in self.excludeInput.text().split(",") if p.strip())
         if not exclude_patterns:
-            exclude_patterns = [".git", "__pycache__", "build", ".vs"]
+            exclude_patterns = (".git", "__pycache__", "build", ".vs")
+        return include_patterns, exclude_patterns
 
-        search_signature = (
+    def _search_signature(self, query: SearchQuery, include_patterns, exclude_patterns):
+        return (
             query.search_text,
             query.match_case,
             query.use_regex,
@@ -547,118 +818,85 @@ class ProjectSearchDock(QObject):
             tuple(exclude_patterns),
             self.searchOpenFilesCheckBox.isChecked(),
         )
+
+    def _compile_search_pattern(self, query: SearchQuery):
+        q_regex = query.to_regular_expression()
+        if not q_regex.isValid():
+            raise ValueError("無効な検索パターンまたは正規表現です。")
+        return q_regex.pattern()
+
+    def _collect_open_editors(self, has_open_tabs: bool):
+        open_editors = {}
+        if not self.searchOpenFilesCheckBox.isChecked() or not has_open_tabs:
+            return open_editors
+
+        for idx in range(self.parent_window.editorTabs.count()):
+            tab_path = self.parent_window.editorTabs.tabToolTip(idx)
+            widget = self.parent_window.editorTabs.widget(idx)
+            if tab_path and widget and not tab_path.startswith("untitled:"):
+                to_plain_text = getattr(widget, "toPlainText", None)
+                if callable(to_plain_text):
+                    open_editors[os.path.normpath(tab_path)] = to_plain_text()
+        return open_editors
+
+    def _create_search_request(self, query: SearchQuery, project_path: str | None, has_open_tabs: bool):
+        include_patterns, exclude_patterns = self._read_filter_patterns()
+        search_signature = self._search_signature(query, include_patterns, exclude_patterns)
         if search_signature != self._last_search_signature:
             self.ignored_occurrences.clear()
             self._last_search_signature = search_signature
 
-        # 正規表現パターンの準備
+        cancel_event = threading.Event()
+        self._search_cancel_event = cancel_event
+        return ProjectSearchRequest(
+            generation=self._search_generation,
+            cancel_event=cancel_event,
+            project_path=project_path,
+            include_patterns=include_patterns,
+            exclude_patterns=exclude_patterns,
+            open_editors=self._collect_open_editors(has_open_tabs),
+            query=query,
+            regex_pattern=self._compile_search_pattern(query),
+            ignored_occurrences=self._ignored_occurrences_payload(),
+        )
+
+    def _start_search_request(self, request: ProjectSearchRequest):
+        self.searchStatusLabel.setText("検索中...")
+        self._hovered_result_index = QModelIndex()
+        self.current_results = {}
+        self._update_result_action_column_width()
+        self._search_results_model.rebuild(self.current_results, request.project_path)
+        self._active_search_future = self._search_dispatch_executor.submit(
+            self._run_search_background,
+            request,
+        )
+        self.search_result_timer.start()
+
+    def on_search_clicked(self):
+        self._cancel_running_search()
+
+        query = self.get_query()
+        if query.is_empty():
+            self._clear_search_results("検索語を入力してください。")
+            return
+
+        project_path = core.api.get_project_path()
+        # プロジェクトフォルダが開かれていないかつエディタでも何も開かれていない場合はエラーにする
+        has_open_tabs = hasattr(self.parent_window, "editorTabs") and self.parent_window.editorTabs.count() > 0
+        if not project_path and not has_open_tabs:
+            self._clear_search_results("プロジェクトフォルダが開かれていないか、ファイルが開かれていません。")
+            return
+
         try:
-            q_regex = query.to_regular_expression()
-            if not q_regex.isValid():
-                self.searchStatusLabel.setText("無効な検索パターンまたは正規表現です。")
-                return
-            pattern_str = q_regex.pattern()
-            flags = 0
-            if not query.match_case:
-                flags |= re.IGNORECASE
-            re_pattern = re.compile(pattern_str, flags)
+            request = self._create_search_request(query, project_path, has_open_tabs)
+        except ValueError as e:
+            self.searchStatusLabel.setText(str(e))
+            return
         except Exception as e:
             self.searchStatusLabel.setText(f"正規表現エラー: {e}")
             return
 
-        # 1. 開いているエディタ（未保存のメモリ上コンテンツ）の収集
-        open_editors = {} # {正規化パス: テキスト}
-        if self.searchOpenFilesCheckBox.isChecked() and has_open_tabs:
-            from PySide6.QtWidgets import QPlainTextEdit
-            for idx in range(self.parent_window.editorTabs.count()):
-                tab_path = self.parent_window.editorTabs.tabToolTip(idx)
-                widget = self.parent_window.editorTabs.widget(idx)
-                if tab_path and widget and not tab_path.startswith("untitled:"):
-                    to_plain_text = getattr(widget, "toPlainText", None)
-                    if callable(to_plain_text):
-                        open_editors[os.path.normpath(tab_path)] = to_plain_text()
-
-        # 2. 検索対象ファイルのパス候補リストを収集
-        target_files = set() # {正規化パス}
-
-        # プロジェクト内ファイルの追加
-        if project_path:
-            for root, dirs, files in os.walk(project_path):
-                # 除外ディレクトリのフィルタリング
-                dirs[:] = [d for d in dirs if not any(fnmatch.fnmatch(d, pat) for pat in exclude_patterns)]
-                for file in files:
-                    file_path = os.path.join(root, file)
-                    target_files.add(os.path.normpath(file_path))
-
-        # 開いているファイルのパスを追加（プロジェクト外でも対象化）
-        for open_path in open_editors.keys():
-            target_files.add(open_path)
-
-        # 3. 各ファイルの検索処理
-        matches_found = 0
-        files_found = 0
-
-        for file_path in sorted(target_files):
-            file_name = os.path.basename(file_path)
-
-            # 除外ファイルのチェック
-            if any(fnmatch.fnmatch(file_name, pat) for pat in exclude_patterns):
-                continue
-
-            # 含めるファイルのチェック
-            if include_patterns:
-                if not any(fnmatch.fnmatch(file_name, pat) for pat in include_patterns):
-                    continue
-
-            # テキストコンテンツの取得（メモリ上にあれば優先し、無ければディスクから読む）
-            content = None
-            encoding = "utf-8"
-            if file_path in open_editors:
-                content = open_editors[file_path]
-            else:
-                try:
-                    with open(file_path, "rb") as f:
-                        raw = f.read(1024 * 1024 * 5) # 最大5MBまで読み込む
-                    
-                    # バイナリチェック（簡易）
-                    if b"\x00" in raw:
-                        continue
-
-                    content, encoding = detect_text_encoding(raw)
-                except Exception:
-                    continue
-
-            if content is None:
-                continue
-
-            try:
-                lines = content.splitlines()
-                file_occurrences = []
-                for line_idx, line in enumerate(lines):
-                    for match in re_pattern.finditer(line):
-                        pos = match.start()
-                        length = match.end() - pos
-                        occurrence = {
-                            "path": file_path,
-                            "line_number": line_idx + 1,
-                            "line_text": line,
-                            "pos": pos,
-                            "length": length,
-                            "encoding": encoding
-                        }
-                        if self._occurrence_key(file_path, occurrence) in self.ignored_occurrences:
-                            continue
-                        file_occurrences.append(occurrence)
-                        matches_found += 1
-                
-                if file_occurrences:
-                    self.current_results[file_path] = file_occurrences
-                    files_found += 1
-            except Exception as e:
-                print(f"Error searching in {file_path}: {e}")
-
-        self._build_results_tree(project_path)
-        self._update_results_status()
+        self._start_search_request(request)
 
     def _occurrence_matches(self, occurrence, target):
         return (
@@ -746,8 +984,8 @@ class ProjectSearchDock(QObject):
 
         self.on_search_clicked()
 
-    def on_item_double_clicked(self, item, column):
-        data = item.data(0, Qt.ItemDataRole.UserRole)
+    def on_item_double_clicked(self, index: QModelIndex):
+        data = index.data(Qt.ItemDataRole.UserRole)
         if not data:
             return
 

@@ -5,6 +5,8 @@ __pycache__/
 .venv/
 venv/
 ENV/
+bin/
+project_search_worker.obj
 
 # IDEs
 .vscode/
