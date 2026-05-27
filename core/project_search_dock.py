@@ -715,7 +715,7 @@ class ProjectSearchDock(QObject):
 
             worker_path = self._search_worker_path()
             if not os.path.exists(worker_path):
-                raise FileNotFoundError(f"C++検索workerが見つかりません: {worker_path}")
+                raise FileNotFoundError(f"Rust検索workerが見つかりません: {worker_path}")
 
             with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".json", delete=False) as handle:
                 json.dump(self._worker_request_payload(request), handle, ensure_ascii=False)

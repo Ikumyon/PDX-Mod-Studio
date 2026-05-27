@@ -19,7 +19,7 @@ Paradox Interactive社のゲーム用MOD開発を強力にサポートする、�
    # または
    pip install .
    ```
-3. プロジェクト検索workerのビルド:
+3. Rust toolchain を用意して、プロジェクト検索workerをビルド:
    ```powershell
    powershell -ExecutionPolicy Bypass -File tools\project_search_worker\build_project_search_worker.ps1
    ```
