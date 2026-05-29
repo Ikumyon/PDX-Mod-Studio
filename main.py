@@ -2193,11 +2193,27 @@ def main():
     find_shortcut = QShortcut(QKeySequence("Ctrl+F"), window)
     find_shortcut.activated.connect(show_search_popup)
 
-    # ウィンドウの移動・リサイズ時に検索バーの位置を自動追従させるためのイベントフィルター
+    # ウィンドウの移動・リサイズ・ドラッグ＆ドロップ時に適切な処理を行うためのイベントフィルター
     class WindowEventFilter(QObject):
         def eventFilter(self, watched, event):
             if event.type() in (QEvent.Type.Resize, QEvent.Type.Move):
                 update_search_popup_position()
+            elif event.type() == QEvent.Type.DragEnter:
+                if event.mimeData().hasUrls():
+                    event.acceptProposedAction()
+                else:
+                    event.ignore()
+                return True
+            elif event.type() == QEvent.Type.Drop:
+                for url in event.mimeData().urls():
+                    file_path = url.toLocalFile()
+                    if not file_path:
+                        continue
+                    if os.path.isfile(file_path):
+                        # ファイルの場合のみそのままエディタで開く（プロジェクト外でも同様に開く）
+                        open_file(file_path)
+                event.acceptProposedAction()
+                return True
             return False
             
     filter_obj = WindowEventFilter(window)
@@ -2219,24 +2235,6 @@ def main():
 
     # ドラッグ＆ドロップによるファイルオープンの有効化
     window.setAcceptDrops(True)
-
-    def window_dragEnterEvent(event):
-        if event.mimeData().hasUrls():
-            event.acceptProposedAction()
-        else:
-            event.ignore()
-
-    def window_dropEvent(event):
-        for url in event.mimeData().urls():
-            file_path = url.toLocalFile()
-            if not file_path:
-                continue
-            if os.path.isfile(file_path):
-                # ファイルの場合のみそのままエディタで開く（プロジェクト外でも同様に開く）
-                open_file(file_path)
-
-    window.dragEnterEvent = window_dragEnterEvent
-    window.dropEvent = window_dropEvent
 
     # ウィンドウを表示
     window.show()

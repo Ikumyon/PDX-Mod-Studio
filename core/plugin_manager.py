@@ -4,7 +4,7 @@ import importlib.util
 import tomllib
 import core.api
 from core.syntax_engine import (
-    load_plugin_file_map,
+    GrammarAssetLoader,
     resolve_manifest_display_text,
     translate_from_files_map,
 )
@@ -111,16 +111,36 @@ class Plugin:
         with open(self.resolve_path(relative_path), "r", encoding=encoding) as handle:
             return json.load(handle)
 
-    def read_toml_asset(self, relative_path):
-        with open(self.resolve_path(relative_path), "rb") as handle:
-            return tomllib.load(handle)
-
-    def get_manifest_file_map(self):
-        return load_plugin_file_map(self.path, self.raw, self.id)
-
     def load_elements_from_files(self):
         self.clear_elements()
-        # grammar_modes.toml の中身(文法モード定義)の読み込みは、まだ仕様未確定のため行いません。
+        grammar_data = self.raw.get("grammar")
+        if not grammar_data or not isinstance(grammar_data, dict):
+            return
+
+        modes = grammar_data.get("modes")
+        if not isinstance(modes, list):
+            return
+
+        for mode in modes:
+            if not isinstance(mode, dict):
+                continue
+            mode_id = mode.get("id")
+            name_key = mode.get("name_key")
+            path_pattern = mode.get("path")
+
+            if not mode_id or not name_key:
+                continue
+
+            # 翻訳キーから翻訳表示名を解決
+            resolved_name = self.translate(name_key)
+
+            self.add_element(
+                id=mode_id,
+                name=resolved_name,
+                path=path_pattern,
+                element_dir=None,
+                raw=mode,
+            )
 
     def translate(self, key, fallback=None, context=None, metadata=None):
         if self.module:
@@ -271,7 +291,14 @@ class PluginManager:
                     }
                 )
                 
-                # 指定されたエントリーポイントをロード
+                # 1. 静的文法アセットローダーの起動
+                grammar_loader = GrammarAssetLoader()
+                grammar_result = grammar_loader.load_grammar_manifest(plugin_root, manifest)
+                if grammar_result:
+                    plugin.raw["grammar"] = grammar_result
+                    print(f"Grammar plugin '{p_id}' verified.")
+
+                # 2. 動的プログラムフックローダーの起動
                 entry_point = manifest.get("entry_point")
                 if entry_point:
                     self._load_plugin_logic(plugin, entry_point)

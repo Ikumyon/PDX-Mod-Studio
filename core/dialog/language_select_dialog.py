@@ -42,8 +42,11 @@ class LanguageSelectDialog(QDialog):
         item_plain.setData(Qt.ItemDataRole.UserRole, "plain_text")
         self.list_widget.addItem(item_plain)
 
-        # 2. 各種要素定義 (一時的に読み込まないようにコメントアウト)
-        #ここにあった
+        # 2. 各種要素定義
+        for element in available_elements:
+            item = QListWidgetItem(element.name)
+            item.setData(Qt.ItemDataRole.UserRole, element)
+            self.list_widget.addItem(item)
 
         # 初期状態の設定
         if current_mode == "auto":
@@ -53,7 +56,21 @@ class LanguageSelectDialog(QDialog):
         else:
             self.auto_checkbox.setChecked(False)
             self.list_widget.setEnabled(True)
-            if current_mode == "plain_text":
+            
+            selected = False
+            if current_mode != "plain_text":
+                for i in range(self.list_widget.count()):
+                    item = self.list_widget.item(i)
+                    element = item.data(Qt.ItemDataRole.UserRole)
+                    if element != "plain_text" and (
+                        current_mode == element or 
+                        (hasattr(current_mode, 'id') and hasattr(element, 'id') and current_mode.id == element.id) or
+                        (isinstance(current_mode, str) and hasattr(element, 'id') and current_mode == element.id)
+                    ):
+                        self.list_widget.setCurrentItem(item)
+                        selected = True
+                        break
+            if not selected:
                 self.list_widget.setCurrentItem(item_plain)
 
         # ダブルクリックで決定
