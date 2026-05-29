@@ -105,9 +105,44 @@ pub fn inspect_file(file_path: &str) -> PyResult<(i32, String)> {
 	}
 }
 
+/// Python から detect_encoding(raw) として呼び出せる関数。
+/// 戻り値: encoding_str (例: "utf-8", "utf-8-sig", "utf-16-le", "utf-16-be", "cp932", "unknown")
+#[pyfunction]
+pub fn detect_encoding(raw: &[u8]) -> PyResult<String> {
+	match detect_file_type(raw) {
+		FileType::Binary => Ok("unknown".to_string()),
+		FileType::Text(enc) => Ok(enc.as_str().to_string()),
+	}
+}
+
+/// Python から decode(raw, encoding) として呼び出せる関数。
+/// 戻り値: デコードされた文字列 (Pythonの str)
+#[pyfunction]
+pub fn decode(raw: &[u8], encoding: &str) -> PyResult<String> {
+	// utf-8-sig の指定があり、かつデータ先頭が BOM (EF BB BF) であれば、BOM をスキップしてデコードする
+	let raw = if encoding.eq_ignore_ascii_case("utf-8-sig") && raw.starts_with(&[0xEF, 0xBB, 0xBF]) {
+		&raw[3..]
+	} else {
+		raw
+	};
+
+	let enc = match encoding.to_lowercase().as_str() {
+		"utf-8" | "utf-8-sig" => &encoding_rs::UTF_8,
+		"utf-16-le" | "utf-16le" => &encoding_rs::UTF_16LE,
+		"utf-16-be" | "utf-16be" => &encoding_rs::UTF_16BE,
+		"cp932" | "shift_jis" | "shift-jis" => &encoding_rs::SHIFT_JIS,
+		_ => &encoding_rs::UTF_8, // フォールバック
+	};
+
+	let (res, _, _) = enc.decode(raw);
+	Ok(res.into_owned())
+}
+
 /// PyO3 モジュールの初期化定義
 #[pymodule]
 fn pdx_inspector(m: &Bound<'_, PyModule>) -> PyResult<()> {
 	m.add_function(wrap_pyfunction!(inspect_file, m)?)?;
+	m.add_function(wrap_pyfunction!(detect_encoding, m)?)?;
+	m.add_function(wrap_pyfunction!(decode, m)?)?;
 	Ok(())
 }

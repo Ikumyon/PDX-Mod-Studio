@@ -1,22 +1,57 @@
-import sys
-import os
-import json
+"""PDX Mod Studio application entry point.
+
+NOTE:
+    This cleaned version keeps the original runtime structure intact while
+    reducing import noise and removing one unused legacy helper.
+    A fuller refactor should move the nested managers out of ``main()``.
+"""
+
 import codecs
+import fnmatch
+import json
 import locale
+import os
 import re
+import sys
 import tempfile
 import zipfile
-import fnmatch
-from core import save_result as save_result_utils
-from PySide6.QtWidgets import QApplication, QMenu, QVBoxLayout, QHBoxLayout, QToolButton, QWidget, QTabBar, QStackedWidget, QFileDialog, QMessageBox, QPlainTextEdit
-from PySide6.QtUiTools import QUiLoader
-from PySide6.QtCore import QFile, Qt, QSize, QCoreApplication, Signal
-from PySide6.QtGui import QAction
+
 import core.api
+from core import save_result as save_result_utils
 from core.dialog import EncodingActionDialog, LanguageSelectDialog
 from core.i18n import I18nManager
+from core.editor_tabs import EditorTabProxy, create_editor_tab_bar
+from core.encoding_controller import (
+    decode_with_encoding,
+    read_text_with_detected_encoding,
+    reopen_text_widget_with_encoding,
+)
+from core.project_io import ProjectIOManager
+from core.search_controller import SearchController
+from core.file_open_controller import FileOpenController
+from core.inspector import (
+    EncodingType as InspectorEncodingType,
+    FileType as InspectorFileType,
+    inspect_file,
+)
 from core.syntax_engine import GrammarBundle
-from core.inspector import FileType as InspectorFileType, EncodingType as InspectorEncodingType, inspect_file
+from PySide6.QtCore import QFile, QCoreApplication, QSize, Qt, Signal, QObject, QEvent
+from PySide6.QtGui import QAction
+from PySide6.QtUiTools import QUiLoader
+from PySide6.QtWidgets import (
+    QApplication,
+    QFileDialog,
+    QHBoxLayout,
+    QMenu,
+    QMessageBox,
+    QPlainTextEdit,
+    QStackedWidget,
+    QTabBar,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
+)
+
 tr = QCoreApplication.translate
 
 def main():
@@ -28,14 +63,13 @@ def main():
     # Windowsのタスクバーアイコンを正しく表示するための設定
     try:
         import ctypes
-        myappid = 'pdx.mod.studio.v1' # 任意の識別子
+        myappid = "pdx.mod.studio.v1"  # 任意の識別子
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
     except Exception:
         pass
 
     # --- 外部プラグインから import 可能にするための登録 ---
-    import core.api
-    sys.modules['core.api'] = core.api
+    sys.modules["core.api"] = core.api
     # -----------------------------------------------
 
     # UIファイルのパスを取得
@@ -127,313 +161,12 @@ def main():
         print("Error: required editor tab widgets not found in UI")
         sys.exit(-1)
 
-    # QTabBar をプログラム側で生成（QUiLoader の制限回避）
-    def create_editor_tab_bar(parent):
-        tab_bar = QTabBar(parent)
-        tab_bar.setDocumentMode(True)
-        tab_bar.setTabsClosable(True)
-        tab_bar.setExpanding(False)
-        return tab_bar
+
 
     editor_tab_bar = create_editor_tab_bar(tab_bar_container)
     if tab_bar_container.layout():
         tab_bar_container.layout().addWidget(editor_tab_bar)
 
-    def set_zero_margins(layout):
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-
-    def create_editor_pane(index):
-        pane = QWidget(editor_splitter)
-        pane.setObjectName(f"editorPane{index}")
-
-        pane_layout = QVBoxLayout(pane)
-        set_zero_margins(pane_layout)
-
-        header_layout = QHBoxLayout()
-        set_zero_margins(header_layout)
-
-        tab_container = QWidget(pane)
-        tab_container.setObjectName(f"editorTabBarContainer{index}")
-        tab_container_layout = QHBoxLayout(tab_container)
-        set_zero_margins(tab_container_layout)
-
-        tab_bar = create_editor_tab_bar(tab_container)
-        tab_container_layout.addWidget(tab_bar)
-
-        corner_container = QWidget(pane)
-        corner_container.setObjectName(f"tabCornerContainer{index}")
-        corner_layout = QHBoxLayout(corner_container)
-        corner_layout.setContentsMargins(0, 0, 10, 0)
-        corner_layout.setSpacing(6)
-
-        header_layout.addWidget(tab_container)
-        header_layout.addStretch(1)
-        header_layout.addWidget(corner_container)
-
-        stack = QStackedWidget(pane)
-        stack.setObjectName(f"editorStackedWidget{index}")
-
-        pane_layout.addLayout(header_layout)
-        pane_layout.addWidget(stack)
-
-        return {
-            "id": f"pane:{index}",
-            "widget": pane,
-            "tab_bar": tab_bar,
-            "stack": stack,
-            "corner": corner_container,
-        }
-
-    class EditorTabProxy(QWidget):
-        tabCloseRequested = Signal(int)
-        currentChanged = Signal(int)
-
-        def __init__(self, splitter, first_pane):
-            super().__init__()
-            self.splitter = splitter
-            self._panes = []
-            self._records = []
-            self._active_pane = first_pane
-            self._current_index = -1
-            self._mutating_tabs = False
-            self._next_pane_id = 1
-            self._register_pane(first_pane)
-
-        def _register_pane(self, pane):
-            self._panes.append(pane)
-            pane["tab_bar"].currentChanged.connect(
-                lambda local_index, p=pane: self._on_local_current_changed(p, local_index)
-            )
-            pane["tab_bar"].tabCloseRequested.connect(
-                lambda local_index, p=pane: self._on_local_tab_close_requested(p, local_index)
-            )
-
-        def _pane_index(self, pane):
-            for index, candidate in enumerate(self._panes):
-                if candidate is pane:
-                    return index
-            return -1
-
-        def _create_pane_after(self, pane):
-            new_pane = create_editor_pane(self._next_pane_id)
-            self._next_pane_id += 1
-            pane_index = self._pane_index(pane)
-            insert_at = pane_index + 1 if pane_index >= 0 else len(self._panes)
-            self._panes.insert(insert_at, new_pane)
-            self.splitter.insertWidget(insert_at, new_pane["widget"])
-            new_pane["tab_bar"].currentChanged.connect(
-                lambda local_index, p=new_pane: self._on_local_current_changed(p, local_index)
-            )
-            new_pane["tab_bar"].tabCloseRequested.connect(
-                lambda local_index, p=new_pane: self._on_local_tab_close_requested(p, local_index)
-            )
-            self._active_pane = new_pane
-            self._rebalance_splitter()
-            return new_pane
-
-        def createPaneAfterActive(self):
-            return self._create_pane_after(self._active_pane)
-
-        def _records_for_pane(self, pane):
-            return [record for record in self._records if record["pane"] is pane]
-
-        def _pane_for_tab(self, pane):
-            return pane if self._pane_index(pane) >= 0 else self._active_pane
-
-        def _remove_empty_pane(self, pane):
-            pane_index = self._pane_index(pane)
-            if pane_index < 0 or len(self._panes) <= 1 or self._records_for_pane(pane):
-                return
-            self._panes.pop(pane_index)
-            pane["widget"].setParent(None)
-            pane["widget"].deleteLater()
-            if self._active_pane is pane:
-                self._active_pane = self._panes[min(pane_index, len(self._panes) - 1)]
-            self._rebalance_splitter()
-
-        def _rebalance_splitter(self):
-            pane_count = len(self._panes)
-            if pane_count > 0:
-                self.splitter.setSizes([1] * pane_count)
-
-        def _global_index_for_local(self, pane, local_index):
-            if local_index < 0:
-                return -1
-            current_local_index = -1
-            for global_index, record in enumerate(self._records):
-                if record["pane"] is not pane:
-                    continue
-                current_local_index += 1
-                if current_local_index == local_index:
-                    return global_index
-            return -1
-
-        def _local_index_for_global(self, index):
-            if index < 0 or index >= len(self._records):
-                return None, -1
-            record = self._records[index]
-            pane = record["pane"]
-            local_index = 0
-            for i, candidate in enumerate(self._records):
-                if i == index:
-                    return pane, local_index
-                if candidate["pane"] is pane:
-                    local_index += 1
-            return None, -1
-
-        def _activate_index(self, index, should_emit=False):
-            if index < 0 or index >= len(self._records):
-                return
-            previous_index = self._current_index
-            record = self._records[index]
-            pane = record["pane"]
-            stack = pane["stack"]
-            widget = record["widget"]
-            if stack.indexOf(widget) >= 0:
-                stack.setCurrentWidget(widget)
-            self._active_pane = pane
-            self._current_index = index
-            if should_emit and previous_index != index:
-                self.currentChanged.emit(index)
-
-        def _on_local_current_changed(self, pane, local_index):
-            if self._mutating_tabs:
-                return
-            index = self._global_index_for_local(pane, local_index)
-            if index >= 0:
-                self._activate_index(index, should_emit=True)
-
-        def _on_local_tab_close_requested(self, pane, local_index):
-            index = self._global_index_for_local(pane, local_index)
-            if index >= 0:
-                self.tabCloseRequested.emit(index)
-
-        def setCurrentWidget(self, widget):
-            index = self.indexOf(widget)
-            if index >= 0:
-                self.setCurrentIndex(index)
-                return True
-            return False
-
-        def focusWidgetChanged(self, widget):
-            while widget:
-                if self.setCurrentWidget(widget):
-                    return True
-                widget = widget.parentWidget()
-            return False
-
-        def count(self): return len(self._records)
-        def activePane(self): return self._active_pane
-        def activeCornerLayout(self):
-            corner = self._active_pane.get("corner") if self._active_pane else None
-            return corner.layout() if corner else None
-        def currentIndex(self): return self._current_index
-        def currentWidget(self): return self.widget(self.currentIndex())
-        def setCurrentIndex(self, index):
-            if index < 0 or index >= self.count():
-                if self._current_index != -1:
-                    self._current_index = -1
-                    self.currentChanged.emit(-1)
-                return
-            pane, local_index = self._local_index_for_global(index)
-            if pane is None:
-                return
-            tab_bar = pane["tab_bar"]
-            if tab_bar.currentIndex() == local_index:
-                self._activate_index(index, should_emit=True)
-            else:
-                tab_bar.setCurrentIndex(local_index)
-        def widget(self, index):
-            if index < 0 or index >= len(self._records):
-                return None
-            return self._records[index]["widget"]
-
-        def _tab_bar_and_local_index(self, index):
-            pane, local_index = self._local_index_for_global(index)
-            if pane is None:
-                return None, -1
-            return pane["tab_bar"], local_index
-
-        def tabText(self, index):
-            tab_bar, local_index = self._tab_bar_and_local_index(index)
-            return tab_bar.tabText(local_index) if tab_bar else ""
-        def setTabText(self, index, text):
-            tab_bar, local_index = self._tab_bar_and_local_index(index)
-            if tab_bar:
-                tab_bar.setTabText(local_index, text)
-        def tabToolTip(self, index):
-            tab_bar, local_index = self._tab_bar_and_local_index(index)
-            return tab_bar.tabToolTip(local_index) if tab_bar else ""
-        def setTabToolTip(self, index, tip):
-            tab_bar, local_index = self._tab_bar_and_local_index(index)
-            if tab_bar:
-                tab_bar.setTabToolTip(local_index, tip)
-        def tabIcon(self, index):
-            tab_bar, local_index = self._tab_bar_and_local_index(index)
-            return tab_bar.tabIcon(local_index) if tab_bar else None
-        def setTabIcon(self, index, icon):
-            tab_bar, local_index = self._tab_bar_and_local_index(index)
-            if tab_bar:
-                tab_bar.setTabIcon(local_index, icon)
-        def removeTab(self, index):
-            if index < 0 or index >= len(self._records):
-                return
-            tab_bar, local_index = self._tab_bar_and_local_index(index)
-            record = self._records.pop(index)
-            w = record["widget"]
-            pane = record["pane"]
-            stack = pane["stack"]
-            self._mutating_tabs = True
-            if tab_bar:
-                tab_bar.removeTab(local_index)
-            if w:
-                stack.removeWidget(w)
-                w.deleteLater()
-            self._mutating_tabs = False
-            self._remove_empty_pane(pane)
-            if self.count() > 0:
-                self.setCurrentIndex(min(index, self.count() - 1))
-            elif self._current_index != -1:
-                self._current_index = -1
-                self.currentChanged.emit(-1)
-        def addTab(self, widget, icon, text):
-            return self.addTabToPane(widget, icon, text, self._active_pane)
-        def addTabToPane(self, widget, icon, text, pane):
-            pane = self._pane_for_tab(pane)
-            pane["stack"].addWidget(widget)
-            self._records.append({"widget": widget, "pane": pane})
-            self._mutating_tabs = True
-            pane["tab_bar"].addTab(icon, text)
-            self._mutating_tabs = False
-            return len(self._records) - 1
-        def insertTab(self, index, widget, icon, text):
-            if index < 0 or index > len(self._records):
-                index = len(self._records)
-            pane = self._active_pane
-            pane["stack"].addWidget(widget)
-            local_index = sum(1 for record in self._records[:index] if record["pane"] is pane)
-            self._records.insert(index, {"widget": widget, "pane": pane})
-            self._mutating_tabs = True
-            pane["tab_bar"].insertTab(local_index, icon, text)
-            self._mutating_tabs = False
-            return index
-        def indexOf(self, widget):
-            for index, record in enumerate(self._records):
-                if record["widget"] is widget:
-                    return index
-            return -1
-        def setCornerWidget(self, widget, corner):
-            if self._active_pane and self._active_pane.get("corner"):
-                # 既存のウィジェットのうち、固定ボタン以外を削除
-                layout = self._active_pane["corner"].layout()
-                for i in reversed(range(layout.count())):
-                    item = layout.itemAt(i)
-                    w = item.widget()
-                    if w and w.objectName() not in ("modeSelectorButton", "splitEditorButton"):
-                        layout.removeItem(item)
-                        w.deleteLater()
-                layout.addWidget(widget)
 
     initial_pane = {
         "id": "pane:0",
@@ -630,104 +363,7 @@ def main():
             return "utf-8"
         return get_widget_encoding(widget)
 
-    def normalize_encoding_name(encoding):
-        if not encoding:
-            return None
-        try:
-            return codecs.lookup(str(encoding).strip()).name
-        except LookupError:
-            return str(encoding).strip().lower() or None
 
-    def extract_declared_encoding(raw):
-        head = raw[:4096].decode("latin-1", errors="ignore")
-        patterns = [
-            r"<\?xml[^>]*encoding\s*=\s*['\"]\s*([^'\"\s>]+)\s*['\"]",
-            r"<meta[^>]+charset\s*=\s*['\"]?\s*([^'\"\s/>]+)",
-            r"<meta[^>]+content\s*=\s*['\"][^>]*charset\s*=\s*([^'\";\s>]+)",
-        ]
-        for pattern in patterns:
-            match = re.search(pattern, head, flags=re.IGNORECASE)
-            if match:
-                return normalize_encoding_name(match.group(1))
-        return None
-
-    def autodetect_encoding(raw):
-        try:
-            from charset_normalizer import from_bytes
-            best = from_bytes(raw).best()
-            if best and best.encoding:
-                return normalize_encoding_name(best.encoding)
-        except Exception:
-            pass
-        return None
-
-    def decode_with_encoding(raw, encoding):
-        normalized = normalize_encoding_name(encoding)
-        if not normalized:
-            raise LookupError("encoding is empty")
-        return raw.decode(normalized), normalized
-
-    def detect_text_encoding(raw):
-        bom_candidates = [
-            (b"\xef\xbb\xbf", "utf-8-sig"),
-            (b"\xff\xfe", "utf-16-le"),
-            (b"\xfe\xff", "utf-16-be"),
-        ]
-        for prefix, encoding in bom_candidates:
-            if raw.startswith(prefix):
-                text, normalized = decode_with_encoding(raw, encoding)
-                return text, normalized
-
-        declared_encoding = extract_declared_encoding(raw)
-        if declared_encoding:
-            text, normalized = decode_with_encoding(raw, declared_encoding)
-            return text, normalized
-
-        detected_encoding = autodetect_encoding(raw)
-        if detected_encoding:
-            try:
-                text, normalized = decode_with_encoding(raw, detected_encoding)
-                return text, normalized
-            except UnicodeDecodeError:
-                pass
-
-        try:
-            text, normalized = decode_with_encoding(raw, "utf-8")
-            return text, normalized
-        except UnicodeDecodeError:
-            pass
-
-        if all(byte_value < 0x80 for byte_value in raw):
-            text, normalized = decode_with_encoding(raw, "ascii")
-            return text, normalized
-
-        fallback_encoding = normalize_encoding_name(locale.getpreferredencoding(False)) or "cp932"
-        text, normalized = decode_with_encoding(raw, fallback_encoding)
-        return text, normalized
-
-    def read_text_with_detected_encoding(file_path):
-        with open(file_path, "rb") as handle:
-            raw = handle.read()
-        return detect_text_encoding(raw)
-
-    def reopen_text_widget_with_encoding(widget, encoding):
-        file_path = getattr(widget, "file_path", "")
-        if not file_path or str(file_path).startswith("untitled:"):
-            widget.file_encoding = normalize_encoding_name(encoding) or encoding
-            return True
-
-        with open(file_path, "rb") as handle:
-            raw = handle.read()
-
-        text, normalized_encoding = decode_with_encoding(raw, encoding)
-        widget.blockSignals(True)
-        try:
-            widget.setPlainText(text)
-        finally:
-            widget.blockSignals(False)
-        widget.file_encoding = normalized_encoding
-        mark_tab_clean(widget)
-        return True
 
     # --- ビュー切り替えボタンのメニュー更新ロジック ---
     def update_editor_selector(index):
@@ -785,7 +421,7 @@ def main():
             return
             
         file_path = window.editorTabs.tabToolTip(current_tab_idx)
-        open_file(file_path, editor_id)
+        file_open_controller.open_file(file_path, editor_id)
 
     def _tab_text_without_dirty_marker(text):
         return text[1:] if text.startswith("*") else text
@@ -1144,50 +780,6 @@ def main():
     if split_editor_button:
         split_editor_button.clicked.connect(lambda checked=False: split_active_editor_right())
 
-    def _open_file_legacy_unused(file_path, editor_id=None):
-        if not window.editorTabs:
-            return
-            
-        # 既に開いているか確認（同じファイルかつ同じエディタ）
-        for i in range(window.editorTabs.count()):
-            widget = window.editorTabs.widget(i)
-            if window.editorTabs.tabToolTip(i) == file_path and editor_registry.normalize_editor_id(getattr(widget, "editor_id", TEXT_EDITOR_ID)) == editor_id:
-                window.editorTabs.setCurrentIndex(i)
-                update_editor_selector(i)
-                return
-        
-        # エレメントと利用可能なエディタの特定
-        element = get_element_for_path(file_path)
-        encoding = "utf-8"
-        if element:
-            encoding = element.plugin.get_element_attribute(element, "encoding", file_path=file_path)
-        
-        try:
-            with open(file_path, 'r', encoding=encoding, errors='replace') as f:
-                content = f.read()
-            
-            available_editors = []
-            if element:
-                available_editors = editor_registry.get_editors_for_element(element)
-            
-            # ウィジェットの生成
-            editor = create_editor_widget(editor_id, file_path, content, available_editors)
-            
-            file_name = os.path.basename(file_path)
-            if editor_id != TEXT_EDITOR_ID:
-                file_name = f"[E] {file_name}"
-
-            icon = project_tree.get_icon_for_path(file_path)
-            index = window.editorTabs.addTab(editor, icon, file_name)
-            window.editorTabs.setTabToolTip(index, file_path)
-            window.editorTabs.setCurrentIndex(index)
-            update_editor_selector(index)
-            
-            # 「開いているエディター」リストの更新
-            project_tree.update_open_editors(window.editorTabs)
-        except Exception as e:
-            print(f"ファイルを開けませんでした: {e}")
-
     # 無題タブのID管理
     untitled_id_counter = [0]
 
@@ -1226,76 +818,18 @@ def main():
         
         project_tree.update_open_editors(window.editorTabs)
 
-    def open_file(file_path, editor_id=None, params=None):
-        if not window.editorTabs:
-            return
-
-        # 事前のバイナリ・文字コード判別
-        file_type, encoding_type = inspect_file(file_path)
-
-        if file_type == InspectorFileType.Binary:
-            QMessageBox.warning(
-                window,
-                tr("MainWindow", "ファイルオープン"),
-                tr("MainWindow", "このファイルはバイナリファイル（または極めて巨大なファイル）のため、テキストエディタで開くことはできません。")
-            )
-            return
-
-        element = get_element_for_path(file_path)
-        available_editors = editor_registry.get_editors_for_element(element) if element else []
-        if editor_id is None:
-            editor_id = TEXT_EDITOR_ID
-        else:
-            editor_id = editor_registry.normalize_editor_id(editor_id)
-
-        for i in range(window.editorTabs.count()):
-            widget = window.editorTabs.widget(i)
-            current_editor_id = editor_registry.normalize_editor_id(getattr(widget, "editor_id", TEXT_EDITOR_ID))
-            if window.editorTabs.tabToolTip(i) == file_path and current_editor_id == editor_id:
-                window.editorTabs.setCurrentIndex(i)
-                # 既に開いている場合は即座に適用
-                if params and hasattr(widget, "set_params"):
-                    widget.set_params(params)
-                elif params:
-                    widget.params = params
-                update_editor_selector(i)
-                return
-
-        try:
-            if encoding_type != InspectorEncodingType.Unknown:
-                with open(file_path, "rb") as handle:
-                    raw = handle.read()
-                content, detected_encoding = decode_with_encoding(raw, encoding_type.value)
-            else:
-                content, detected_encoding = read_text_with_detected_encoding(file_path)
-
-            # 新しく開く場合は、まずウィジェットを生成
-            editor = create_editor_widget(
-                editor_id,
-                file_path,
-                content,
-                available_editors,
-                tab_id=next_tab_id(),
-                file_encoding=detected_encoding,
-            )
-            
-            # パラメータがあれば「準備完了後」に適用されるように予約
-            if params:
-                window.pending_params[getattr(editor, "tab_id", None)] = params
-            file_name = os.path.basename(file_path)
-            if editor_id != TEXT_EDITOR_ID:
-                file_name = f"[E] {file_name}"
-
-            icon = project_tree.get_icon_for_path(file_path)
-            index = window.editorTabs.addTab(editor, icon, file_name)
-            window.editorTabs.setTabToolTip(index, file_path)
-            window.editorTabs.setCurrentIndex(index)
-            update_editor_selector(index)
-            project_tree.update_open_editors(window.editorTabs)
-        except Exception as e:
-            print(f"ファイルを開けませんでした: {e}")
-
-    window.open_file = open_file
+    file_open_controller = FileOpenController(
+        window=window,
+        editor_tabs=window.editorTabs,
+        editor_registry=editor_registry,
+        project_tree=project_tree,
+        create_editor_widget=create_editor_widget,
+        get_element_for_path=get_element_for_path,
+        update_editor_selector=update_editor_selector,
+        next_tab_id=next_tab_id,
+        text_editor_id=TEXT_EDITOR_ID,
+    )
+    window.open_file = file_open_controller.open_file
     window.open_untitled_tab = open_untitled_tab
 
     core.api._active_plugin_id_handler = lambda: getattr(project_tree.active_plugin, "id", None)
@@ -1475,246 +1009,30 @@ def main():
             result[plugin_id] = plugin_export_project_data(plugin, context)
         return result
 
-    PROJECT_TYPE_REFERENCE = "reference"
-    PROJECT_TYPE_EMBEDDED = "embedded"
+    project_io = ProjectIOManager(
+        window=window,
+        project_tree=project_tree,
+        base_dir=base_dir,
+        get_plugin_by_id=get_plugin_by_id,
+        select_plugin=select_plugin,
+        active_required_plugins=active_required_plugins,
+        export_all_plugin_data=export_all_plugin_data,
+        plugin_import_project_data=plugin_import_project_data,
+    )
 
-    def normalise_project_type(project_type):
-        if project_type == PROJECT_TYPE_REFERENCE:
-            return PROJECT_TYPE_REFERENCE
-        if project_type == PROJECT_TYPE_EMBEDDED:
-            return PROJECT_TYPE_EMBEDDED
-        return PROJECT_TYPE_REFERENCE
 
-    def current_project_metadata(project_type):
-        project_type = normalise_project_type(project_type)
-        project_path = getattr(project_tree, "current_project_path", None)
-        display_name = os.path.basename(os.path.normpath(project_path)) if project_path else "Untitled Project"
-        metadata = {
-            "schema_version": 1,
-            "project_type": project_type,
-            "required_plugins": active_required_plugins(),
-            "display_name": display_name,
-            "mod_root": "mod" if project_type == PROJECT_TYPE_EMBEDDED else project_path,
-        }
-        if project_type == PROJECT_TYPE_EMBEDDED:
-            metadata["source_mod_root"] = getattr(window, "source_mod_root", None) or project_path
-        return metadata
-
-    def project_context(metadata, project_file, mod_root):
-        return {
-            "project_file": project_file,
-            "project_type": normalise_project_type(metadata.get("project_type")),
-            "mod_root": mod_root,
-            "required_plugins": metadata.get("required_plugins", []),
-            "metadata": metadata,
-        }
-
-    def write_json_file(path, data):
-        parent = os.path.dirname(path)
-        if parent:
-            os.makedirs(parent, exist_ok=True)
-        with open(path, "w", encoding="utf-8") as handle:
-            json.dump(data, handle, indent=4, ensure_ascii=False)
-
-    def read_json_file(path):
-        with open(path, "r", encoding="utf-8") as handle:
-            return json.load(handle)
-
-    def ensure_project_path():
-        project_path = getattr(project_tree, "current_project_path", None)
-        if project_path and os.path.isdir(project_path):
-            return project_path
-        window.statusBar().showMessage("No project folder is open.", 5000)
-        return None
-
-    def project_save_path_dialog():
-        start_dir = getattr(project_tree, "current_project_path", None) or base_dir
-        path, selected_filter = QFileDialog.getSaveFileName(
-            window,
-            "プロジェクトを保存",
-            start_dir,
-            "参照型プロジェクト (*.pdxproj);;内包型プロジェクト (*.pdxpkg)",
-        )
-        if not path:
-            return None
-        if not path.lower().endswith((".pdxproj", ".pdxpkg")):
-            path += ".pdxpkg" if "内包型" in selected_filter else ".pdxproj"
-        return path
-
-    def project_type_for_path(path):
-        return PROJECT_TYPE_EMBEDDED if path.lower().endswith(".pdxpkg") else PROJECT_TYPE_REFERENCE
-
-    def save_reference_project(path):
-        mod_root = ensure_project_path()
-        if not mod_root:
-            return False
-        metadata = current_project_metadata(PROJECT_TYPE_REFERENCE)
-        context = project_context(metadata, path, mod_root)
-        metadata["plugin_data"] = export_all_plugin_data(context)
-        write_json_file(path, metadata)
-        window.current_project_file = path
-        window.current_project_type = PROJECT_TYPE_REFERENCE
-        window.statusBar().showMessage(f"Project saved: {path}", 3000)
-        return True
-
-    def add_directory_to_zip(archive, source_dir, archive_root):
-        for root, _, files in os.walk(source_dir):
-            for filename in files:
-                full_path = os.path.join(root, filename)
-                rel_path = os.path.relpath(full_path, source_dir)
-                archive_path = os.path.join(archive_root, rel_path).replace("\\", "/")
-                archive.write(full_path, archive_path)
-
-    def save_embedded_project(path):
-        mod_root = ensure_project_path()
-        if not mod_root:
-            return False
-        metadata = current_project_metadata(PROJECT_TYPE_EMBEDDED)
-        context = project_context(metadata, path, mod_root)
-        plugin_data = export_all_plugin_data(context)
-        temp_fd, temp_path = tempfile.mkstemp(suffix=".pdxpkg")
-        os.close(temp_fd)
-        with zipfile.ZipFile(temp_path, "w", zipfile.ZIP_DEFLATED) as archive:
-            archive.writestr("project.json", json.dumps(metadata, indent=4, ensure_ascii=False))
-            add_directory_to_zip(archive, mod_root, "mod")
-            for plugin_id, data in plugin_data.items():
-                for data_key, payload in (data or {}).items():
-                    archive.writestr(
-                        f"plugin_data/{plugin_id}/{data_key}.json",
-                        json.dumps(payload, indent=4, ensure_ascii=False),
-                    )
-        os.replace(temp_path, path)
-        window.current_project_file = path
-        window.current_project_type = PROJECT_TYPE_EMBEDDED
-        window.statusBar().showMessage(f"Project package saved: {path}", 3000)
-        return True
-
-    def save_project_to(path):
-        try:
-            if project_type_for_path(path) == PROJECT_TYPE_EMBEDDED:
-                return save_embedded_project(path)
-            return save_reference_project(path)
-        except Exception as error:
-            window.statusBar().showMessage(f"Failed to save project: {error}", 5000)
-            return False
-
-    def save_project():
-        path = getattr(window, "current_project_file", None)
-        if not path:
-            return save_project_as()
-        return save_project_to(path)
-
-    def save_project_as():
-        path = project_save_path_dialog()
-        if not path:
-            return False
-        return save_project_to(path)
-
-    def open_project_dialog():
-        path, _ = QFileDialog.getOpenFileName(
-            window,
-            "プロジェクトを開く",
-            base_dir,
-            "PDX Mod Studio プロジェクト (*.pdxproj *.pdxpkg)",
-        )
-        if path:
-            open_project_file(path)
-
-    def open_file_dialog():
-        path, _ = QFileDialog.getOpenFileName(
-            window,
-            tr("MainWindow", "ファイルを開く"),
-            core.api.get_project_path() or os.getcwd(),
-            tr("MainWindow", "すべてのファイル (*.*)"),
-        )
-        if path:
-            open_file(path)
-
-    def apply_required_plugins(metadata):
-        missing = []
-        for plugin_id in metadata.get("required_plugins", []):
-            plugin = get_plugin_by_id(plugin_id)
-            if plugin:
-                select_plugin(plugin)
-            else:
-                missing.append(plugin_id)
-        if missing:
-            window.statusBar().showMessage(f"Missing required plugins: {', '.join(missing)}", 7000)
-
-    def import_all_plugin_data(metadata, project_file, mod_root, plugin_data):
-        context = project_context(metadata, project_file, mod_root)
-        for plugin_id, data in (plugin_data or {}).items():
-            plugin = get_plugin_by_id(plugin_id)
-            if plugin:
-                plugin_import_project_data(plugin, context, data)
-
-    def open_reference_project(path):
-        metadata = read_json_file(path)
-        mod_root = metadata.get("mod_root")
-        if not mod_root or not os.path.isdir(mod_root):
-            window.statusBar().showMessage("Project mod_root does not exist.", 7000)
-            return False
-        apply_required_plugins(metadata)
-        project_tree.load_project(mod_root)
-        import_all_plugin_data(metadata, path, mod_root, metadata.get("plugin_data", {}))
-        window.current_project_file = path
-        window.current_project_type = PROJECT_TYPE_REFERENCE
-        window.statusBar().showMessage(f"Project opened: {path}", 3000)
-        return True
-
-    def read_zip_json(archive, name):
-        with archive.open(name) as handle:
-            return json.loads(handle.read().decode("utf-8"))
-
-    def open_embedded_project(path):
-        workspace = tempfile.mkdtemp(prefix="pdx_mod_studio_")
-        with zipfile.ZipFile(path, "r") as archive:
-            metadata = read_zip_json(archive, "project.json")
-            archive.extractall(workspace)
-        mod_root = os.path.join(workspace, metadata.get("mod_root", "mod"))
-        if not os.path.isdir(mod_root):
-            window.statusBar().showMessage("Project package does not contain mod/.", 7000)
-            return False
-        apply_required_plugins(metadata)
-        project_tree.load_project(mod_root)
-        plugin_data = {}
-        plugin_data_root = os.path.join(workspace, "plugin_data")
-        for plugin_id in metadata.get("required_plugins", []):
-            plugin_dir = os.path.join(plugin_data_root, plugin_id)
-            plugin_data[plugin_id] = {}
-            if os.path.isdir(plugin_dir):
-                for filename in os.listdir(plugin_dir):
-                    if filename.endswith(".json"):
-                        data_key = os.path.splitext(filename)[0]
-                        plugin_data[plugin_id][data_key] = read_json_file(os.path.join(plugin_dir, filename))
-        import_all_plugin_data(metadata, path, mod_root, plugin_data)
-        window.current_project_file = path
-        window.current_project_type = PROJECT_TYPE_EMBEDDED
-        window.embedded_project_workspace = workspace
-        window.source_mod_root = metadata.get("source_mod_root")
-        window.statusBar().showMessage(f"Project package opened: {path}", 3000)
-        return True
-
-    def open_project_file(path):
-        try:
-            if path.lower().endswith(".pdxpkg"):
-                return open_embedded_project(path)
-            return open_reference_project(path)
-        except Exception as error:
-            window.statusBar().showMessage(f"Failed to open project: {error}", 7000)
-            return False
 
     action_open_project = window.findChild(object, "actionOpenProject")
     if action_open_project:
-        action_open_project.triggered.connect(open_project_dialog)
+        action_open_project.triggered.connect(project_io.open_project_dialog)
 
     action_save_project = window.findChild(object, "actionSaveProject")
     if action_save_project:
-        action_save_project.triggered.connect(save_project)
+        action_save_project.triggered.connect(project_io.save_project)
 
     action_save_project_as = window.findChild(object, "actionSaveProjectAs")
     if action_save_project_as:
-        action_save_project_as.triggered.connect(save_project_as)
+        action_save_project_as.triggered.connect(project_io.save_project_as)
 
     action_save = window.findChild(object, "actionSave")
     if action_save:
@@ -1730,7 +1048,7 @@ def main():
 
     action_open_file = window.findChild(object, "actionOpenFile")
     if action_open_file:
-        action_open_file.triggered.connect(lambda checked=False: open_file_dialog())
+        action_open_file.triggered.connect(lambda checked=False: file_open_controller.open_file_dialog())
 
     def open_settings_dialog():
         from core.dialog.settings import SettingsDialog
@@ -1782,6 +1100,7 @@ def main():
                 return
         try:
             reopen_text_widget_with_encoding(widget, encoding)
+            mark_tab_clean(widget)
         except Exception as error:
             QMessageBox.warning(
                 window,
@@ -1797,7 +1116,7 @@ def main():
             return
         if not editor_registry.is_text_editor(getattr(widget, "editor_id", TEXT_EDITOR_ID)):
             return
-        widget.file_encoding = normalize_encoding_name(encoding) or encoding
+        widget.file_encoding = encoding
         update_encoding_status()
         save_active_tab(False)
 
@@ -1911,16 +1230,19 @@ def main():
     def on_progress(value, text):
         if value < 0 or value >= 100:
             progress_bar.setVisible(False)
-            if text: window.statusBar().showMessage(text, 3000)
+            if text:
+                window.statusBar().showMessage(text, 3000)
         else:
             progress_bar.setVisible(True)
             progress_bar.setValue(value)
-            if text: progress_bar.setFormat(f"{text}: %p%")
-            else: progress_bar.setFormat("%p%")
+            if text:
+                progress_bar.setFormat(f"{text}: %p%")
+            else:
+                progress_bar.setFormat("%p%")
 
     core.api._progress_handler = on_progress
 
-    core.api._open_tab_handler = open_file
+    core.api._open_tab_handler = file_open_controller.open_file
     core.api._open_untitled_tab_handler = open_untitled_tab
     core.api._active_tab_handler = get_active_tab_info
     core.api._tab_plugin_id_handler = get_tab_plugin_id
@@ -1941,263 +1263,13 @@ def main():
     update_encoding_status()
 
     # --- 検索・置換ポップアップの初期化とエディタ連携 ---
-    from PySide6.QtGui import QKeySequence, QShortcut, QTextCharFormat, QColor, QTextCursor
-    from PySide6.QtCore import QObject, QEvent
-    from PySide6.QtWidgets import QTextEdit
-    from core.search_popup import SearchPopUpWidget
-    from core.search_engine import TextDocumentSearcher
-
-    # ポップアップウィジェットの作成とメインウィンドウへの配置
-    search_popup = SearchPopUpWidget(window)
-    search_popup.hide()
-
-    # 検索結果のキャッシュ保持用 {editor_widget: {"occurrences": [...], "current_index": -1, "query": SearchQuery}}
-    search_cache = {}
-
-    def get_current_text_editor():
-        """現在のアクティブなエディタがテキストエディタ(QPlainTextEdit)であればそれを返す"""
-        if not window.editorTabs:
-            return None
-        widget = window.editorTabs.currentWidget()
-        if widget and isinstance(widget, QPlainTextEdit):
-            return widget
-        return None
-
-    def update_search_popup_position():
-        """エディタの右上角にポップアップが吸い付くように位置合わせする"""
-        editor = get_current_text_editor()
-        if not editor or search_popup.isHidden():
-            return
-            
-        # ユーザーによって手動ドラッグ移動された場合は、自動配置（追従）をスキップ
-        if search_popup.manually_moved:
-            return
-            
-        # ポップアップのサイズを明示的に最新化（フロート時のサイズ崩れ防止）
-        search_popup._update_widget_size()
-        
-        # エディタの右上端から少しマージンをあけた位置に配置
-        editor_rect = editor.rect()
-        global_pos = editor.mapTo(window, editor_rect.topRight())
-        
-        # ポップアップのサイズに基づいてX座標を調整
-        popup_width = search_popup.width()
-        x = global_pos.x() - popup_width - 30 # 右側のマージン
-        y = global_pos.y() + 10                # 上側のマージン
-        
-        search_popup.move(x, y)
-        search_popup.raise_()
-
-    def clear_search_highlights(editor):
-        """指定したエディタの検索ハイライトをクリアする"""
-        if editor:
-            editor.setExtraSelections([])
-        if editor in search_cache:
-            search_cache.pop(editor)
-
-    def on_query_changed(query):
-        editor = get_current_text_editor()
-        if not editor:
-            search_popup.set_match_count(0, 0)
-            return
-
-        if query.is_empty():
-            clear_search_highlights(editor)
-            search_popup.set_match_count(0, 0)
-            return
-
-        # QTextDocumentに対する検索実行
-        occurrences = TextDocumentSearcher.search(editor.document(), query)
-        total = len(occurrences)
-        
-        # 現在位置の選定（現在のカーソル位置より後ろにある最初の一致を探す）
-        cursor_pos = editor.textCursor().position()
-        current_idx = -1
-        for idx, occ in enumerate(occurrences):
-            if occ.position >= cursor_pos:
-                current_idx = idx
-                break
-        if current_idx == -1 and total > 0:
-            current_idx = 0  # なければ最初に戻る
-
-        search_cache[editor] = {
-            "occurrences": occurrences,
-            "current_index": current_idx,
-            "query": query
-        }
-
-        apply_highlights(editor)
-
-    def apply_highlights(editor):
-        if editor not in search_cache:
-            return
-
-        cache = search_cache[editor]
-        occurrences = cache["occurrences"]
-        current_idx = cache["current_index"]
-        
-        selections = []
-        
-        # 通常の一致箇所のハイライト (薄い暗黄色)
-        normal_format = QTextCharFormat()
-        normal_format.setBackground(QColor(85, 85, 0, 150))
-        normal_format.setForeground(QColor("#ffffff"))
-
-        # 現在選択されている箇所 (明るいオレンジ)
-        active_format = QTextCharFormat()
-        active_format.setBackground(QColor(216, 108, 0, 200))
-        active_format.setForeground(QColor("#ffffff"))
-
-        for idx, occ in enumerate(occurrences):
-            selection = QTextEdit.ExtraSelection()
-            
-            cursor = editor.textCursor()
-            cursor.setPosition(occ.position)
-            cursor.movePosition(QTextCursor.MoveOperation.Right, QTextCursor.MoveMode.KeepAnchor, occ.length)
-            
-            selection.cursor = cursor
-            selection.format = active_format if idx == current_idx else normal_format
-            selections.append(selection)
-
-        editor.setExtraSelections(selections)
-        search_popup.set_match_count(current_idx + 1 if current_idx >= 0 else 0, len(occurrences))
-
-    def on_find_next():
-        editor = get_current_text_editor()
-        if not editor or editor not in search_cache:
-            return
-            
-        cache = search_cache[editor]
-        occurrences = cache["occurrences"]
-        if not occurrences:
-            return
-
-        # インデックスを進める
-        current_idx = (cache["current_index"] + 1) % len(occurrences)
-        cache["current_index"] = current_idx
-        
-        # カーソル移動とスクロール
-        occ = occurrences[current_idx]
-        cursor = editor.textCursor()
-        cursor.setPosition(occ.position)
-        cursor.movePosition(QTextCursor.MoveOperation.Right, QTextCursor.MoveMode.KeepAnchor, occ.length)
-        editor.setTextCursor(cursor)
-        editor.ensureCursorVisible()
-
-        apply_highlights(editor)
-
-    def on_find_previous():
-        editor = get_current_text_editor()
-        if not editor or editor not in search_cache:
-            return
-            
-        cache = search_cache[editor]
-        occurrences = cache["occurrences"]
-        if not occurrences:
-            return
-
-        # インデックスを戻す
-        current_idx = (cache["current_index"] - 1) % len(occurrences)
-        cache["current_index"] = current_idx
-        
-        # カーソル移動とスクロール
-        occ = occurrences[current_idx]
-        cursor = editor.textCursor()
-        cursor.setPosition(occ.position)
-        cursor.movePosition(QTextCursor.MoveOperation.Right, QTextCursor.MoveMode.KeepAnchor, occ.length)
-        editor.setTextCursor(cursor)
-        editor.ensureCursorVisible()
-
-        apply_highlights(editor)
-
-    def on_replace_requested(search_text, replace_text):
-        editor = get_current_text_editor()
-        if not editor or editor not in search_cache:
-            return
-            
-        cache = search_cache[editor]
-        occurrences = cache["occurrences"]
-        current_idx = cache["current_index"]
-        
-        if current_idx < 0 or current_idx >= len(occurrences):
-            return
-            
-        occ = occurrences[current_idx]
-        
-        cursor = editor.textCursor()
-        cursor.setPosition(occ.position)
-        cursor.movePosition(QTextCursor.MoveOperation.Right, QTextCursor.MoveMode.KeepAnchor, occ.length)
-        
-        # 選択部分のテキストを取得して検証
-        if cursor.selectedText() == search_text or not cache["query"].match_case:
-            cursor.insertText(replace_text)
-            
-            # 再検索して結果とハイライトを更新
-            on_query_changed(cache["query"])
-
-    def on_replace_all_requested(search_text, replace_text):
-        editor = get_current_text_editor()
-        if not editor or editor not in search_cache:
-            return
-            
-        cache = search_cache[editor]
-        occurrences = cache["occurrences"]
-        if not occurrences:
-            return
-            
-        # 逆順から置換して位置ズレを防ぐ
-        cursor = editor.textCursor()
-        cursor.beginEditBlock()
-        try:
-            for occ in reversed(occurrences):
-                cursor.setPosition(occ.position)
-                cursor.movePosition(QTextCursor.MoveOperation.Right, QTextCursor.MoveMode.KeepAnchor, occ.length)
-                cursor.insertText(replace_text)
-        finally:
-            cursor.endEditBlock()
-            
-        # 再検索してUIを更新
-        on_query_changed(cache["query"])
-
-    def show_search_popup():
-        editor = get_current_text_editor()
-        if not editor:
-            return
-        
-        # 既に表示されている場合はトグルで非表示にする
-        if not search_popup.isHidden():
-            hide_search_popup()
-            return
-            
-        # 新規オープン時は手動移動フラグをリセットし、初期位置（右上）から開始
-        search_popup.manually_moved = False
-        search_popup.show_popup()
-        update_search_popup_position()
-
-    def hide_search_popup():
-        editor = get_current_text_editor()
-        clear_search_highlights(editor)
-        search_popup.hide_popup()
-        if editor:
-            editor.setFocus()
-
-    # シグナルの接続
-    search_popup.query_changed.connect(on_query_changed)
-    search_popup.find_next.connect(on_find_next)
-    search_popup.find_previous.connect(on_find_previous)
-    search_popup.replace_requested.connect(on_replace_requested)
-    search_popup.replace_all_requested.connect(on_replace_all_requested)
-    search_popup.close_requested.connect(hide_search_popup)
-
-    # ショートカットキー Ctrl+F の登録
-    find_shortcut = QShortcut(QKeySequence("Ctrl+F"), window)
-    find_shortcut.activated.connect(show_search_popup)
+    search_controller = SearchController(window, window.editorTabs)
 
     # ウィンドウの移動・リサイズ・ドラッグ＆ドロップ時に適切な処理を行うためのイベントフィルター
     class WindowEventFilter(QObject):
         def eventFilter(self, watched, event):
             if event.type() in (QEvent.Type.Resize, QEvent.Type.Move):
-                update_search_popup_position()
+                search_controller.update_search_popup_position()
             elif event.type() == QEvent.Type.DragEnter:
                 if event.mimeData().hasUrls():
                     event.acceptProposedAction()
@@ -2211,7 +1283,7 @@ def main():
                         continue
                     if os.path.isfile(file_path):
                         # ファイルの場合のみそのままエディタで開く（プロジェクト外でも同様に開く）
-                        open_file(file_path)
+                        file_open_controller.open_file(file_path)
                 event.acceptProposedAction()
                 return True
             return False
@@ -2219,15 +1291,7 @@ def main():
     filter_obj = WindowEventFilter(window)
     window.installEventFilter(filter_obj)
 
-    # タブが切り替わった時に古いハイライトを消してポップアップの位置を更新
-    if window.editorTabs:
-        # ラムダの多重定義を避けるため独立したスロットを定義
-        def on_tab_changed(idx):
-            clear_search_highlights(window.editorTabs.widget(idx))
-            if not search_popup.isHidden():
-                update_search_popup_position()
-                on_query_changed(search_popup.get_query())
-        window.editorTabs.currentChanged.connect(on_tab_changed)
+
 
     # 起動時のフォント設定適用
     from core.dialog.settings import settings_manager

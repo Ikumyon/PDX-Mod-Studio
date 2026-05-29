@@ -1,5 +1,6 @@
 import os
 from enum import Enum
+import core.pdx_inspector as pdx_inspector
 
 class FileType(Enum):
     Binary = 1
@@ -15,8 +16,7 @@ class EncodingType(Enum):
 
 def inspect_file(file_path: str) -> tuple[FileType, EncodingType]:
     """
-    ファイルをスキャンし、バイナリ判定および最適な文字エンコーディングを返します。
-    将来的に PyO3 を用いて Rust 側に差し替え可能な設計です。
+    Rust の pdx_inspector を用いて、ファイルのバイナリ判定および最適な文字エンコーディングを返します。
     """
     if not file_path or not os.path.exists(file_path):
         return FileType.Text, EncodingType.Unknown
@@ -31,36 +31,12 @@ def inspect_file(file_path: str) -> tuple[FileType, EncodingType]:
         return FileType.Binary, EncodingType.Unknown
 
     try:
-        # 先頭 8KB のみを読み込んで高速判定
-        with open(file_path, "rb") as f:
-            raw = f.read(8192)
+        ft_int, enc_str = pdx_inspector.inspect_file(file_path)
+        ft = FileType.Binary if ft_int == 1 else FileType.Text
+        try:
+            enc = EncodingType(enc_str)
+        except ValueError:
+            enc = EncodingType.Unknown
+        return ft, enc
     except Exception:
         return FileType.Binary, EncodingType.Unknown
-
-    # 1. BOM判定
-    if raw.startswith(b"\xef\xbb\xbf"):
-        return FileType.Text, EncodingType.Utf8Bom
-    if raw.startswith(b"\xff\xfe"):
-        return FileType.Text, EncodingType.Utf16Le
-    if raw.startswith(b"\xfe\xff"):
-        return FileType.Text, EncodingType.Utf16Be
-
-    # 2. バイナリ判定 (ヌルバイトチェック)
-    if b"\x00" in raw:
-        return FileType.Binary, EncodingType.Unknown
-
-    # 3. UTF-8 バリデーション
-    try:
-        raw.decode("utf-8")
-        return FileType.Text, EncodingType.Utf8
-    except UnicodeDecodeError:
-        pass
-
-    # 4. CP932 / Shift_JIS 検証
-    try:
-        raw.decode("cp932")
-        return FileType.Text, EncodingType.Cp932
-    except UnicodeDecodeError:
-        pass
-
-    return FileType.Text, EncodingType.Unknown
