@@ -1,20 +1,6 @@
-"""PDX Mod Studio application entry point.
-
-NOTE:
-    This cleaned version keeps the original runtime structure intact while
-    reducing import noise and removing one unused legacy helper.
-    A fuller refactor should move the nested managers out of ``main()``.
-"""
-
-import codecs
 import fnmatch
-import json
-import locale
 import os
-import re
 import sys
-import tempfile
-import zipfile
 
 import core.api
 from core import save_result as save_result_utils
@@ -40,15 +26,11 @@ from PySide6.QtGui import QAction
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtWidgets import (
     QApplication,
-    QFileDialog,
     QHBoxLayout,
     QMenu,
     QMessageBox,
     QPlainTextEdit,
-    QStackedWidget,
-    QTabBar,
     QToolButton,
-    QVBoxLayout,
     QWidget,
 )
 
