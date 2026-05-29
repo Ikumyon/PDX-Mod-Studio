@@ -4,7 +4,6 @@ import importlib.util
 import tomllib
 import core.api
 from core.syntax_engine import (
-    build_element_definitions_from_files,
     load_plugin_file_map,
     resolve_manifest_display_text,
     translate_from_files_map,
@@ -120,23 +119,8 @@ class Plugin:
         return load_plugin_file_map(self.path, self.raw, self.id)
 
     def load_elements_from_files(self):
-        if not self.raw.get("files"):
-            self.clear_elements()
-            return
-        file_map = self.get_manifest_file_map()
         self.clear_elements()
-        entries = build_element_definitions_from_files(
-            file_map,
-            translate=lambda key, fallback: self.translate(key, fallback=fallback),
-            plugin_id=self.id,
-        )
-        for entry in entries:
-            self.add_element(
-                id=entry["id"],
-                name=entry["name"],
-                path=entry["path"],
-                raw=entry,
-            )
+        # grammar_modes.toml の中身(文法モード定義)の読み込みは、まだ仕様未確定のため行いません。
 
     def translate(self, key, fallback=None, context=None, metadata=None):
         if self.module:

@@ -1,6 +1,5 @@
 from .bundle import GrammarBundle
 from .plugin_files import (
-    build_element_definitions_from_files,
     extract_base_directory,
     load_plugin_file_map,
     resolve_file_map_path,
@@ -36,7 +35,6 @@ __all__ = [
     "ValidationResult",
     "ValueNode",
     "ValueTypeRule",
-    "build_element_definitions_from_files",
     "extract_base_directory",
     "load_plugin_file_map",
     "resolve_file_map_path",

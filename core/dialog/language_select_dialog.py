@@ -7,7 +7,8 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QPushButton,
-    QDialogButtonBox
+    QDialogButtonBox,
+    QCheckBox
 )
 
 tr = QCoreApplication.translate
@@ -28,33 +29,32 @@ class LanguageSelectDialog(QDialog):
         label = QLabel(tr("MainWindow", "適用する言語モードを選択してください:"))
         layout.addWidget(label)
 
+        # 自動判別チェックボックスを追加
+        self.auto_checkbox = QCheckBox(tr("MainWindow", "自動判別"), self)
+        self.auto_checkbox.stateChanged.connect(self._on_auto_changed)
+        layout.addWidget(self.auto_checkbox)
+
         self.list_widget = QListWidget(self)
         layout.addWidget(self.list_widget)
 
-        # 項目を追加
-        # 1. 自動判別
-        item_auto = QListWidgetItem(tr("MainWindow", "自動判別"))
-        item_auto.setData(Qt.ItemDataRole.UserRole, "auto")
-        self.list_widget.addItem(item_auto)
-        if current_mode == "auto":
-            self.list_widget.setCurrentItem(item_auto)
-
-        # 2. プレーンテキスト
+        # 1. プレーンテキスト
         item_plain = QListWidgetItem(tr("MainWindow", "プレーンテキスト"))
         item_plain.setData(Qt.ItemDataRole.UserRole, "plain_text")
         self.list_widget.addItem(item_plain)
-        if current_mode == "plain_text":
-            self.list_widget.setCurrentItem(item_plain)
 
-        # 3. 各種要素定義
-        for elem in available_elements:
-            name = getattr(elem, "name", elem.id)
-            item = QListWidgetItem(name)
-            item.setData(Qt.ItemDataRole.UserRole, elem)
-            self.list_widget.addItem(item)
-            # 現在のモードが Element オブジェクトでIDが一致する場合
-            if hasattr(current_mode, "id") and current_mode.id == elem.id:
-                self.list_widget.setCurrentItem(item)
+        # 2. 各種要素定義 (一時的に読み込まないようにコメントアウト)
+        #ここにあった
+
+        # 初期状態の設定
+        if current_mode == "auto":
+            self.auto_checkbox.setChecked(True)
+            self.list_widget.setEnabled(False)
+            self.list_widget.setCurrentItem(item_plain)
+        else:
+            self.auto_checkbox.setChecked(False)
+            self.list_widget.setEnabled(True)
+            if current_mode == "plain_text":
+                self.list_widget.setCurrentItem(item_plain)
 
         # ダブルクリックで決定
         self.list_widget.itemDoubleClicked.connect(self._on_item_double_clicked)
@@ -68,12 +68,21 @@ class LanguageSelectDialog(QDialog):
         self.button_box.rejected.connect(self.reject)
         layout.addWidget(self.button_box)
 
+    def _on_auto_changed(self, state):
+        is_auto = (state == Qt.CheckState.Checked.value)
+        self.list_widget.setEnabled(not is_auto)
+
     def _on_item_double_clicked(self, item):
-        self.selected_mode = item.data(Qt.ItemDataRole.UserRole)
-        self.accept()
+        if not self.auto_checkbox.isChecked():
+            self.selected_mode = item.data(Qt.ItemDataRole.UserRole)
+            self.accept()
 
     def _on_accepted(self):
-        item = self.list_widget.currentItem()
-        if item:
-            self.selected_mode = item.data(Qt.ItemDataRole.UserRole)
+        if self.auto_checkbox.isChecked():
+            self.selected_mode = "auto"
+        else:
+            item = self.list_widget.currentItem()
+            if item:
+                self.selected_mode = item.data(Qt.ItemDataRole.UserRole)
         self.accept()
+

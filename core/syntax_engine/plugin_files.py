@@ -7,10 +7,10 @@ from typing import Any, Callable
 
 
 def load_plugin_file_map(plugin_root: str | Path, manifest: dict[str, Any], plugin_id: str) -> dict[str, Any]:
-    files_path = manifest.get("files")
-    if not isinstance(files_path, str) or not files_path:
-        raise ValueError(f"Plugin '{plugin_id}' is missing the required 'files' manifest entry.")
-    target = Path(plugin_root) / files_path
+    grammar_modes_path = manifest.get("grammar_modes")
+    if not isinstance(grammar_modes_path, str) or not grammar_modes_path:
+        raise ValueError(f"Plugin '{plugin_id}' is missing the required 'grammar_modes' manifest entry.")
+    target = Path(plugin_root) / grammar_modes_path
     with open(target, "rb") as handle:
         return tomllib.load(handle)
 
@@ -22,62 +22,11 @@ def resolve_file_map_path(file_map: dict[str, Any], dotted_key: str) -> str:
         walked.append(part)
         if not isinstance(current, dict) or part not in current:
             joined = ".".join(walked)
-            raise ValueError(f"Missing '{joined}' in plugin files.toml.")
+            raise ValueError(f"Missing '{joined}' in plugin grammar_modes.toml.")
         current = current[part]
     if not isinstance(current, str) or not current:
-        raise ValueError(f"Invalid path for '{dotted_key}' in plugin files.toml.")
+        raise ValueError(f"Invalid path for '{dotted_key}' in plugin grammar_modes.toml.")
     return current
-
-
-def build_element_definitions_from_files(
-    file_map: dict[str, Any],
-    translate: Callable[[str, str | None], str],
-    plugin_id: str,
-) -> list[dict[str, Any]]:
-    files = file_map.get("files")
-    if not isinstance(files, list):
-        raise ValueError(f"Plugin '{plugin_id}' is missing the required 'files' array in files.toml.")
-
-    result: list[dict[str, Any]] = []
-    for entry in files:
-        if not isinstance(entry, dict):
-            raise ValueError(f"Plugin '{plugin_id}' has an invalid file entry in files.toml.")
-
-        element_id = entry.get("id")
-        name_key = entry.get("name_key")
-        path = entry.get("path")
-        schema = entry.get("schema")
-
-        if not isinstance(element_id, str) or not element_id:
-            raise ValueError(f"Plugin '{plugin_id}' has a file entry without a valid 'id' in files.toml.")
-        if not isinstance(name_key, str) or not name_key:
-            raise ValueError(f"Plugin '{plugin_id}' has a file entry without a valid 'name_key' in files.toml.")
-        if not isinstance(path, str) or not path:
-            raise ValueError(f"Plugin '{plugin_id}' has a file entry without a valid 'path' in files.toml.")
-        if not isinstance(schema, str) or not schema:
-            raise ValueError(f"Plugin '{plugin_id}' has a file entry without a valid 'schema' in files.toml.")
-
-        base_dir = extract_base_directory(path)
-        display_name = translate(name_key, name_key)
-        result.append(
-            {
-                **entry,
-                "id": element_id,
-                "name": display_name,
-                "path": base_dir,
-                "resolved_name": display_name,
-                "match_glob": path,
-                "schema_rules": [
-                    {
-                        "path": base_dir,
-                        "schema": schema,
-                        "role": entry.get("role"),
-                        "exclude": entry.get("exclude", []),
-                    }
-                ],
-            }
-        )
-    return result
 
 
 def resolve_manifest_display_text(
@@ -113,11 +62,11 @@ def translate_from_files_map(
     if not key:
         return fallback_text or ""
 
-    files_path = manifest.get("files")
-    if not isinstance(files_path, str) or not files_path:
+    grammar_modes_path = manifest.get("grammar_modes")
+    if not isinstance(grammar_modes_path, str) or not grammar_modes_path:
         return fallback_text
 
-    file_map_path = Path(plugin_root) / files_path
+    file_map_path = Path(plugin_root) / grammar_modes_path
     with open(file_map_path, "rb") as handle:
         file_map = tomllib.load(handle)
 
