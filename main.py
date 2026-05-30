@@ -21,7 +21,7 @@ from core.inspector import (
     inspect_file,
 )
 from core.syntax_engine import GrammarBundle
-from PySide6.QtCore import QFile, QCoreApplication, QSize, Qt, Signal, QObject, QEvent
+from PySide6.QtCore import QFile, QCoreApplication, QSize, Qt, Signal, QObject, QEvent, QTimer
 from PySide6.QtGui import QAction
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtWidgets import (
@@ -178,6 +178,7 @@ def main():
         update_editor_selector(index)
         update_split_editor_button()
         update_encoding_status()
+        schedule_language_diagnostics(window.editorTabs.widget(index) if index >= 0 else None)
 
     window.editorTabs.currentChanged.connect(on_tab_changed)
 
@@ -263,16 +264,34 @@ def main():
             return None
         
         try:
-            rel_path = os.path.relpath(file_path, project_tree.current_project_path)
-            norm_rel_dir = os.path.normpath(os.path.dirname(rel_path))
-            
+            rel_path = os.path.relpath(file_path, project_tree.current_project_path).replace("\\", "/")
             for element in plugin.elements:
-                e_path = os.path.normpath(element.path)
-                if norm_rel_dir == e_path or norm_rel_dir.startswith(e_path + os.sep):
+                pattern = str(element.path or "").replace("\\", "/")
+                if not pattern or not fnmatch.fnmatch(rel_path, pattern):
+                    continue
+                excludes = element.raw.get("exclude") or []
+                if any(isinstance(exclude, str) and fnmatch.fnmatch(rel_path, exclude) for exclude in excludes):
+                    continue
                     return element
         except Exception:
             pass
         return None
+
+    def get_element_for_widget(widget):
+        if not widget:
+            return None
+        forced = getattr(widget, "forced_element", None)
+        if forced == "plain_text":
+            return None
+        if forced is not None:
+            return forced
+
+        file_path = getattr(widget, "file_path", "")
+        element = get_element_for_path(file_path)
+        if element is not None:
+            widget.active_element = element
+            return element
+        return getattr(widget, "active_element", None)
 
     def get_available_editors_for_file(file_path, include_script=True):
         editors = [
@@ -408,26 +427,33 @@ def main():
     def _tab_text_without_dirty_marker(text):
         return text[1:] if text.startswith("*") else text
 
+    def update_tab_label(widget):
+        if not window.editorTabs or not widget:
+            return
+        index = window.editorTabs.indexOf(widget)
+        if index < 0:
+            return
+        base_text = getattr(widget, "tab_base_text", None)
+        if not base_text:
+            base_text = _tab_text_without_dirty_marker(window.editorTabs.tabText(index))
+            widget.tab_base_text = base_text
+        diagnostic_count = int(getattr(widget, "diagnostic_count", 0) or 0)
+        text = f"{base_text} {diagnostic_count}" if diagnostic_count > 0 else base_text
+        if getattr(widget, "is_dirty", False):
+            text = f"*{text}"
+        window.editorTabs.setTabText(index, text)
+
     def mark_tab_dirty(widget):
         if getattr(widget, "is_dirty", False):
             return
         widget.is_dirty = True
-        index = window.editorTabs.indexOf(widget)
-        if index >= 0:
-            text = window.editorTabs.tabText(index)
-            if not text.startswith("*"):
-                window.editorTabs.setTabText(index, f"*{text}")
-            project_tree.update_open_editors(window.editorTabs)
+        update_tab_label(widget)
+        project_tree.update_open_editors(window.editorTabs)
 
     def mark_tab_clean(widget):
         widget.is_dirty = False
-        index = window.editorTabs.indexOf(widget)
-        if index >= 0:
-            text = window.editorTabs.tabText(index)
-            clean_text = _tab_text_without_dirty_marker(text)
-            if clean_text != text:
-                window.editorTabs.setTabText(index, clean_text)
-            project_tree.update_open_editors(window.editorTabs)
+        update_tab_label(widget)
+        project_tree.update_open_editors(window.editorTabs)
 
     def update_saved_widget_path(widget, path):
         if not path:
@@ -438,7 +464,8 @@ def main():
             window.editorTabs.setTabToolTip(index, path)
             clean_text = _tab_text_without_dirty_marker(window.editorTabs.tabText(index))
             editor_prefix = "[E] " if clean_text.startswith("[E] ") else ""
-            window.editorTabs.setTabText(index, f"{editor_prefix}{os.path.basename(path)}")
+            widget.tab_base_text = f"{editor_prefix}{os.path.basename(path)}"
+            update_tab_label(widget)
             project_tree.update_open_editors(window.editorTabs)
 
     def show_save_result_message(result, default_timeout=5000):
@@ -568,25 +595,28 @@ def main():
         view_menu.addAction(action_word_wrap)
 
     def resolve_schema_for_file(element, file_path):
-        if not element or not file_path or file_path.startswith("untitled:"):
+        if not element:
             return None
-        project_path = getattr(project_tree, "current_project_path", None)
-        if not project_path:
-            return None
+        is_virtual_path = not file_path or str(file_path).startswith("untitled:")
 
-        try:
-            rel_path = os.path.relpath(file_path, project_path).replace("\\", "/")
-        except Exception:
-            return None
-
-        match_glob = element.raw.get("match_glob")
-        if isinstance(match_glob, str) and match_glob and not fnmatch.fnmatch(rel_path, match_glob):
-            return None
-
-        excludes = element.raw.get("exclude") or []
-        for exclude in excludes:
-            if isinstance(exclude, str) and fnmatch.fnmatch(rel_path, exclude):
+        if not is_virtual_path:
+            project_path = getattr(project_tree, "current_project_path", None)
+            if not project_path:
                 return None
+
+            try:
+                rel_path = os.path.relpath(file_path, project_path).replace("\\", "/")
+            except Exception:
+                return None
+
+            match_glob = element.raw.get("match_glob")
+            if isinstance(match_glob, str) and match_glob and not fnmatch.fnmatch(rel_path, match_glob):
+                return None
+
+            excludes = element.raw.get("exclude") or []
+            for exclude in excludes:
+                if isinstance(exclude, str) and fnmatch.fnmatch(rel_path, exclude):
+                    return None
 
         schema = element.raw.get("schema")
         if isinstance(schema, str) and schema:
@@ -601,54 +631,69 @@ def main():
                 return schema_path
         return None
 
-    def run_schema_check():
-        active_tab = get_active_tab_info()
-        if not active_tab:
-            window.statusBar().showMessage("文法チェック対象のタブがありません。", 4000)
+    def clear_language_diagnostics(widget):
+        if not widget:
+            return
+        widget.diagnostic_count = 0
+        if hasattr(widget, "clear_diagnostics"):
+            widget.clear_diagnostics()
+        update_tab_label(widget)
+
+    def schedule_language_diagnostics(widget=None):
+        if widget is None:
+            widget = window.editorTabs.currentWidget() if window.editorTabs else None
+        if not widget or not hasattr(widget, "set_diagnostics"):
             return
 
-        file_path = active_tab.get("path")
-        widget = window.editorTabs.currentWidget() if window.editorTabs else None
-        text = get_widget_text_content(widget)
-        if text is None:
-            QMessageBox.warning(window, "文法チェック", "現在のタブはテキスト内容の取得に対応していません。")
-            return
+        timer = getattr(widget, "_language_diagnostic_timer", None)
+        if timer is None:
+            timer = QTimer(widget)
+            timer.setSingleShot(True)
+            timer.timeout.connect(lambda w=widget: validate_language_diagnostics(w))
+            widget._language_diagnostic_timer = timer
+        timer.start(350)
 
-        element = get_element_for_path(file_path)
-        if not element:
-            QMessageBox.warning(window, "文法チェック", "このファイルに対応する要素を特定できません。")
+    def schedule_all_language_diagnostics():
+        if not window.editorTabs:
             return
+        for index in range(window.editorTabs.count()):
+            schedule_language_diagnostics(window.editorTabs.widget(index))
 
-        schema_path = resolve_schema_for_file(element, file_path)
-        if not schema_path:
-            QMessageBox.warning(window, "文法チェック", "このファイルに対応するスキーマを特定できません。")
-            return
-
+    def validate_language_diagnostics(widget):
         try:
+            if not widget or not hasattr(widget, "set_diagnostics"):
+                return
+            if not editor_registry.is_text_editor(getattr(widget, "editor_id", TEXT_EDITOR_ID)):
+                clear_language_diagnostics(widget)
+                return
+
+            file_path = getattr(widget, "file_path", "")
+            element = get_element_for_widget(widget)
+            if not element:
+                clear_language_diagnostics(widget)
+                return
+
+            schema_path = resolve_schema_for_file(element, file_path)
+            if not schema_path:
+                clear_language_diagnostics(widget)
+                return
+
+            text = get_widget_text_content(widget)
+            if text is None:
+                clear_language_diagnostics(widget)
+                return
+
             bundle = GrammarBundle.from_plugin(element.plugin)
             result = bundle.validate_schema_path(text, schema_path)
+            widget.diagnostic_count = len(result.diagnostics)
+            widget.set_diagnostics(result.diagnostics)
+            update_tab_label(widget)
+        except (RuntimeError, ReferenceError):
+            return
         except Exception as error:
-            QMessageBox.critical(window, "文法チェック", f"文法チェックに失敗しました: {error}")
-            return
-
-        if result.is_valid:
-            window.statusBar().showMessage(f"文法チェックOK: {schema_path}", 5000)
-            QMessageBox.information(window, "文法チェック", f"スキーマ: {schema_path}\n診断: 0件")
-            return
-
-        diagnostics = "\n".join(f"- {diag.path}: {diag.message}" for diag in result.diagnostics[:20])
-        if len(result.diagnostics) > 20:
-            diagnostics += f"\n... 他 {len(result.diagnostics) - 20} 件"
-
-        window.statusBar().showMessage(
-            f"文法チェックNG: {schema_path} ({len(result.diagnostics)}件)",
-            7000,
-        )
-        QMessageBox.warning(
-            window,
-            "文法チェック",
-            f"スキーマ: {schema_path}\n診断: {len(result.diagnostics)}件\n\n{diagnostics}",
-        )
+            clear_language_diagnostics(widget)
+            if window.editorTabs and window.editorTabs.currentWidget() is widget:
+                window.statusBar().showMessage(f"文法診断エラー: {error}", 5000)
 
     def create_editor_widget(editor_id, file_path, content, available_editors, params=None, tab_id=None, file_encoding=None):
         editor_id = editor_registry.normalize_editor_id(editor_id)
@@ -659,6 +704,7 @@ def main():
             widget.tab_id = tab_id
             widget.setPlainText(content)
             widget.textChanged.connect(lambda w=widget: mark_tab_dirty(w))
+            widget.textChanged.connect(lambda w=widget: schedule_language_diagnostics(w))
         else:
             widget = editor_registry.create_editor_widget(editor_id, window.editorTabs, file_path, content, tab_id=tab_id)
             if not widget:
@@ -671,11 +717,14 @@ def main():
         widget.content = content
         widget.available_editors = available_editors
         widget.is_dirty = False
+        widget.diagnostic_count = 0
         widget.save_plan = None
         if params:
             widget.params = params
+        widget.tab_base_text = os.path.basename(file_path) if file_path and not str(file_path).startswith("untitled:") else ""
         element = get_element_for_path(file_path)
         if element:
+            widget.active_element = element
             widget.active_plugin = element.plugin
         widget._last_notified_content = content # 最後に通知したときの内容
 
@@ -691,8 +740,6 @@ def main():
         widget.setFont(font_editor)
         
         if editor_id != TEXT_EDITOR_ID:
-            from PySide6.QtCore import QTimer
-
             def check_content_change(w=widget):
                 try:
                     current_content = getattr(w, "content", None)
@@ -707,6 +754,7 @@ def main():
             widget._dirty_timer.timeout.connect(check_content_change)
             widget._dirty_timer.start(100)
         apply_word_wrap_to_widget(widget)
+        schedule_language_diagnostics(widget)
         return widget
 
     def split_active_editor_right():
@@ -740,7 +788,9 @@ def main():
         if getattr(source_widget, "params", None) is not None:
             window.pending_params[split_tab_id] = getattr(source_widget, "params")
 
-        tab_name = window.editorTabs.tabText(source_index)
+        tab_name = getattr(source_widget, "tab_base_text", None) or _tab_text_without_dirty_marker(window.editorTabs.tabText(source_index))
+        split_widget.tab_base_text = tab_name
+        split_widget.diagnostic_count = int(getattr(source_widget, "diagnostic_count", 0) or 0)
         icon = window.editorTabs.tabIcon(source_index)
         target_pane = window.editorTabs.createPaneAfterActive()
         new_index = window.editorTabs.addTabToPane(
@@ -751,6 +801,7 @@ def main():
         )
         window.editorTabs.setTabToolTip(new_index, file_path)
         window.editorTabs.setCurrentIndex(new_index)
+        update_tab_label(split_widget)
 
         if getattr(source_widget, "is_dirty", False):
             mark_tab_dirty(split_widget)
@@ -880,12 +931,14 @@ def main():
                 path = window.editorTabs.tabToolTip(i)
                 elem = get_element_for_path(path)
                 if elem:
+                    w.active_element = elem
                     w.available_editors = editor_registry.get_editors_for_element(elem)
                 else:
                     w.available_editors = []
             update_editor_selector(window.editorTabs.currentIndex())
             if "update_encoding_status" in locals():
                 update_encoding_status()
+            schedule_all_language_diagnostics()
 
 
     # メニューバーにコンボボックスを配置
@@ -1136,12 +1189,16 @@ def main():
             selected = dialog.selected_mode
             if selected == "auto":
                 widget.forced_element = None
+                widget.active_element = get_element_for_path(getattr(widget, "file_path", ""))
             elif selected == "plain_text":
                 widget.forced_element = "plain_text"
+                widget.active_element = None
             else:
                 widget.forced_element = selected
+                widget.active_element = selected
 
             update_language_status()
+            schedule_language_diagnostics(widget)
 
     def update_language_status():
         widget = window.editorTabs.currentWidget() if window.editorTabs else None
@@ -1160,12 +1217,12 @@ def main():
         forced = getattr(widget, "forced_element", None)
         if forced == "plain_text":
             language_button.setText("プレーンテキスト")
+            clear_language_diagnostics(widget)
         elif forced is not None:
             name = getattr(forced, "name", getattr(forced, "id", "不明なモード"))
             language_button.setText(f"{name} (手動)")
         else:
-            file_path = getattr(widget, "file_path", "")
-            element = get_element_for_path(file_path)
+            element = get_element_for_widget(widget)
             if element:
                 name = getattr(element, "name", getattr(element, "id", "不明なモード"))
                 language_button.setText(name)

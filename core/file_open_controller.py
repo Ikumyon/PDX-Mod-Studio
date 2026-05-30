@@ -93,6 +93,7 @@ class FileOpenController:
             file_name = os.path.basename(file_path)
             if editor_id != self.text_editor_id:
                 file_name = f"[E] {file_name}"
+            editor.tab_base_text = file_name
 
             icon = self.project_tree.get_icon_for_path(file_path)
             index = self.editor_tabs.addTab(editor, icon, file_name)

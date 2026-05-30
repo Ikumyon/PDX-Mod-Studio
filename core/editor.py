@@ -5,7 +5,7 @@ from core import save_result
 from PySide6.QtWidgets import (
     QFileDialog, QPlainTextEdit, QTextEdit, QWidget, QScrollBar
 )
-from PySide6.QtGui import QFont, QColor, QPainter, QTextFormat
+from PySide6.QtGui import QFont, QColor, QPainter, QPen, QTextCharFormat, QTextCursor, QTextFormat
 from PySide6.QtCore import Qt, QSize, QRect
 
 
@@ -214,6 +214,7 @@ class EditorWidget(QPlainTextEdit):
         self.update_line_number_area_width(0)
         self.highlight_current_line()
         self.save_plan = None
+        self._diagnostics = []
 
     def setFont(self, font):
         super().setFont(font)
@@ -374,9 +375,15 @@ class EditorWidget(QPlainTextEdit):
     def highlight_current_line(self):
         self.update_extra_selections()
 
+    def set_diagnostics(self, diagnostics):
+        self._diagnostics = list(diagnostics or [])
+        self.update_extra_selections()
+
+    def clear_diagnostics(self):
+        self.set_diagnostics([])
+
     def update_extra_selections(self):
         extra_selections = []
-        content = self.toPlainText()
 
         # 1. 現在行のハイライト
         if not self.isReadOnly():
@@ -390,7 +397,89 @@ class EditorWidget(QPlainTextEdit):
             selection.cursor.clearSelection()
             extra_selections.append(selection)
 
+        for diagnostic in getattr(self, "_diagnostics", []):
+            selection = self._diagnostic_selection(diagnostic)
+            if selection is not None:
+                extra_selections.append(selection)
+
         self.setExtraSelections(extra_selections)
+        self.viewport().update()
+
+    def _diagnostic_selection(self, diagnostic):
+        line = max(1, int(getattr(diagnostic, "line", 1) or 1))
+        column = max(1, int(getattr(diagnostic, "column", 1) or 1))
+        length = max(1, int(getattr(diagnostic, "length", 1) or 1))
+
+        block = self.document().findBlockByNumber(line - 1)
+        if not block.isValid():
+            return None
+
+        start = block.position() + min(column - 1, max(0, block.length() - 1))
+        end = min(start + length, block.position() + max(0, block.length() - 1))
+        if end <= start:
+            end = min(start + 1, block.position() + max(0, block.length() - 1))
+
+        cursor = QTextCursor(self.document())
+        cursor.setPosition(start)
+        cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+
+        fmt = QTextCharFormat()
+        fmt.setUnderlineStyle(QTextCharFormat.UnderlineStyle.WaveUnderline)
+        severity = getattr(diagnostic, "severity", "error")
+        fmt.setUnderlineColor(QColor("#d83b3b") if severity != "warning" else QColor("#d8a53b"))
+
+        selection = QTextEdit.ExtraSelection()
+        selection.cursor = cursor
+        selection.format = fmt
+        return selection
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        self._paint_diagnostic_underlines()
+
+    def _paint_diagnostic_underlines(self):
+        diagnostics = getattr(self, "_diagnostics", [])
+        if not diagnostics:
+            return
+
+        painter = QPainter(self.viewport())
+        for diagnostic in diagnostics:
+            line = max(1, int(getattr(diagnostic, "line", 1) or 1))
+            column = max(1, int(getattr(diagnostic, "column", 1) or 1))
+            length = max(1, int(getattr(diagnostic, "length", 1) or 1))
+
+            block = self.document().findBlockByNumber(line - 1)
+            if not block.isValid():
+                continue
+
+            block_end = block.position() + max(0, block.length() - 1)
+            start = block.position() + min(column - 1, max(0, block.length() - 1))
+            end = min(start + length, block_end)
+            if end <= start:
+                end = min(start + 1, block_end)
+
+            start_cursor = QTextCursor(self.document())
+            start_cursor.setPosition(start)
+            end_cursor = QTextCursor(self.document())
+            end_cursor.setPosition(end)
+            start_rect = self.cursorRect(start_cursor)
+            end_rect = self.cursorRect(end_cursor)
+            if start_rect.bottom() < 0 or start_rect.top() > self.viewport().height():
+                continue
+
+            x1 = start_rect.left()
+            x2 = max(end_rect.left(), x1 + self.fontMetrics().horizontalAdvance(" "))
+            y = start_rect.bottom() - 2
+            color = QColor("#d83b3b") if getattr(diagnostic, "severity", "error") != "warning" else QColor("#d8a53b")
+            painter.setPen(QPen(color, 1))
+
+            x = x1
+            up = True
+            while x < x2:
+                next_x = min(x + 3, x2)
+                painter.drawLine(x, y - (2 if up else 0), next_x, y - (0 if up else 2))
+                x = next_x
+                up = not up
 
     def mouseMoveEvent(self, event):
         super().mouseMoveEvent(event)

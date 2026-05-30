@@ -22,7 +22,9 @@ class GrammarBundle:
         self.value_types = value_types
         self.base_path = Path(base_path) if base_path else None
         self.parser = GenericTextParser(syntax)
-        self.validator = SchemaValidator(value_types)
+        self._property_index: dict[str, dict[str, Any]] | None = None
+        self._missing_property_ids: set[str] = set()
+        self.validator = SchemaValidator(value_types, property_resolver=self.resolve_properties)
 
     @classmethod
     def from_paths(
@@ -71,6 +73,41 @@ class GrammarBundle:
                 raise ValueError("Schema loading requires a base path.")
         with open(candidate, "r", encoding="utf-8") as handle:
             return json.load(handle)
+
+    def resolve_properties(self, property_id: str) -> dict[str, Any]:
+        if self._property_index is None:
+            self._property_index = self._load_property_index()
+        schema = self._property_index.get(property_id)
+        if schema is None:
+            if property_id not in self._missing_property_ids:
+                print(f"Properties reference '{property_id}' is not defined by plugin schema assets. Ignored.")
+                self._missing_property_ids.add(property_id)
+            return {"property_id": property_id, "$ignore_validation": True}
+        return schema
+
+    def _load_property_index(self) -> dict[str, dict[str, Any]]:
+        if self.base_path is None:
+            raise ValueError("Properties references require a grammar base path.")
+
+        result: dict[str, dict[str, Any]] = {}
+        properties_root = self.base_path / "schemas" / "properties"
+        if not properties_root.exists():
+            return result
+
+        for path in sorted(properties_root.rglob("*.json")):
+            with open(path, "r", encoding="utf-8") as handle:
+                data = json.load(handle)
+            if not isinstance(data, dict):
+                raise ValueError(f"Schema asset must be a JSON object: {path}")
+            property_id = data.get("property_id")
+            if property_id is None:
+                continue
+            if not isinstance(property_id, str) or not property_id:
+                raise ValueError(f"Invalid property_id in schema asset: {path}")
+            if property_id in result:
+                raise ValueError(f"Duplicate property_id '{property_id}' in schema assets.")
+            result[property_id] = data
+        return result
 
     def parse(self, text: str) -> FileNode:
         return self.parser.parse(text)

@@ -111,6 +111,24 @@ class Plugin:
         with open(self.resolve_path(relative_path), "r", encoding=encoding) as handle:
             return json.load(handle)
 
+    def read_toml_asset(self, relative_path):
+        with open(self.resolve_path(relative_path), "rb") as handle:
+            return tomllib.load(handle)
+
+    def get_manifest_file_map(self):
+        grammar_data = self.raw.get("grammar")
+        grammar_modes_path = None
+        if isinstance(grammar_data, dict):
+            grammar_modes_path = grammar_data.get("grammar_modes_path")
+        if grammar_modes_path:
+            with open(grammar_modes_path, "rb") as handle:
+                return tomllib.load(handle)
+
+        grammar_modes = self.raw.get("grammar_modes")
+        if not isinstance(grammar_modes, str) or not grammar_modes:
+            raise ValueError(f"Plugin '{self.id}' is missing the required 'grammar_modes' manifest entry.")
+        return self.read_toml_asset(grammar_modes)
+
     def load_elements_from_files(self):
         self.clear_elements()
         grammar_data = self.raw.get("grammar")

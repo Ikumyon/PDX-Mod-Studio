@@ -110,7 +110,7 @@ class GenericTextParser:
                     column += 1
                 else:
                     raise ValueError(f"Unterminated string at line {line}, column {start_column}")
-                tokens.append(Token("STRING", "".join(value_parts), line, start_column))
+                tokens.append(Token("STRING", quote + "".join(value_parts) + quote, line, start_column))
                 continue
 
             start = index
@@ -159,7 +159,15 @@ class _TokenParser:
                 self.index += 1
                 continue
             if self.current.kind == "COMMENT":
-                children.append(CommentNode(kind="comment", value=self.current.value))
+                children.append(
+                    CommentNode(
+                        kind="comment",
+                        value=self.current.value,
+                        line=self.current.line,
+                        column=self.current.column,
+                        length=max(1, len(self.current.value)),
+                    )
+                )
                 self.index += 1
                 continue
             if self.current.kind == "BLOCK_CLOSE" and end_kind != "BLOCK_CLOSE":
@@ -175,41 +183,66 @@ class _TokenParser:
             raise ValueError(f"Unexpected token {current.kind} at line {current.line}, column {current.column}")
 
         next_significant = self._peek_significant()
-        if self.syntax.allow_assignment and next_significant.kind == "ASSIGN":
+        if next_significant.kind == "ASSIGN":
             return self._parse_assignment()
 
         if (
-            self.syntax.allow_bare_values
-            and next_significant.kind == "OP"
+            next_significant.kind == "OP"
             and next_significant.value in self.comparison_operators
         ):
             return self._parse_expression_value(end_kind)
 
-        if not self.syntax.allow_bare_values:
-            raise ValueError(f"Bare value is not allowed at line {current.line}, column {current.column}")
-
         self.index += 1
-        return ValueNode(kind="value", value=current.value)
+        return ValueNode(
+            kind="value",
+            value=current.value,
+            line=current.line,
+            column=current.column,
+            length=max(1, len(current.value)),
+        )
 
     def _parse_assignment(self) -> AssignmentNode:
-        left = self.current.value
+        left_token = self.current
+        left = left_token.value
         self.index += 1
         operator = self._expect("ASSIGN").value
         if self.current.kind == "BLOCK_OPEN":
+            open_token = self.current
             self.index += 1
-            right = ChildrenNode(kind="children", children=self._parse_children(end_kind="BLOCK_CLOSE"))
+            right = ChildrenNode(
+                kind="children",
+                children=self._parse_children(end_kind="BLOCK_CLOSE"),
+                line=open_token.line,
+                column=open_token.column,
+                length=max(1, len(open_token.value)),
+            )
         else:
             right = self._parse_assignment_value()
-        return AssignmentNode(kind="assignment", left=left, operator=operator, right=right)
+        return AssignmentNode(
+            kind="assignment",
+            left=left,
+            operator=operator,
+            right=right,
+            line=left_token.line,
+            column=left_token.column,
+            length=max(1, len(left)),
+        )
 
     def _parse_assignment_value(self) -> ValueNode:
         token = self.current
         if token.kind not in {"WORD", "STRING"}:
             raise ValueError(f"Expected value at line {token.line}, column {token.column}")
         self.index += 1
-        return ValueNode(kind="value", value=token.value)
+        return ValueNode(
+            kind="value",
+            value=token.value,
+            line=token.line,
+            column=token.column,
+            length=max(1, len(token.value)),
+        )
 
     def _parse_expression_value(self, end_kind: str) -> ValueNode:
+        start_token = self.current
         parts: list[str] = []
         while self.current.kind not in {"NEWLINE", "COMMENT", "EOF", end_kind}:
             token = self.current
@@ -217,7 +250,14 @@ class _TokenParser:
                 break
             parts.append(token.value)
             self.index += 1
-        return ValueNode(kind="value", value=" ".join(parts))
+        value = " ".join(parts)
+        return ValueNode(
+            kind="value",
+            value=value,
+            line=start_token.line,
+            column=start_token.column,
+            length=max(1, len(value)),
+        )
 
     def _peek_significant(self) -> Token:
         index = self.index + 1
