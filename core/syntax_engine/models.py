@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from decimal import Decimal, InvalidOperation
 import re
 from typing import Any
 
@@ -66,19 +67,112 @@ class ValueTypeRule:
     literals: list[str] = field(default_factory=list)
     literals_from: bool = False
     children: bool = False
+    min: int | float | Decimal | None = None
+    max: int | float | Decimal | None = None
+    fixed_point_scale: int | None = None
+    min_max_severity: str = "warning"
 
-    def matches(self, value: str, allowed_values: list[Any] | None = None) -> bool:
+    def normalize_value(self, value: Any, allowed_values: list[Any] | None = None) -> Any:
+        value_text = str(value)
         if self.children:
-            return False
+            return value
+        if self.fixed_point_scale is not None:
+            if isinstance(value, int) and not isinstance(value, bool):
+                return value
+            return self._parse_fixed_point(value_text)
+        if self.min is not None or self.max is not None:
+            return Decimal(value_text)
+        return value_text
+
+    def validate(self, value: Any, allowed_values: list[Any] | None = None) -> tuple[bool, str | None, str]:
+        value_text = str(value)
+        normalized_fixed_value = self.fixed_point_scale is not None and isinstance(value, int) and not isinstance(value, bool)
+        if self.children:
+            return False, "grammar.error.type_mismatch", "error"
         if self.literals_from:
             if allowed_values is None:
-                return True
-            return value in {str(item) for item in allowed_values}
+                return True, None, "error"
+            if value_text in {str(item) for item in allowed_values}:
+                return True, None, "error"
+            return False, "grammar.error.type_mismatch", "error"
         if self.literals:
-            return value in self.literals
-        if self.pattern:
-            return re.fullmatch(self.pattern, value) is not None
-        return True
+            if value_text in self.literals:
+                return True, None, "error"
+            return False, "grammar.error.type_mismatch", "error"
+        
+        # 1. 正規表現パターンマッチング
+        if self.pattern and not normalized_fixed_value:
+            if re.fullmatch(self.pattern, value_text) is None:
+                return False, "grammar.error.type_mismatch", "error"
+        
+        # 2. 数値範囲（min / max）チェック
+        if self.fixed_point_scale is not None:
+            try:
+                num = self.normalize_value(value, allowed_values=allowed_values)
+            except (InvalidOperation, ValueError):
+                return False, "grammar.error.type_mismatch", "error"
+
+        elif self.min is not None or self.max is not None:
+            try:
+                num = self.normalize_value(value, allowed_values=allowed_values)
+            except (InvalidOperation, ValueError):
+                return False, "grammar.error.type_mismatch", "error"
+        else:
+            return True, None, "error"
+
+        if (self.min is not None and num < self.min) or (self.max is not None and num > self.max):
+            limits = []
+            if self.min is not None:
+                limits.append(f"min={self._format_limit(self.min)}")
+            if self.max is not None:
+                limits.append(f"max={self._format_limit(self.max)}")
+            limits_str = ", ".join(limits)
+            error_msg = f"grammar.error.range_out_of_bounds({limits_str})"
+            return False, error_msg, self.min_max_severity
+
+        return True, None, "error"
+
+    def _parse_fixed_point(self, value_text: str) -> int:
+        if self.fixed_point_scale is None:
+            raise ValueError("Fixed-point scale is not defined.")
+        scale_digits = self._fixed_scale_digits()
+        text = value_text.strip()
+        sign = -1 if text.startswith("-") else 1
+        if text[:1] in {"-", "+"}:
+            text = text[1:]
+        whole_text, dot, fraction_text = text.partition(".")
+        if not whole_text:
+            raise ValueError("Fixed-point value is missing a whole part.")
+        whole = int(whole_text)
+        fraction = 0
+        if dot:
+            if len(fraction_text) > scale_digits:
+                raise ValueError(f"Fixed-point value has more than {scale_digits} decimal places.")
+            padded = fraction_text.ljust(scale_digits, "0")
+            fraction = int(padded) if padded else 0
+        return sign * ((whole * self.fixed_point_scale) + fraction)
+
+    def _format_fixed_point(self, value: int) -> str:
+        if self.fixed_point_scale is None:
+            return str(value)
+        scale_digits = self._fixed_scale_digits()
+        sign = "-" if value < 0 else ""
+        abs_value = abs(value)
+        whole, fraction = divmod(abs_value, self.fixed_point_scale)
+        if fraction == 0:
+            return f"{sign}{whole}"
+        return f"{sign}{whole}.{fraction:0{scale_digits}d}"
+
+    def _format_limit(self, value: Any) -> str:
+        if self.fixed_point_scale is not None and isinstance(value, int) and not isinstance(value, bool):
+            return self._format_fixed_point(value)
+        return str(value)
+
+    def _fixed_scale_digits(self) -> int:
+        if self.fixed_point_scale is None:
+            raise ValueError("Fixed-point scale is not defined.")
+        return len(str(self.fixed_point_scale)) - 1
+
 
 
 @dataclass(slots=True)
@@ -102,7 +196,7 @@ class ChildrenNode:
 @dataclass(slots=True)
 class ValueNode:
     kind: str
-    value: str
+    value: Any
     line: int = 1
     column: int = 1
     length: int = 1
@@ -136,6 +230,7 @@ class Diagnostic:
     line: int = 1
     column: int = 1
     length: int = 1
+    suggestions: list[dict[str, str]] = field(default_factory=list)
 
 
 @dataclass(slots=True)

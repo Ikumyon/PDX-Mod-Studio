@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 import json
+import re
 
 from .loader import load_toml_file, load_value_types
 from .models import FileNode, SyntaxDefinition, ValidationResult, ValueTypeRule
@@ -72,7 +73,49 @@ class GrammarBundle:
             else:
                 raise ValueError("Schema loading requires a base path.")
         with open(candidate, "r", encoding="utf-8") as handle:
-            return json.load(handle)
+            schema_text = handle.read()
+        schema = json.loads(schema_text)
+        
+        try:
+            self.validator.check_schema_integrity(schema)
+        except ValueError as error:
+            raise ValueError(self._format_schema_error(error, candidate, schema_text)) from error
+        return schema
+
+    def _format_schema_error(self, error: ValueError, schema_path: Path, schema_text: str) -> str:
+        message = str(error)
+        path = self._schema_error_path(message)
+        line = self._schema_path_line(schema_text, path)
+        location = str(schema_path)
+        if line is not None:
+            location = f"{location}:{line}"
+        return f"{message}\nFile: {location}"
+
+    def _schema_error_path(self, message: str) -> str | None:
+        match = re.search(r"Schema definition error at '([^']+)'", message)
+        if not match:
+            return None
+        return match.group(1)
+
+    def _schema_path_line(self, schema_text: str, path: str | None) -> int | None:
+        if not path:
+            return None
+        keys = [part for part in path.replace("[]", "").split(".") if part and part != "$"]
+        search_keys = [key for key in keys if key not in {"select", "left", "right"}]
+        if not search_keys:
+            search_keys = keys
+        for key in reversed(search_keys):
+            line = self._json_key_line(schema_text, key)
+            if line is not None:
+                return line
+        return None
+
+    def _json_key_line(self, schema_text: str, key: str) -> int | None:
+        pattern = re.compile(rf'"{re.escape(key)}"\s*:')
+        for index, line in enumerate(schema_text.splitlines(), start=1):
+            if pattern.search(line):
+                return index
+        return None
 
     def resolve_properties(self, property_id: str) -> dict[str, Any]:
         if self._property_index is None:

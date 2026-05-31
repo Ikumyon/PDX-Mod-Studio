@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Callable
+from decimal import Decimal, ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_UP
+import re
 from typing import Any
 
 from .models import AssignmentNode, ChildrenNode, Diagnostic, FileNode, ValidationResult, ValueNode, ValueTypeRule
@@ -142,26 +144,64 @@ class SchemaValidator:
         type_specs = self._normalize_type_specs(definition["type"], path)
         for type_spec in type_specs:
             if self._matches_type(node, type_spec, path, collect_diagnostics=False):
+                raw_value = getattr(node, "value", None)
                 self._matches_type(node, type_spec, path, collect_diagnostics=True)
+                self._add_style_diagnostics(node, type_spec, path, raw_value)
                 return
 
-        self._add_diagnostic(node, path, "grammar.error.type_mismatch")
+        # 適合する型が1つもなかった場合、範囲外エラーがあればそれを報告
+        if isinstance(node, ValueNode):
+            for type_spec in type_specs:
+                type_name = self._type_name(type_spec, path)
+                rule = self.value_types.get(type_name)
+                if rule and not rule.children:
+                    allowed_values = self._allowed_values(type_spec, path) if type_name == "enum" else None
+                    is_valid, error_key, severity = rule.validate(node.value, allowed_values=allowed_values)
+                    if not is_valid and error_key.startswith("grammar.error.range_out_of_bounds"):
+                        self._add_diagnostic(node, path, error_key, severity=severity)
+                        return
+
+        self._add_diagnostic(
+            node,
+            path,
+            "grammar.error.type_mismatch",
+            suggestions=self._type_mismatch_suggestions(node, type_specs),
+        )
 
     def _validate_scalar(self, value: str, node: AssignmentNode | ValueNode, definition: dict[str, Any], path: str) -> None:
         if "type" not in definition:
             raise ValueError(f"Missing 'type' at '{path}'.")
 
         type_specs = self._normalize_type_specs(definition["type"], path)
+        last_diagnostic = None
         for type_spec in type_specs:
             type_name = self._type_name(type_spec, path)
             if type_name == "block":
                 continue
             rule = self._value_type(type_name, path)
             allowed_values = self._allowed_values(type_spec, path) if type_name == "enum" else None
-            if rule.matches(value, allowed_values=allowed_values):
+            is_valid, error_key, severity = rule.validate(value, allowed_values=allowed_values)
+            if is_valid:
                 return
+            else:
+                last_diagnostic = (error_key, severity)
 
-        self._add_diagnostic(node, path, "grammar.error.type_mismatch")
+        if last_diagnostic:
+            error_key, severity = last_diagnostic
+            self._add_diagnostic(
+                node,
+                path,
+                error_key,
+                severity=severity,
+                suggestions=self._type_mismatch_suggestions(node, type_specs),
+            )
+        else:
+            self._add_diagnostic(
+                node,
+                path,
+                "grammar.error.type_mismatch",
+                suggestions=self._type_mismatch_suggestions(node, type_specs),
+            )
 
     def _matches_type(
         self,
@@ -185,7 +225,54 @@ class SchemaValidator:
             return False
 
         allowed_values = self._allowed_values(type_spec, path) if type_name == "enum" else None
-        return rule.matches(node.value, allowed_values=allowed_values)
+        is_valid, _, _ = rule.validate(node.value, allowed_values=allowed_values)
+        if is_valid and collect_diagnostics:
+            node.value = rule.normalize_value(node.value, allowed_values=allowed_values)
+        return is_valid
+
+    def _type_mismatch_suggestions(self, node: AssignmentNode | ValueNode | ChildrenNode, type_specs: list[dict[str, Any]]) -> list[dict[str, str]]:
+        if not isinstance(node, ValueNode):
+            return []
+        value = str(node.value)
+        if not re.fullmatch(r"[+-]?[0-9]+\.[0-9]+", value):
+            return []
+        if not any(type_spec.get("is") == "int" for type_spec in type_specs):
+            return []
+        number = Decimal(value)
+        floor_value = str(number.to_integral_value(rounding=ROUND_FLOOR))
+        ceil_value = str(number.to_integral_value(rounding=ROUND_CEILING))
+        rounded_value = str(number.to_integral_value(rounding=ROUND_HALF_UP))
+        suggestions = [
+            {"label": f"切り捨て: {floor_value}", "replacement": floor_value},
+            {"label": f"切り上げ: {ceil_value}", "replacement": ceil_value},
+            {"label": f"四捨五入: {rounded_value}", "replacement": rounded_value},
+        ]
+        deduplicated = []
+        seen = set()
+        for suggestion in suggestions:
+            key = (suggestion["label"], suggestion["replacement"])
+            if key not in seen:
+                seen.add(key)
+                deduplicated.append(suggestion)
+        return deduplicated
+
+    def _add_style_diagnostics(self, node: ValueNode | ChildrenNode, type_spec: dict[str, Any], path: str, raw_value: Any) -> None:
+        if not isinstance(node, ValueNode):
+            return
+        if type_spec.get("is") != "float":
+            return
+        value = str(raw_value)
+        if not re.fullmatch(r"[+-]?[0-9]+", value):
+            return
+        replacement = f"{value}.0"
+        self._add_diagnostic(
+            node,
+            path,
+            "grammar.warning.float_without_decimal",
+            severity="warning",
+            suggestions=[{"label": f"{replacement} にする", "replacement": replacement}],
+        )
+
 
     def _schema_from_block_type(self, type_spec: dict[str, Any], path: str) -> dict[str, Any]:
         nested_schema: dict[str, Any] = {}
@@ -329,6 +416,7 @@ class SchemaValidator:
         path: str,
         message: str,
         severity: str = "error",
+        suggestions: list[dict[str, str]] | None = None,
     ) -> None:
         self._diagnostics.append(
             Diagnostic(
@@ -338,5 +426,171 @@ class SchemaValidator:
                 line=getattr(node, "line", 1),
                 column=getattr(node, "column", 1),
                 length=getattr(node, "length", 1),
+                suggestions=list(suggestions or []),
             )
         )
+
+    def check_schema_integrity(self, schema: Any, path: str = "$") -> None:
+        """
+        スキーマ定義の整合性（定義ミス）を静的かつ網羅的に検査します。
+        ドキュメントに準拠し、以下の定義不備をロード時に早期検出します：
+        - usage の指定が required, optional 以外である
+        - type に指定された型名が values.toml に定義されていない
+        - properties の文字列参照が解決できない
+        - type が enum なのに allowed_values が定義されていない、または空配列である
+        - children = true (block型) なのに properties も items もない
+        - select の中に left, right 以外の無効キーがある、または両方欠落している
+        """
+        if not isinstance(schema, dict):
+            return
+
+        # 1. usage の検証
+        if "usage" in schema:
+            usage = schema["usage"]
+            if usage not in {"required", "optional"}:
+                raise ValueError(
+                    f"Schema definition error at '{path}': "
+                    f"Invalid 'usage' value '{usage}'. Must be 'required' or 'optional'."
+                )
+
+        properties = schema.get("properties")
+        items = schema.get("items")
+        ignore_val = schema.get("$ignore_validation")
+
+        # 2. properties 参照解決チェック
+        if isinstance(properties, str):
+            if self.property_resolver is None:
+                raise ValueError(
+                    f"Schema definition error at '{path}': "
+                    f"Properties reference '{properties}' cannot be resolved (no property resolver)."
+                )
+            try:
+                resolved = self.property_resolver(properties)
+            except Exception as e:
+                raise ValueError(
+                    f"Schema definition error at '{path}': "
+                    f"Properties reference '{properties}' failed to resolve: {e}"
+                )
+            
+            if not isinstance(resolved, dict) or (not resolved.get("properties") and not resolved.get("items") and resolved.get("$ignore_validation") is not True):
+                raise ValueError(
+                    f"Schema definition error at '{path}': "
+                    f"Properties reference '{properties}' resolved to an invalid or empty definition."
+                )
+            
+            properties = resolved.get("properties")
+            if "items" in resolved and items is None:
+                items = resolved["items"]
+            if resolved.get("$ignore_validation") is True:
+                return
+
+        # 3. select 定義の検査
+        select_field = schema.get("select")
+        if select_field is not None:
+            if not isinstance(select_field, dict):
+                raise ValueError(f"Schema definition error at '{path}': 'select' must be a JSON object.")
+            
+            allowed_keys = {"left", "right"}
+            invalid_keys = set(select_field.keys()) - allowed_keys
+            if invalid_keys:
+                raise ValueError(
+                    f"Schema definition error at '{path}': "
+                    f"Invalid key(s) {list(invalid_keys)} in 'select'. "
+                    f"Only {list(allowed_keys)} are allowed."
+                )
+            
+            left_def = select_field.get("left")
+            right_def = select_field.get("right")
+            if left_def is None and right_def is None:
+                raise ValueError(
+                    f"Schema definition error at '{path}': "
+                    f"'select' must define at least 'left' or 'right' objects."
+                )
+                
+            if left_def is not None:
+                if not isinstance(left_def, dict):
+                    raise ValueError(f"Schema definition error at '{path}.select.left': must be a JSON object.")
+                self.check_schema_integrity(left_def, f"{path}.select.left")
+                
+            if right_def is not None:
+                if not isinstance(right_def, dict):
+                    raise ValueError(f"Schema definition error at '{path}.select.right': must be a JSON object.")
+                self.check_schema_integrity(right_def, f"{path}.select.right")
+
+        # 4. type 定義の検査
+        type_field = schema.get("type")
+        if type_field is not None:
+            try:
+                type_specs = self._normalize_type_specs(type_field, path)
+            except ValueError as e:
+                raise ValueError(f"Schema definition error at '{path}': {e}")
+                
+            for type_spec in type_specs:
+                try:
+                    type_name = self._type_name(type_spec, path)
+                except ValueError as e:
+                    raise ValueError(f"Schema definition error at '{path}': {e}")
+                
+                # 4.1 未定義の型名チェック
+                rule = self.value_types.get(type_name)
+                if rule is None:
+                    raise ValueError(
+                        f"Schema definition error at '{path}': "
+                        f"Undefined value type '{type_name}' referenced."
+                    )
+                
+                # 4.2 enum 型の allowed_values チェック
+                if type_name == "enum":
+                    allowed_values = type_spec.get("allowed_values")
+                    if not isinstance(allowed_values, list) or not allowed_values:
+                        raise ValueError(
+                            f"Schema definition error at '{path}': "
+                            f"Enum type must define a non-empty 'allowed_values' array."
+                        )
+                
+                # 4.3 children = true のブロック型チェック
+                if rule.children:
+                    spec_properties = type_spec.get("properties")
+                    spec_items = type_spec.get("items")
+                    
+                    if isinstance(spec_properties, str):
+                        if self.property_resolver is None:
+                            raise ValueError(
+                                f"Schema definition error at '{path}': "
+                                f"Properties reference '{spec_properties}' cannot be resolved."
+                            )
+                        try:
+                            resolved_spec = self.property_resolver(spec_properties)
+                            if isinstance(resolved_spec, dict):
+                                if resolved_spec.get("$ignore_validation") is True:
+                                    continue
+                                spec_properties = resolved_spec.get("properties")
+                                if "items" in resolved_spec and spec_items is None:
+                                    spec_items = resolved_spec["items"]
+                        except Exception as e:
+                            raise ValueError(
+                                f"Schema definition error at '{path}': "
+                                f"Properties reference '{spec_properties}' failed to resolve: {e}"
+                            )
+                    
+                    if spec_properties is None and spec_items is None and properties is None and items is None and ignore_val is not True:
+                        raise ValueError(
+                            f"Schema definition error at '{path}': "
+                            f"Type '{type_name}' requires child definitions ('children = true'), "
+                            f"but both 'properties' and 'items' are missing."
+                        )
+
+                    # 子要素の再帰的検査
+                    if isinstance(spec_properties, dict):
+                        for prop_name, prop_def in spec_properties.items():
+                            self.check_schema_integrity(prop_def, f"{path}.{prop_name}")
+                    if isinstance(spec_items, dict):
+                        self.check_schema_integrity(spec_items, f"{path}[]")
+
+        # 5. 再帰的にすべてのプロパティとアイテムを検査
+        if isinstance(properties, dict):
+            for prop_name, prop_def in properties.items():
+                if prop_name != "rules":
+                    self.check_schema_integrity(prop_def, f"{path}.{prop_name}")
+        if isinstance(items, dict):
+            self.check_schema_integrity(items, f"{path}[]")

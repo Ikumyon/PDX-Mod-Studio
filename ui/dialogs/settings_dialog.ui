@@ -31,6 +31,11 @@
        </item>
        <item>
         <property name="text">
+         <string>テキストエディタ</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
          <string>検索・除外</string>
         </property>
        </item>
@@ -56,100 +61,96 @@
           <number>0</number>
          </property>
          <item>
-          <layout class="QFormLayout" name="formLayoutGeneral">
-           <item row="0" column="0">
-            <widget class="QLabel" name="labelLanguage">
-             <property name="text">
-              <string>言語 (Language):</string>
-             </property>
-            </widget>
-           </item>
-           <item row="0" column="1">
-            <widget class="QComboBox" name="comboLanguage">
-             <property name="editable">
-              <bool>true</bool>
-             </property>
-            </widget>
-           </item>
-           <item row="1" column="0">
-            <widget class="QLabel" name="labelUIFont">
-             <property name="text">
-              <string>UIフォント</string>
-             </property>
-            </widget>
-           </item>
-           <item row="1" column="1">
-            <widget class="QFontComboBox" name="fontComboUI"/>
-           </item>
-           <item row="2" column="0">
-            <widget class="QLabel" name="labelUISize">
-             <property name="text">
-              <string>UIフォントサイズ</string>
-             </property>
-            </widget>
-           </item>
-           <item row="2" column="1">
-            <widget class="QSpinBox" name="spinUISize">
-             <property name="minimum">
-              <number>6</number>
-             </property>
-             <property name="maximum">
-              <number>72</number>
-             </property>
-             <property name="value">
-              <number>9</number>
-             </property>
-            </widget>
-           </item>
-           <item row="3" column="0">
-            <widget class="QLabel" name="labelEditorFont">
-             <property name="text">
-              <string>テキストエディタフォント</string>
-             </property>
-            </widget>
-           </item>
-           <item row="3" column="1">
-            <widget class="QFontComboBox" name="fontComboEditor"/>
-           </item>
-           <item row="4" column="0">
-            <widget class="QLabel" name="labelEditorSize">
-             <property name="text">
-              <string>テキストエディタフォントサイズ</string>
-             </property>
-            </widget>
-           </item>
-           <item row="4" column="1">
-            <widget class="QSpinBox" name="spinEditorSize">
-             <property name="minimum">
-              <number>6</number>
-             </property>
-             <property name="maximum">
-              <number>72</number>
-             </property>
-             <property name="value">
-              <number>12</number>
-             </property>
-            </widget>
-           </item>
-          </layout>
-         </item>
-         <item>
-          <spacer name="verticalSpacerGeneral">
-           <property name="orientation">
-            <enum>Qt::Orientation::Vertical</enum>
+          <widget class="QScrollArea" name="scrollAreaGeneral">
+           <property name="widgetResizable">
+            <bool>true</bool>
            </property>
-           <property name="sizeHint" stdset="0">
-            <size>
-             <width>20</width>
-             <height>40</height>
-            </size>
+           <property name="frameShape">
+            <enum>QFrame::Shape::NoFrame</enum>
            </property>
-          </spacer>
+           <widget class="QWidget" name="scrollAreaWidgetContentsGeneral">
+            <layout class="QVBoxLayout" name="verticalLayoutGeneralInner">
+             <property name="leftMargin">
+              <number>0</number>
+             </property>
+             <property name="topMargin">
+              <number>0</number>
+             </property>
+             <property name="rightMargin">
+              <number>0</number>
+             </property>
+             <property name="bottomMargin">
+              <number>0</number>
+             </property>
+             <item>
+              <layout class="QFormLayout" name="formLayoutGeneral">
+               <item row="0" column="0">
+                <widget class="QLabel" name="labelLanguage">
+                 <property name="text">
+                  <string>言語 (Language):</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="0" column="1">
+                <widget class="QComboBox" name="comboLanguage">
+                 <property name="editable">
+                  <bool>true</bool>
+                 </property>
+                </widget>
+               </item>
+               <item row="1" column="0">
+                <widget class="QLabel" name="labelUIFont">
+                 <property name="text">
+                  <string>UIフォント</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="1" column="1">
+                <widget class="QFontComboBox" name="fontComboUI"/>
+               </item>
+               <item row="2" column="0">
+                <widget class="QLabel" name="labelUISize">
+                 <property name="text">
+                  <string>UIフォントサイズ</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="2" column="1">
+                <widget class="QSpinBox" name="spinUISize">
+                 <property name="minimum">
+                  <number>6</number>
+                 </property>
+                 <property name="maximum">
+                  <number>72</number>
+                 </property>
+                 <property name="value">
+                  <number>9</number>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </item>
+             <item>
+              <spacer name="verticalSpacerGeneral">
+               <property name="orientation">
+                <enum>Qt::Orientation::Vertical</enum>
+               </property>
+               <property name="sizeHint" stdset="0">
+                <size>
+                 <width>20</width>
+                 <height>40</height>
+                </size>
+               </property>
+              </spacer>
+             </item>
+            </layout>
+           </widget>
+          </widget>
          </item>
         </layout>
        </widget>
-       <widget class="QWidget" name="pageSearchIgnore">
-        <layout class="QVBoxLayout" name="verticalLayoutSearch">
+       <widget class="QWidget" name="pageEditor">
+        <layout class="QVBoxLayout" name="verticalLayoutEditor">
          <property name="leftMargin">
           <number>0</number>
          </property>
@@ -163,76 +164,316 @@
           <number>0</number>
          </property>
          <item>
-          <widget class="QGroupBox" name="groupBoxSearchIgnore">
-           <property name="title">
-            <string>検索除外設定</string>
+          <widget class="QScrollArea" name="scrollAreaEditor">
+           <property name="widgetResizable">
+            <bool>true</bool>
            </property>
-           <layout class="QVBoxLayout" name="verticalLayoutGroupBox">
-            <item>
-             <widget class="QCheckBox" name="cbIgnoreGitignore">
-              <property name="text">
-               <string>.gitignore のパターンを検索対象から除外する</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QCheckBox" name="cbIgnoreIgnore">
-              <property name="text">
-               <string>.ignore のパターンを検索対象から除外する</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QCheckBox" name="cbIgnoreFilesExclude">
-              <property name="text">
-               <string>files.exclude のパターンを検索対象から除外する</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QCheckBox" name="cbIgnoreSearchExclude">
-              <property name="text">
-               <string>search.exclude のパターンを検索対象から除外する</string>
-              </property>
-             </widget>
-            </item>
-           </layout>
+           <property name="frameShape">
+            <enum>QFrame::Shape::NoFrame</enum>
+           </property>
+           <widget class="QWidget" name="scrollAreaWidgetContentsEditor">
+            <layout class="QVBoxLayout" name="verticalLayoutEditorInner">
+             <property name="leftMargin">
+              <number>0</number>
+             </property>
+             <property name="topMargin">
+              <number>0</number>
+             </property>
+             <property name="rightMargin">
+              <number>0</number>
+             </property>
+             <property name="bottomMargin">
+              <number>0</number>
+             </property>
+             <item>
+              <layout class="QFormLayout" name="formLayoutEditor">
+               <item row="0" column="0">
+                <widget class="QLabel" name="labelEditorFont">
+                 <property name="text">
+                  <string>テキストエディタフォント</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="0" column="1">
+                <widget class="QFontComboBox" name="fontComboEditor"/>
+               </item>
+               <item row="1" column="0">
+                <widget class="QLabel" name="labelEditorSize">
+                 <property name="text">
+                  <string>テキストエディタフォントサイズ</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="1" column="1">
+                <widget class="QSpinBox" name="spinEditorSize">
+                 <property name="minimum">
+                  <number>6</number>
+                 </property>
+                 <property name="maximum">
+                  <number>72</number>
+                 </property>
+                 <property name="value">
+                  <number>12</number>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </item>
+             <item>
+              <widget class="QGroupBox" name="groupAutoClose">
+               <property name="title">
+                <string>括弧の自動補完を有効にする</string>
+               </property>
+               <property name="checkable">
+                <bool>true</bool>
+               </property>
+               <property name="checked">
+                <bool>true</bool>
+               </property>
+               <layout class="QVBoxLayout" name="verticalLayoutAutoClose">
+                <item>
+                 <widget class="QListWidget" name="listAutoClosePairs"/>
+                </item>
+                <item>
+                 <layout class="QHBoxLayout" name="horizontalLayoutAddPair">
+                  <item>
+                   <widget class="QLabel" name="labelOpenChar">
+                    <property name="text">
+                     <string>開き:</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QLineEdit" name="lineOpenChar">
+                    <property name="maximumSize">
+                     <size>
+                      <width>40</width>
+                      <height>16777215</height>
+                     </size>
+                    </property>
+                    <property name="maxLength">
+                     <number>1</number>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QLabel" name="labelCloseChar">
+                    <property name="text">
+                     <string>閉じ:</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QLineEdit" name="lineCloseChar">
+                    <property name="maximumSize">
+                     <size>
+                      <width>40</width>
+                      <height>16777215</height>
+                     </size>
+                    </property>
+                    <property name="maxLength">
+                     <number>1</number>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QPushButton" name="btnPrefAddPair">
+                    <property name="text">
+                     <string>追加</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QPushButton" name="btnPrefRemovePair">
+                    <property name="text">
+                     <string>削除</string>
+                    </property>
+                   </widget>
+                  </item>
+                 </layout>
+                </item>
+               </layout>
+              </widget>
+             </item>
+             <item>
+              <widget class="QGroupBox" name="groupSyntaxColors">
+               <property name="title">
+                <string>コードの色分け</string>
+               </property>
+               <layout class="QFormLayout" name="formLayoutSyntaxColors">
+                <item row="0" column="0">
+                 <widget class="QLabel" name="labelColorKeyword">
+                  <property name="text">
+                   <string>キーワード:</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="0" column="1">
+                 <widget class="QPushButton" name="btnColorKeyword"/>
+                </item>
+                <item row="1" column="0">
+                 <widget class="QLabel" name="labelColorString">
+                  <property name="text">
+                   <string>文字列:</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="1" column="1">
+                 <widget class="QPushButton" name="btnColorString"/>
+                </item>
+                <item row="2" column="0">
+                 <widget class="QLabel" name="labelColorNumber">
+                  <property name="text">
+                   <string>数値:</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="2" column="1">
+                 <widget class="QPushButton" name="btnColorNumber"/>
+                </item>
+                <item row="3" column="0">
+                 <widget class="QLabel" name="labelColorComment">
+                  <property name="text">
+                   <string>コメント:</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="3" column="1">
+                 <widget class="QPushButton" name="btnColorComment"/>
+                </item>
+               </layout>
+              </widget>
+             </item>
+             <item>
+              <spacer name="verticalSpacerEditor">
+               <property name="orientation">
+                <enum>Qt::Orientation::Vertical</enum>
+               </property>
+               <property name="sizeHint" stdset="0">
+                <size>
+                 <width>20</width>
+                 <height>40</height>
+                </size>
+               </property>
+              </spacer>
+             </item>
+            </layout>
+           </widget>
           </widget>
-         </item>
-         <item>
-          <widget class="QGroupBox" name="groupBoxDefaultExcludes">
-           <property name="title">
-            <string>デフォルトの検索除外パターン</string>
-           </property>
-           <layout class="QVBoxLayout" name="verticalLayoutExcludes">
-            <item>
-             <widget class="QLineEdit" name="lineDefaultExcludes">
-              <property name="text">
-               <string>.git, __pycache__, .vs</string>
-              </property>
-              <property name="placeholderText">
-               <string>例: .git, __pycache__, .vs</string>
-              </property>
-             </widget>
-            </item>
-           </layout>
-          </widget>
-         </item>
-         <item>
-          <spacer name="verticalSpacerSearch">
-           <property name="orientation">
-            <enum>Qt::Orientation::Vertical</enum>
-           </property>
-           <property name="sizeHint" stdset="0">
-            <size>
-             <width>20</width>
-             <height>40</height>
-            </size>
-           </property>
-          </spacer>
          </item>
         </layout>
        </widget>
+        <widget class="QWidget" name="pageSearchIgnore">
+         <layout class="QVBoxLayout" name="verticalLayoutSearch">
+          <property name="leftMargin">
+           <number>0</number>
+          </property>
+          <property name="topMargin">
+           <number>0</number>
+          </property>
+          <property name="rightMargin">
+           <number>0</number>
+          </property>
+          <property name="bottomMargin">
+           <number>0</number>
+          </property>
+          <item>
+           <widget class="QScrollArea" name="scrollAreaSearch">
+            <property name="widgetResizable">
+             <bool>true</bool>
+            </property>
+            <property name="frameShape">
+             <enum>QFrame::Shape::NoFrame</enum>
+            </property>
+            <widget class="QWidget" name="scrollAreaWidgetContentsSearch">
+             <layout class="QVBoxLayout" name="verticalLayoutSearchInner">
+              <property name="leftMargin">
+               <number>0</number>
+              </property>
+              <property name="topMargin">
+               <number>0</number>
+              </property>
+              <property name="rightMargin">
+               <number>0</number>
+              </property>
+              <property name="bottomMargin">
+               <number>0</number>
+              </property>
+              <item>
+               <widget class="QGroupBox" name="groupBoxSearchIgnore">
+                <property name="title">
+                 <string>検索除外設定</string>
+                </property>
+                <layout class="QVBoxLayout" name="verticalLayoutGroupBox">
+                 <item>
+                  <widget class="QCheckBox" name="cbIgnoreGitignore">
+                   <property name="text">
+                    <string>.gitignore のパターンを検索対象から除外する</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QCheckBox" name="cbIgnoreIgnore">
+                   <property name="text">
+                    <string>.ignore のパターンを検索対象から除外する</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QCheckBox" name="cbIgnoreFilesExclude">
+                   <property name="text">
+                    <string>files.exclude のパターンを検索対象から除外する</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QCheckBox" name="cbIgnoreSearchExclude">
+                   <property name="text">
+                    <string>search.exclude のパターンを検索対象から除外する</string>
+                   </property>
+                  </widget>
+                 </item>
+                </layout>
+               </widget>
+              </item>
+              <item>
+               <widget class="QGroupBox" name="groupBoxDefaultExcludes">
+                <property name="title">
+                 <string>デフォルトの検索除外パターン</string>
+                </property>
+                <layout class="QVBoxLayout" name="verticalLayoutExcludes">
+                 <item>
+                  <widget class="QLineEdit" name="lineDefaultExcludes">
+                   <property name="text">
+                    <string>.git, __pycache__, .vs</string>
+                   </property>
+                   <property name="placeholderText">
+                    <string>例: .git, __pycache__, .vs</string>
+                   </property>
+                  </widget>
+                 </item>
+                </layout>
+               </widget>
+              </item>
+              <item>
+               <spacer name="verticalSpacerSearch">
+                <property name="orientation">
+                 <enum>Qt::Orientation::Vertical</enum>
+                </property>
+                <property name="sizeHint" stdset="0">
+                 <size>
+                  <width>20</width>
+                  <height>40</height>
+                 </size>
+                </property>
+               </spacer>
+              </item>
+             </layout>
+            </widget>
+           </widget>
+          </item>
+         </layout>
+        </widget>
       </widget>
      </item>
     </layout>

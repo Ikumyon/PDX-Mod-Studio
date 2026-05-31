@@ -1,6 +1,7 @@
 import os
 import json
 import importlib.util
+from decimal import Decimal
 import tomllib
 import core.api
 from core.syntax_engine import (
@@ -113,7 +114,7 @@ class Plugin:
 
     def read_toml_asset(self, relative_path):
         with open(self.resolve_path(relative_path), "rb") as handle:
-            return tomllib.load(handle)
+            return tomllib.load(handle, parse_float=Decimal)
 
     def get_manifest_file_map(self):
         grammar_data = self.raw.get("grammar")
@@ -122,7 +123,7 @@ class Plugin:
             grammar_modes_path = grammar_data.get("grammar_modes_path")
         if grammar_modes_path:
             with open(grammar_modes_path, "rb") as handle:
-                return tomllib.load(handle)
+                return tomllib.load(handle, parse_float=Decimal)
 
         grammar_modes = self.raw.get("grammar_modes")
         if not isinstance(grammar_modes, str) or not grammar_modes:

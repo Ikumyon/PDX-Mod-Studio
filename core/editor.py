@@ -1,12 +1,111 @@
 import os
-
+import math
 import core.api
 from core import save_result
 from PySide6.QtWidgets import (
-    QFileDialog, QPlainTextEdit, QTextEdit, QWidget, QScrollBar
+    QFileDialog, QFrame, QHBoxLayout, QLabel, QPlainTextEdit, QPushButton, QTextEdit,
+    QVBoxLayout, QWidget, QScrollBar
 )
 from PySide6.QtGui import QFont, QColor, QPainter, QPen, QTextCharFormat, QTextCursor, QTextFormat
-from PySide6.QtCore import Qt, QSize, QRect
+from PySide6.QtCore import Qt, QSize, QRect, QPoint
+
+
+DIAGNOSTIC_ERROR_COLOR = QColor("#d83b3b")
+DIAGNOSTIC_WARNING_COLOR = QColor("#d8a53b")
+
+
+def diagnostic_underline_color(diagnostic):
+    if getattr(diagnostic, "severity", "error") == "warning":
+        return DIAGNOSTIC_WARNING_COLOR
+    return DIAGNOSTIC_ERROR_COLOR
+
+
+class DiagnosticPopup(QFrame):
+    def __init__(self, editor):
+        super().__init__(editor)
+        self.editor = editor
+        self.diagnostic = None
+        self.setObjectName("DiagnosticPopup")
+        self.setFrameShape(QFrame.Shape.StyledPanel)
+        self.setStyleSheet("""
+            QFrame#DiagnosticPopup {
+                background: palette(base);
+                border: 1px solid palette(mid);
+                border-radius: 6px;
+            }
+            QLabel#DiagnosticTitle {
+                font-weight: 600;
+            }
+            QLabel#DiagnosticDescription {
+                color: palette(text);
+            }
+            QLabel#DiagnosticQuickFixTitle {
+                font-weight: 600;
+                margin-top: 4px;
+            }
+            QPushButton {
+                padding: 4px 8px;
+                text-align: left;
+            }
+        """)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 8, 10, 10)
+        layout.setSpacing(6)
+
+        self.title_label = QLabel(self)
+        self.title_label.setObjectName("DiagnosticTitle")
+        self.title_label.setWordWrap(True)
+        layout.addWidget(self.title_label)
+
+        self.description_label = QLabel(self)
+        self.description_label.setObjectName("DiagnosticDescription")
+        self.description_label.setWordWrap(True)
+        layout.addWidget(self.description_label)
+
+        self.quick_fix_label = QLabel(self)
+        self.quick_fix_label.setText("クイックフィックス")
+        self.quick_fix_label.setObjectName("DiagnosticQuickFixTitle")
+        layout.addWidget(self.quick_fix_label)
+
+        self.quick_fix_layout = QHBoxLayout()
+        self.quick_fix_layout.setContentsMargins(0, 0, 0, 0)
+        self.quick_fix_layout.setSpacing(6)
+        layout.addLayout(self.quick_fix_layout)
+
+        self.suggestion_buttons = []
+
+    def set_diagnostic(self, diagnostic, title, description, suggestions):
+        self.diagnostic = diagnostic
+        self.title_label.setText(title)
+        self.description_label.setText(description)
+        self.description_label.setVisible(bool(description))
+
+        while self.quick_fix_layout.count():
+            item = self.quick_fix_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        self.suggestion_buttons = []
+
+        for suggestion in suggestions:
+            label = str(suggestion.get("label", "")).strip()
+            replacement = suggestion.get("replacement")
+            if not label or replacement is None:
+                continue
+            button = QPushButton(label, self)
+            button.clicked.connect(lambda checked=False, text=str(replacement): self.editor.apply_diagnostic_replacement(self.diagnostic, text))
+            self.quick_fix_layout.addWidget(button)
+            self.suggestion_buttons.append(button)
+
+        self.quick_fix_layout.addStretch(1)
+        self.quick_fix_label.setVisible(bool(self.suggestion_buttons))
+
+        self.adjustSize()
+
+    def leaveEvent(self, event):
+        self.hide()
+        super().leaveEvent(event)
 
 
 class HighlightScrollBar(QScrollBar):
@@ -215,6 +314,8 @@ class EditorWidget(QPlainTextEdit):
         self.highlight_current_line()
         self.save_plan = None
         self._diagnostics = []
+        self._diagnostic_popup = DiagnosticPopup(self)
+        self._active_diagnostic = None
 
     def setFont(self, font):
         super().setFont(font)
@@ -377,6 +478,8 @@ class EditorWidget(QPlainTextEdit):
 
     def set_diagnostics(self, diagnostics):
         self._diagnostics = list(diagnostics or [])
+        if self._active_diagnostic not in self._diagnostics:
+            self._hide_diagnostic_popup()
         self.update_extra_selections()
 
     def clear_diagnostics(self):
@@ -406,6 +509,25 @@ class EditorWidget(QPlainTextEdit):
         self.viewport().update()
 
     def _diagnostic_selection(self, diagnostic):
+        diagnostic_range = self._diagnostic_range(diagnostic)
+        if diagnostic_range is None:
+            return None
+        start, end = diagnostic_range
+
+        cursor = QTextCursor(self.document())
+        cursor.setPosition(start)
+        cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+
+        fmt = QTextCharFormat()
+        fmt.setUnderlineStyle(QTextCharFormat.UnderlineStyle.WaveUnderline)
+        fmt.setUnderlineColor(diagnostic_underline_color(diagnostic))
+
+        selection = QTextEdit.ExtraSelection()
+        selection.cursor = cursor
+        selection.format = fmt
+        return selection
+
+    def _diagnostic_range(self, diagnostic):
         line = max(1, int(getattr(diagnostic, "line", 1) or 1))
         column = max(1, int(getattr(diagnostic, "column", 1) or 1))
         length = max(1, int(getattr(diagnostic, "length", 1) or 1))
@@ -414,75 +536,150 @@ class EditorWidget(QPlainTextEdit):
         if not block.isValid():
             return None
 
+        block_end = block.position() + max(0, block.length() - 1)
         start = block.position() + min(column - 1, max(0, block.length() - 1))
-        end = min(start + length, block.position() + max(0, block.length() - 1))
+        end = min(start + length, block_end)
         if end <= start:
-            end = min(start + 1, block.position() + max(0, block.length() - 1))
+            end = min(start + 1, block_end)
+        return start, end
 
+    def _diagnostic_hover_rect(self, diagnostic):
+        diagnostic_range = self._diagnostic_range(diagnostic)
+        if diagnostic_range is None:
+            return None
+        start, end = diagnostic_range
+
+        start_cursor = QTextCursor(self.document())
+        start_cursor.setPosition(start)
+        end_cursor = QTextCursor(self.document())
+        end_cursor.setPosition(end)
+
+        start_rect = self.cursorRect(start_cursor)
+        end_rect = self.cursorRect(end_cursor)
+        width = max(1, end_rect.left() - start_rect.left())
+        hover_rect = QRect(start_rect.left(), start_rect.top(), width, start_rect.height())
+        if (
+            diagnostic is self._active_diagnostic
+            and self._diagnostic_popup.isVisible()
+        ):
+            popup_rect = self._diagnostic_popup.geometry()
+            popup_top_left = self.mapToGlobal(popup_rect.topLeft())
+            popup_bottom_right = self.mapToGlobal(popup_rect.bottomRight())
+            viewport_top_left = self.viewport().mapFromGlobal(popup_top_left)
+            viewport_bottom_right = self.viewport().mapFromGlobal(popup_bottom_right)
+            popup_viewport_rect = QRect(viewport_top_left, viewport_bottom_right)
+            if popup_viewport_rect.bottom() < hover_rect.top():
+                hover_rect.setTop(popup_viewport_rect.bottom())
+            elif popup_viewport_rect.top() > hover_rect.bottom():
+                hover_rect.setBottom(popup_viewport_rect.top())
+        return hover_rect
+
+    def _diagnostic_popup_text(self, diagnostic):
+        from core.i18n import tr
+
+        message = str(getattr(diagnostic, "message", "") or "")
+        translated = tr(message, "Diagnostic")
+        severity = getattr(diagnostic, "severity", "error")
+
+        if message.startswith("grammar.error.range_out_of_bounds"):
+            title = tr("範囲外の数値です", "Diagnostic")
+            description = translated
+        elif message == "grammar.warning.float_without_decimal":
+            title = tr("小数点なしで書かれています", "Diagnostic")
+            description = tr("この項目は小数値として定義されています。整数表記も扱えますが、小数表記にすると意図が明確になります。", "Diagnostic")
+        elif message == "grammar.error.type_mismatch":
+            title = tr("型が一致しません", "Diagnostic")
+            description = tr("この値は、この項目で期待される型として解釈できません。", "Diagnostic")
+        elif message == "grammar.error.unknown_property":
+            title = tr("未定義の項目です", "Diagnostic")
+            description = tr("この項目は現在の schema では定義されていません。", "Diagnostic")
+        elif message == "grammar.error.duplicate_property":
+            title = tr("項目が重複しています", "Diagnostic")
+            description = tr("この項目は複数回書けない定義です。", "Diagnostic")
+        elif message == "grammar.error.required_property_missing":
+            title = tr("必須項目がありません", "Diagnostic")
+            description = tr("このブロックには必須項目が不足しています。", "Diagnostic")
+        else:
+            title = tr("警告", "Diagnostic") if severity == "warning" else tr("エラー", "Diagnostic")
+            description = translated
+
+        return title, description
+
+    def _diagnostic_suggestions(self, diagnostic):
+        suggestions = getattr(diagnostic, "suggestions", None)
+        if not isinstance(suggestions, list):
+            return []
+        return [suggestion for suggestion in suggestions if isinstance(suggestion, dict)]
+
+    def _show_diagnostic_popup(self, diagnostic):
+        if self._active_diagnostic is diagnostic and self._diagnostic_popup.isVisible():
+            return
+        title, description = self._diagnostic_popup_text(diagnostic)
+        self._diagnostic_popup.set_diagnostic(
+            diagnostic,
+            title,
+            description,
+            self._diagnostic_suggestions(diagnostic),
+        )
+        self._active_diagnostic = diagnostic
+
+        popup_size = self._diagnostic_popup.sizeHint()
+        hover_rect = self._diagnostic_hover_rect(diagnostic)
+        if hover_rect is None:
+            return
+        target_rect = QRect(self.viewport().mapTo(self, hover_rect.topLeft()), hover_rect.size())
+        x = target_rect.left()
+        y = target_rect.top() - popup_size.height() - 6
+        if y < 0:
+            y = target_rect.bottom() + 6
+        x = min(max(0, x), max(0, self.width() - popup_size.width() - 8))
+        y = min(max(0, y), max(0, self.height() - popup_size.height() - 8))
+        self._diagnostic_popup.move(x, y)
+        self._diagnostic_popup.show()
+        self._diagnostic_popup.raise_()
+
+    def _hide_diagnostic_popup(self):
+        self._active_diagnostic = None
+        self._diagnostic_popup.hide()
+
+    def apply_diagnostic_replacement(self, diagnostic, replacement):
+        diagnostic_range = self._diagnostic_range(diagnostic)
+        if diagnostic_range is None:
+            return
+        start, end = diagnostic_range
         cursor = QTextCursor(self.document())
         cursor.setPosition(start)
         cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
-
-        fmt = QTextCharFormat()
-        fmt.setUnderlineStyle(QTextCharFormat.UnderlineStyle.WaveUnderline)
-        severity = getattr(diagnostic, "severity", "error")
-        fmt.setUnderlineColor(QColor("#d83b3b") if severity != "warning" else QColor("#d8a53b"))
-
-        selection = QTextEdit.ExtraSelection()
-        selection.cursor = cursor
-        selection.format = fmt
-        return selection
+        cursor.insertText(replacement)
+        self._hide_diagnostic_popup()
 
     def paintEvent(self, event):
         super().paintEvent(event)
-        self._paint_diagnostic_underlines()
-
-    def _paint_diagnostic_underlines(self):
-        diagnostics = getattr(self, "_diagnostics", [])
-        if not diagnostics:
-            return
-
-        painter = QPainter(self.viewport())
-        for diagnostic in diagnostics:
-            line = max(1, int(getattr(diagnostic, "line", 1) or 1))
-            column = max(1, int(getattr(diagnostic, "column", 1) or 1))
-            length = max(1, int(getattr(diagnostic, "length", 1) or 1))
-
-            block = self.document().findBlockByNumber(line - 1)
-            if not block.isValid():
-                continue
-
-            block_end = block.position() + max(0, block.length() - 1)
-            start = block.position() + min(column - 1, max(0, block.length() - 1))
-            end = min(start + length, block_end)
-            if end <= start:
-                end = min(start + 1, block_end)
-
-            start_cursor = QTextCursor(self.document())
-            start_cursor.setPosition(start)
-            end_cursor = QTextCursor(self.document())
-            end_cursor.setPosition(end)
-            start_rect = self.cursorRect(start_cursor)
-            end_rect = self.cursorRect(end_cursor)
-            if start_rect.bottom() < 0 or start_rect.top() > self.viewport().height():
-                continue
-
-            x1 = start_rect.left()
-            x2 = max(end_rect.left(), x1 + self.fontMetrics().horizontalAdvance(" "))
-            y = start_rect.bottom() - 2
-            color = QColor("#d83b3b") if getattr(diagnostic, "severity", "error") != "warning" else QColor("#d8a53b")
-            painter.setPen(QPen(color, 1))
-
-            x = x1
-            up = True
-            while x < x2:
-                next_x = min(x + 3, x2)
-                painter.drawLine(x, y - (2 if up else 0), next_x, y - (0 if up else 2))
-                x = next_x
-                up = not up
 
     def mouseMoveEvent(self, event):
         super().mouseMoveEvent(event)
+        
+        pos = event.position().toPoint()
+        editor_pos = self.viewport().mapTo(self, pos)
+        
+        active_diag = None
+        for diagnostic in getattr(self, "_diagnostics", []):
+            hover_rect = self._diagnostic_hover_rect(diagnostic)
+            if hover_rect is not None:
+                if hover_rect.contains(pos):
+                    active_diag = diagnostic
+                    break
+        
+        if active_diag:
+            self._show_diagnostic_popup(active_diag)
+        else:
+            popup_rect = self._diagnostic_popup.geometry()
+            if not self._diagnostic_popup.isVisible() or not popup_rect.contains(editor_pos):
+                self._hide_diagnostic_popup()
+
+    def leaveEvent(self, event):
+        self._hide_diagnostic_popup()
+        super().leaveEvent(event)
 
     def viewportEvent(self, event):
         return super().viewportEvent(event)
@@ -511,3 +708,73 @@ class EditorWidget(QPlainTextEdit):
             top = bottom
             bottom = top + round(self.blockBoundingRect(block).height())
             block_number += 1
+
+    def keyPressEvent(self, event):
+        from core.dialog.settings import settings_manager
+        
+        # 設定が有効かチェック
+        if not settings_manager.get("editor_auto_close_brackets", True):
+            super().keyPressEvent(event)
+            return
+
+        cursor = self.textCursor()
+        text = event.text()
+        
+        # 設定されたペアを取得して解析
+        pairs_str = settings_manager.get("editor_auto_close_pairs", "{}()[]\"\"''")
+        pairs = {}
+        for i in range(0, len(pairs_str) - 1, 2):
+            pairs[pairs_str[i]] = pairs_str[i+1]
+            
+        # 1. 閉じ括弧のオーバースキップ（重ね入力の回避）
+        if text in pairs.values():
+            if not cursor.hasSelection():
+                pos = cursor.position()
+                doc_text = self.toPlainText()
+                if pos < len(doc_text) and doc_text[pos] == text:
+                    # 右隣の文字が入力文字と同じなら、右に1移動
+                    cursor.movePosition(QTextCursor.MoveOperation.Right)
+                    self.setTextCursor(cursor)
+                    event.accept()
+                    return
+
+        # 2. 開き括弧の自動補完
+        if text in pairs:
+            closing_char = pairs[text]
+            if cursor.hasSelection():
+                # 選択範囲がある場合、その選択範囲をペアで囲む
+                selected_text = cursor.selectedText()
+                cursor.beginEditBlock()
+                cursor.insertText(text + selected_text + closing_char)
+                cursor.setPosition(cursor.position() - 1)
+                cursor.endEditBlock()
+                self.setTextCursor(cursor)
+            else:
+                # 選択範囲がない場合、開き括弧と閉じ括弧を挿入し、カーソルを間に置く
+                cursor.beginEditBlock()
+                cursor.insertText(text + closing_char)
+                cursor.movePosition(QTextCursor.MoveOperation.Left)
+                cursor.endEditBlock()
+                self.setTextCursor(cursor)
+            event.accept()
+            return
+
+        # 3. バックスペースによるペアの同時削除
+        if event.key() == Qt.Key.Key_Backspace:
+            if not cursor.hasSelection():
+                pos = cursor.position()
+                doc_text = self.toPlainText()
+                if pos > 0 and pos < len(doc_text) + 1:
+                    left_char = doc_text[pos - 1] if pos - 1 < len(doc_text) else ""
+                    right_char = doc_text[pos] if pos < len(doc_text) else ""
+                    # 左右の文字が定義されたペアと一致するかチェック
+                    if left_char in pairs and right_char == pairs[left_char]:
+                        cursor.beginEditBlock()
+                        cursor.deleteChar()  # 右隣の閉じ括弧を削除
+                        cursor.deletePreviousChar()  # 左隣の開き括弧を削除
+                        cursor.endEditBlock()
+                        self.setTextCursor(cursor)
+                        event.accept()
+                        return
+
+        super().keyPressEvent(event)

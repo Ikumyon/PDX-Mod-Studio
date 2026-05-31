@@ -1,6 +1,8 @@
 import fnmatch
+import json
 import os
 import sys
+import tomllib
 
 import core.api
 from core import save_result as save_result_utils
@@ -683,14 +685,49 @@ def main():
                 clear_language_diagnostics(widget)
                 return
 
-            bundle = GrammarBundle.from_plugin(element.plugin)
-            result = bundle.validate_schema_path(text, schema_path)
+            # ==========================================
+            # 1. 定義ファイルのロード処理（別枠：定義エラーダイアログの対象）
+            # ==========================================
+            try:
+                # TOML（syntax, values）のロードとパース
+                if not hasattr(element.plugin, "_grammar_bundle"):
+                    element.plugin._grammar_bundle = GrammarBundle.from_plugin(element.plugin)
+                bundle = element.plugin._grammar_bundle
+                
+                # スキーマ JSON ファイルのロード
+                schema_data = bundle.load_schema(schema_path)
+                
+                # 参照プロパティ JSON インデックスのロード
+                if bundle._property_index is None:
+                    bundle._property_index = bundle._load_property_index()
+            except (ValueError, tomllib.TOMLDecodeError, json.JSONDecodeError) as error:
+                # toml, jsonの定義エラー（指定された記述じゃない、正規表現が文字なのにmin maxがある等）はQMessageBoxで警告
+                clear_language_diagnostics(widget)
+                err_str = str(error)
+                if not hasattr(window, "_shown_definition_errors"):
+                    window._shown_definition_errors = set()
+                if err_str not in window._shown_definition_errors:
+                    window._shown_definition_errors.add(err_str)
+                    QMessageBox.critical(
+                        window,
+                        tr("MainWindow", "定義エラー"),
+                        tr("MainWindow", "文法定義ファイルにエラーがあります:\n{error}").format(error=error)
+                    )
+                return
+
+            # ==========================================
+            # 2. テキストファイルのパースと検証（別枠：ダイアログを出さず通常通り処理）
+            # ==========================================
+            ast = bundle.parse(text)
+            result = bundle.validator.validate(ast, schema_data)
+            
             widget.diagnostic_count = len(result.diagnostics)
             widget.set_diagnostics(result.diagnostics)
             update_tab_label(widget)
         except (RuntimeError, ReferenceError):
             return
         except Exception as error:
+            # テキストファイルのエラー（構文エラーなど）やその他一時的例外はステータスバー表示のみ
             clear_language_diagnostics(widget)
             if window.editorTabs and window.editorTabs.currentWidget() is widget:
                 window.statusBar().showMessage(f"文法診断エラー: {error}", 5000)
@@ -920,6 +957,13 @@ def main():
     def on_plugin_selected(plugin):
         if not plugin:
             return
+        
+        # プラグイン切り替え時は最新の文法定義ファイルを再読込できるようにキャッシュをクリア
+        if hasattr(plugin, "_grammar_bundle"):
+            delattr(plugin, "_grammar_bundle")
+        if hasattr(window, "_shown_definition_errors"):
+            window._shown_definition_errors.clear()
+
         # ProjectTreeDock にプラグインを通知
         project_tree.set_active_plugin(plugin)
         editor_registry.register_plugin(plugin)
