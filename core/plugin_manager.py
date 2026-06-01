@@ -116,27 +116,8 @@ class Plugin:
         with open(self.resolve_path(relative_path), "rb") as handle:
             return tomllib.load(handle, parse_float=Decimal)
 
-    def get_manifest_file_map(self):
-        grammar_data = self.raw.get("grammar")
-        grammar_modes_path = None
-        if isinstance(grammar_data, dict):
-            grammar_modes_path = grammar_data.get("grammar_modes_path")
-        if grammar_modes_path:
-            with open(grammar_modes_path, "rb") as handle:
-                return tomllib.load(handle, parse_float=Decimal)
-
-        grammar_modes = self.raw.get("grammar_modes")
-        if not isinstance(grammar_modes, str) or not grammar_modes:
-            raise ValueError(f"Plugin '{self.id}' is missing the required 'grammar_modes' manifest entry.")
-        return self.read_toml_asset(grammar_modes)
-
-    def load_elements_from_files(self):
+    def load_elements_from_grammar_modes(self, modes):
         self.clear_elements()
-        grammar_data = self.raw.get("grammar")
-        if not grammar_data or not isinstance(grammar_data, dict):
-            return
-
-        modes = grammar_data.get("modes")
         if not isinstance(modes, list):
             return
 
@@ -313,16 +294,15 @@ class PluginManager:
                 # 1. 静的文法アセットローダーの起動
                 grammar_loader = GrammarAssetLoader()
                 grammar_result = grammar_loader.load_grammar_manifest(plugin_root, manifest)
-                if grammar_result:
-                    plugin.raw["grammar"] = grammar_result
-                    print(f"Grammar plugin '{p_id}' verified.")
 
                 # 2. 動的プログラムフックローダーの起動
                 entry_point = manifest.get("entry_point")
                 if entry_point:
                     self._load_plugin_logic(plugin, entry_point)
 
-                plugin.load_elements_from_files()
+                if grammar_result:
+                    plugin.load_elements_from_grammar_modes(grammar_result["modes"])
+                    print(f"Grammar assets for plugin '{p_id}' verified.")
                 
                 self.plugins.append(plugin)
                 print(f"Successfully loaded plugin: {plugin.name} (via manifest)")

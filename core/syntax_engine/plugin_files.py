@@ -10,9 +10,24 @@ def load_plugin_file_map(plugin_root: str | Path, manifest: dict[str, Any], plug
     grammar_modes_path = manifest.get("grammar_modes")
     if not isinstance(grammar_modes_path, str) or not grammar_modes_path:
         raise ValueError(f"Plugin '{plugin_id}' is missing the required 'grammar_modes' manifest entry.")
-    target = Path(plugin_root) / grammar_modes_path
+    target = resolve_plugin_asset_path(plugin_root, grammar_modes_path)
     with open(target, "rb") as handle:
         return tomllib.load(handle)
+
+
+def resolve_plugin_asset_path(plugin_root: str | Path, relative_path: str | Path) -> Path:
+    root = Path(plugin_root).resolve()
+    target = (root / relative_path).resolve()
+    if target != root and root not in target.parents:
+        raise ValueError(f"Plugin asset path escapes plugin root: {relative_path}")
+    return target
+
+
+def require_plugin_file(plugin_root: str | Path, relative_path: str | Path, label: str) -> Path:
+    target = resolve_plugin_asset_path(plugin_root, relative_path)
+    if not target.is_file():
+        raise FileNotFoundError(f"Required {label} file not found: {target}")
+    return target
 
 
 def resolve_file_map_path(file_map: dict[str, Any], dotted_key: str) -> str:

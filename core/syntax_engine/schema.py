@@ -34,8 +34,6 @@ class SchemaValidator:
 
     def _validate_container(self, node: FileNode | ChildrenNode, schema: dict[str, Any], path: str) -> None:
         properties = self._resolve_properties(schema, path)
-        if schema.get("$ignore_validation") is True:
-            return
         items = schema.get("items")
         rules = self._collect_rules(schema, properties)
 
@@ -295,9 +293,6 @@ class SchemaValidator:
             resolved = self.property_resolver(properties)
             if not isinstance(resolved, dict):
                 raise ValueError(f"Properties reference '{properties}' at '{path}' must resolve to an object.")
-            if resolved.get("$ignore_validation") is True:
-                schema["$ignore_validation"] = True
-                return None
             if "items" in resolved and "items" not in schema:
                 schema["items"] = resolved["items"]
             if "rules" in resolved and "rules" not in schema:
@@ -430,7 +425,12 @@ class SchemaValidator:
             )
         )
 
-    def check_schema_integrity(self, schema: Any, path: str = "$") -> None:
+    def check_schema_integrity(
+        self,
+        schema: Any,
+        path: str = "$",
+        _seen_property_refs: set[str] | None = None,
+    ) -> None:
         """
         スキーマ定義の整合性（定義ミス）を静的かつ網羅的に検査します。
         ドキュメントに準拠し、以下の定義不備をロード時に早期検出します：
@@ -443,6 +443,7 @@ class SchemaValidator:
         """
         if not isinstance(schema, dict):
             return
+        seen_property_refs = set(_seen_property_refs or set())
 
         # 1. usage の検証
         if "usage" in schema:
@@ -455,34 +456,35 @@ class SchemaValidator:
 
         properties = schema.get("properties")
         items = schema.get("items")
-        ignore_val = schema.get("$ignore_validation")
 
         # 2. properties 参照解決チェック
         if isinstance(properties, str):
+            property_ref = properties
             if self.property_resolver is None:
                 raise ValueError(
                     f"Schema definition error at '{path}': "
-                    f"Properties reference '{properties}' cannot be resolved (no property resolver)."
+                    f"Properties reference '{property_ref}' cannot be resolved (no property resolver)."
                 )
             try:
-                resolved = self.property_resolver(properties)
+                resolved = self.property_resolver(property_ref)
             except Exception as e:
                 raise ValueError(
                     f"Schema definition error at '{path}': "
-                    f"Properties reference '{properties}' failed to resolve: {e}"
+                    f"Properties reference '{property_ref}' failed to resolve: {e}"
                 )
             
-            if not isinstance(resolved, dict) or (not resolved.get("properties") and not resolved.get("items") and resolved.get("$ignore_validation") is not True):
+            if not isinstance(resolved, dict) or (not resolved.get("properties") and not resolved.get("items")):
                 raise ValueError(
                     f"Schema definition error at '{path}': "
-                    f"Properties reference '{properties}' resolved to an invalid or empty definition."
+                    f"Properties reference '{property_ref}' resolved to an invalid or empty definition."
                 )
-            
-            properties = resolved.get("properties")
-            if "items" in resolved and items is None:
-                items = resolved["items"]
-            if resolved.get("$ignore_validation") is True:
-                return
+            if property_ref in seen_property_refs:
+                properties = None
+            else:
+                seen_property_refs.add(property_ref)
+                properties = resolved.get("properties")
+                if "items" in resolved and items is None:
+                    items = resolved["items"]
 
         # 3. select 定義の検査
         select_field = schema.get("select")
@@ -510,12 +512,12 @@ class SchemaValidator:
             if left_def is not None:
                 if not isinstance(left_def, dict):
                     raise ValueError(f"Schema definition error at '{path}.select.left': must be a JSON object.")
-                self.check_schema_integrity(left_def, f"{path}.select.left")
+                self.check_schema_integrity(left_def, f"{path}.select.left", seen_property_refs)
                 
             if right_def is not None:
                 if not isinstance(right_def, dict):
                     raise ValueError(f"Schema definition error at '{path}.select.right': must be a JSON object.")
-                self.check_schema_integrity(right_def, f"{path}.select.right")
+                self.check_schema_integrity(right_def, f"{path}.select.right", seen_property_refs)
 
         # 4. type 定義の検査
         type_field = schema.get("type")
@@ -552,28 +554,36 @@ class SchemaValidator:
                 if rule.children:
                     spec_properties = type_spec.get("properties")
                     spec_items = type_spec.get("items")
+                    child_seen_property_refs = seen_property_refs
+                    cycle_property_ref = False
                     
                     if isinstance(spec_properties, str):
+                        property_ref = spec_properties
                         if self.property_resolver is None:
                             raise ValueError(
                                 f"Schema definition error at '{path}': "
-                                f"Properties reference '{spec_properties}' cannot be resolved."
+                                f"Properties reference '{property_ref}' cannot be resolved."
                             )
                         try:
-                            resolved_spec = self.property_resolver(spec_properties)
+                            resolved_spec = self.property_resolver(property_ref)
                             if isinstance(resolved_spec, dict):
-                                if resolved_spec.get("$ignore_validation") is True:
-                                    continue
-                                spec_properties = resolved_spec.get("properties")
-                                if "items" in resolved_spec and spec_items is None:
-                                    spec_items = resolved_spec["items"]
+                                if property_ref in seen_property_refs:
+                                    cycle_property_ref = True
+                                    spec_properties = None
+                                else:
+                                    child_seen_property_refs = seen_property_refs | {property_ref}
+                                    spec_properties = resolved_spec.get("properties")
+                                    if "items" in resolved_spec and spec_items is None:
+                                        spec_items = resolved_spec["items"]
                         except Exception as e:
                             raise ValueError(
                                 f"Schema definition error at '{path}': "
-                                f"Properties reference '{spec_properties}' failed to resolve: {e}"
+                                f"Properties reference '{property_ref}' failed to resolve: {e}"
                             )
                     
-                    if spec_properties is None and spec_items is None and properties is None and items is None and ignore_val is not True:
+                    if spec_properties is None and spec_items is None and properties is None and items is None:
+                        if cycle_property_ref:
+                            continue
                         raise ValueError(
                             f"Schema definition error at '{path}': "
                             f"Type '{type_name}' requires child definitions ('children = true'), "
@@ -583,14 +593,14 @@ class SchemaValidator:
                     # 子要素の再帰的検査
                     if isinstance(spec_properties, dict):
                         for prop_name, prop_def in spec_properties.items():
-                            self.check_schema_integrity(prop_def, f"{path}.{prop_name}")
+                            self.check_schema_integrity(prop_def, f"{path}.{prop_name}", child_seen_property_refs)
                     if isinstance(spec_items, dict):
-                        self.check_schema_integrity(spec_items, f"{path}[]")
+                        self.check_schema_integrity(spec_items, f"{path}[]", child_seen_property_refs)
 
         # 5. 再帰的にすべてのプロパティとアイテムを検査
         if isinstance(properties, dict):
             for prop_name, prop_def in properties.items():
                 if prop_name != "rules":
-                    self.check_schema_integrity(prop_def, f"{path}.{prop_name}")
+                    self.check_schema_integrity(prop_def, f"{path}.{prop_name}", seen_property_refs)
         if isinstance(items, dict):
-            self.check_schema_integrity(items, f"{path}[]")
+            self.check_schema_integrity(items, f"{path}[]", seen_property_refs)

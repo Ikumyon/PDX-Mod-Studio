@@ -690,9 +690,16 @@ def main():
             # ==========================================
             try:
                 # TOML（syntax, values）のロードとパース
-                if not hasattr(element.plugin, "_grammar_bundle"):
-                    element.plugin._grammar_bundle = GrammarBundle.from_plugin(element.plugin)
-                bundle = element.plugin._grammar_bundle
+                if not hasattr(window, "_grammar_bundles"):
+                    window._grammar_bundles = {}
+                plugin_id = element.plugin.id
+                if plugin_id not in window._grammar_bundles:
+                    window._grammar_bundles[plugin_id] = GrammarBundle.from_plugin_assets(
+                        element.plugin.path,
+                        element.plugin.raw,
+                        plugin_id,
+                    )
+                bundle = window._grammar_bundles[plugin_id]
                 
                 # スキーマ JSON ファイルのロード
                 schema_data = bundle.load_schema(schema_path)
@@ -700,7 +707,7 @@ def main():
                 # 参照プロパティ JSON インデックスのロード
                 if bundle._property_index is None:
                     bundle._property_index = bundle._load_property_index()
-            except (ValueError, tomllib.TOMLDecodeError, json.JSONDecodeError) as error:
+            except (OSError, ValueError, tomllib.TOMLDecodeError, json.JSONDecodeError) as error:
                 # toml, jsonの定義エラー（指定された記述じゃない、正規表現が文字なのにmin maxがある等）はQMessageBoxで警告
                 clear_language_diagnostics(widget)
                 err_str = str(error)
@@ -959,8 +966,8 @@ def main():
             return
         
         # プラグイン切り替え時は最新の文法定義ファイルを再読込できるようにキャッシュをクリア
-        if hasattr(plugin, "_grammar_bundle"):
-            delattr(plugin, "_grammar_bundle")
+        if hasattr(window, "_grammar_bundles"):
+            window._grammar_bundles.pop(plugin.id, None)
         if hasattr(window, "_shown_definition_errors"):
             window._shown_definition_errors.clear()
 
