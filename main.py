@@ -22,7 +22,7 @@ from core.inspector import (
     FileType as InspectorFileType,
     inspect_file,
 )
-from core.syntax_engine import GrammarBundle
+from core.syntax_engine import SyntaxBundle
 from PySide6.QtCore import QFile, QCoreApplication, QSize, Qt, Signal, QObject, QEvent, QTimer
 from PySide6.QtGui import QAction
 from PySide6.QtUiTools import QUiLoader

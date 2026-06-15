@@ -1,5 +1,5 @@
-from .bundle import GrammarBundle
-from .grammar_loader import GrammarAssetLoader
+from .bundle import SyntaxBundle
+from .syntax_loader import SyntaxAssetLoader
 from .plugin_files import (
     extract_base_directory,
     load_plugin_file_map,
@@ -27,8 +27,8 @@ __all__ = [
     "Diagnostic",
     "FileNode",
     "GenericTextParser",
-    "GrammarAssetLoader",
-    "GrammarBundle",
+    "SyntaxAssetLoader",
+    "SyntaxBundle",
     "SyntaxDefinition",
     "Token",
     "ValidationResult",

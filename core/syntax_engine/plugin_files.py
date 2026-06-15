@@ -7,10 +7,10 @@ from typing import Any, Callable
 
 
 def load_plugin_file_map(plugin_root: str | Path, manifest: dict[str, Any], plugin_id: str) -> dict[str, Any]:
-    grammar_modes_path = manifest.get("grammar_modes")
-    if not isinstance(grammar_modes_path, str) or not grammar_modes_path:
-        raise ValueError(f"Plugin '{plugin_id}' is missing the required 'grammar_modes' manifest entry.")
-    target = resolve_plugin_asset_path(plugin_root, grammar_modes_path)
+    assets_path = manifest.get("assets")
+    if not isinstance(assets_path, str) or not assets_path:
+        raise ValueError(f"Plugin '{plugin_id}' is missing the required 'assets' manifest entry.")
+    target = resolve_plugin_asset_path(plugin_root, assets_path)
     with open(target, "rb") as handle:
         return tomllib.load(handle)
 
@@ -37,10 +37,10 @@ def resolve_file_map_path(file_map: dict[str, Any], dotted_key: str) -> str:
         walked.append(part)
         if not isinstance(current, dict) or part not in current:
             joined = ".".join(walked)
-            raise ValueError(f"Missing '{joined}' in plugin grammar_modes.toml.")
+            raise ValueError(f"Missing '{joined}' in plugin assets.toml.")
         current = current[part]
     if not isinstance(current, str) or not current:
-        raise ValueError(f"Invalid path for '{dotted_key}' in plugin grammar_modes.toml.")
+        raise ValueError(f"Invalid path for '{dotted_key}' in plugin assets.toml.")
     return current
 
 
@@ -77,11 +77,11 @@ def translate_from_files_map(
     if not key:
         return fallback_text or ""
 
-    grammar_modes_path = manifest.get("grammar_modes")
-    if not isinstance(grammar_modes_path, str) or not grammar_modes_path:
+    assets_path = manifest.get("assets")
+    if not isinstance(assets_path, str) or not assets_path:
         return fallback_text
 
-    file_map_path = Path(plugin_root) / grammar_modes_path
+    file_map_path = Path(plugin_root) / assets_path
     with open(file_map_path, "rb") as handle:
         file_map = tomllib.load(handle)
 
@@ -89,18 +89,18 @@ def translate_from_files_map(
     if not isinstance(translations_config, dict):
         return fallback_text
 
-    folder_name = translations_config.get("folder")
-    if not isinstance(folder_name, str) or not folder_name:
+    directory_name = translations_config.get("directory")
+    if not isinstance(directory_name, str) or not directory_name:
         return fallback_text
 
     default_locale = translations_config.get("default")
 
-    translations_dir = Path(plugin_root) / folder_name
+    translations_dir = Path(plugin_root) / directory_name
     locale_entries: dict[str, str] = {}
     if translations_dir.is_dir():
         for file_path in translations_dir.glob("*.json"):
             locale_key = file_path.stem
-            locale_entries[locale_key] = f"{folder_name}/{file_path.name}"
+            locale_entries[locale_key] = f"{directory_name}/{file_path.name}"
 
     target_locale = None
     if isinstance(language, str) and language in locale_entries:

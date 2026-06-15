@@ -8,7 +8,7 @@ from .parser import GenericTextParser
 from .plugin_files import load_plugin_file_map, resolve_file_map_path, require_plugin_file
 
 
-class GrammarBundle:
+class SyntaxBundle:
     def __init__(
         self,
         syntax: SyntaxDefinition | None = None,
@@ -29,11 +29,11 @@ class GrammarBundle:
         plugin_root: str | Path,
         manifest: dict[str, Any],
         plugin_id: str,
-    ) -> "GrammarBundle":
+    ) -> "SyntaxBundle":
         file_map = load_plugin_file_map(plugin_root, manifest, plugin_id)
 
         # syntax.toml のロード
-        syntax_rel_path = resolve_file_map_path(file_map, "grammar.syntax")
+        syntax_rel_path = resolve_file_map_path(file_map, "syntax.syntax")
         syntax_file = require_plugin_file(plugin_root, syntax_rel_path, "syntax definition")
         
         with open(syntax_file, "rb") as handle:
@@ -42,8 +42,8 @@ class GrammarBundle:
         syntax_def = SyntaxDefinition.from_dict(syntax_data)
 
         # rules フォルダパスの解決
-        rules_rel_path = resolve_file_map_path(file_map, "grammar.rules")
-        rules_dir = (Path(plugin_root) / rules_rel_path).resolve()
+        directory_rel_path = resolve_file_map_path(file_map, "syntax.directory")
+        rules_dir = (Path(plugin_root) / directory_rel_path).resolve()
         if not rules_dir.is_dir():
             raise FileNotFoundError(f"Required rules directory not found: {rules_dir}")
 
