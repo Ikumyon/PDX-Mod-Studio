@@ -5,7 +5,6 @@ from decimal import Decimal
 import tomllib
 import core.api
 from core.syntax_engine import (
-    GrammarAssetLoader,
     resolve_manifest_display_text,
     translate_from_files_map,
 )
@@ -116,31 +115,7 @@ class Plugin:
         with open(self.resolve_path(relative_path), "rb") as handle:
             return tomllib.load(handle, parse_float=Decimal)
 
-    def load_elements_from_grammar_modes(self, modes):
-        self.clear_elements()
-        if not isinstance(modes, list):
-            return
 
-        for mode in modes:
-            if not isinstance(mode, dict):
-                continue
-            mode_id = mode.get("id")
-            name_key = mode.get("name_key")
-            path_pattern = mode.get("path")
-
-            if not mode_id or not name_key:
-                continue
-
-            # 翻訳キーから翻訳表示名を解決
-            resolved_name = self.translate(name_key)
-
-            self.add_element(
-                id=mode_id,
-                name=resolved_name,
-                path=path_pattern,
-                element_dir=None,
-                raw=mode,
-            )
 
     def translate(self, key, fallback=None, context=None, metadata=None):
         if self.module:
@@ -291,18 +266,10 @@ class PluginManager:
                     }
                 )
                 
-                # 1. 静的文法アセットローダーの起動
-                grammar_loader = GrammarAssetLoader()
-                grammar_result = grammar_loader.load_grammar_manifest(plugin_root, manifest)
-
-                # 2. 動的プログラムフックローダーの起動
+                # 1. 動的プログラムフックローダーの起動
                 entry_point = manifest.get("entry_point")
                 if entry_point:
                     self._load_plugin_logic(plugin, entry_point)
-
-                if grammar_result:
-                    plugin.load_elements_from_grammar_modes(grammar_result["modes"])
-                    print(f"Grammar assets for plugin '{p_id}' verified.")
                 
                 self.plugins.append(plugin)
                 print(f"Successfully loaded plugin: {plugin.name} (via manifest)")

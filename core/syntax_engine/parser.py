@@ -6,7 +6,7 @@ from .models import AssignmentNode, ChildrenNode, CommentNode, FileNode, SyntaxD
 class GenericTextParser:
     def __init__(self, syntax: SyntaxDefinition):
         self.syntax = syntax
-        self._comparison_operators = {"<", ">", "<=", ">=", "!=", "=="}
+        self._comparison_operators = set(syntax.comparison_operators)
 
     def parse(self, text: str) -> FileNode:
         tokens = self._tokenize(text)
@@ -22,10 +22,49 @@ class GenericTextParser:
         block_open = self.syntax.block_open
         block_close = self.syntax.block_close
         comment = self.syntax.comment
-        quote = self.syntax.string_quote
+        quotes = self.syntax.string_quotes
         escape = self.syntax.escape
+        children_by = self.syntax.children_by
+
+        indent_stack = [0]
+        at_line_start = True
 
         while index < len(text):
+            if children_by == "indent" and at_line_start:
+                temp_idx = index
+                temp_col = column
+                indent_spaces = 0
+                while temp_idx < len(text) and text[temp_idx] in " \t":
+                    indent_spaces += 1 if text[temp_idx] == " " else 4
+                    temp_idx += 1
+                    temp_col += 1
+
+                is_empty_or_comment = False
+                if temp_idx >= len(text):
+                    is_empty_or_comment = True
+                elif text[temp_idx] in "\r\n":
+                    is_empty_or_comment = True
+                elif text.startswith(comment, temp_idx):
+                    is_empty_or_comment = True
+
+                if not is_empty_or_comment:
+                    current_indent = indent_stack[-1]
+                    if indent_spaces > current_indent:
+                        tokens.append(Token("INDENT", " " * (indent_spaces - current_indent), line, column))
+                        indent_stack.append(indent_spaces)
+                    elif indent_spaces < current_indent:
+                        while indent_spaces < indent_stack[-1]:
+                            tokens.append(Token("DEDENT", "", line, column))
+                            indent_stack.pop()
+                        if indent_spaces != indent_stack[-1]:
+                            raise ValueError(f"Inconsistent indentation at line {line}, column {column}")
+                    index = temp_idx
+                    column = temp_col
+
+                at_line_start = False
+                if index >= len(text):
+                    break
+
             current = text[index]
 
             if current == "\r":
@@ -37,6 +76,7 @@ class GenericTextParser:
                 index += 1
                 line += 1
                 column = 1
+                at_line_start = True
                 continue
 
             if current.isspace():
@@ -55,17 +95,18 @@ class GenericTextParser:
                 tokens.append(Token("COMMENT", text[start:index], line, start_column))
                 continue
 
-            if text.startswith(block_open, index):
-                tokens.append(Token("BLOCK_OPEN", block_open, line, column))
-                index += len(block_open)
-                column += len(block_open)
-                continue
+            if children_by == "bracket":
+                if text.startswith(block_open, index):
+                    tokens.append(Token("BLOCK_OPEN", block_open, line, column))
+                    index += len(block_open)
+                    column += len(block_open)
+                    continue
 
-            if text.startswith(block_close, index):
-                tokens.append(Token("BLOCK_CLOSE", block_close, line, column))
-                index += len(block_close)
-                column += len(block_close)
-                continue
+                if text.startswith(block_close, index):
+                    tokens.append(Token("BLOCK_CLOSE", block_close, line, column))
+                    index += len(block_close)
+                    column += len(block_close)
+                    continue
 
             if text.startswith(assignment, index):
                 tokens.append(Token("ASSIGN", assignment, line, column))
@@ -84,7 +125,7 @@ class GenericTextParser:
                 tokens.append(Token("OP", text[start:index], line, start_column))
                 continue
 
-            if current == quote:
+            if current in quotes:
                 start_column = column
                 index += 1
                 column += 1
@@ -101,7 +142,7 @@ class GenericTextParser:
                         index += 2
                         column += 2
                         continue
-                    if char == quote:
+                    if char == current:
                         index += 1
                         column += 1
                         break
@@ -110,7 +151,7 @@ class GenericTextParser:
                     column += 1
                 else:
                     raise ValueError(f"Unterminated string at line {line}, column {start_column}")
-                tokens.append(Token("STRING", quote + "".join(value_parts) + quote, line, start_column))
+                tokens.append(Token("STRING", current + "".join(value_parts) + current, line, start_column))
                 continue
 
             start = index
@@ -120,21 +161,27 @@ class GenericTextParser:
                 "\n",
                 " ",
                 "\t",
-                quote,
                 "<",
                 ">",
                 "!",
-            }
+            } | set(quotes)
             while index < len(text):
                 if text.startswith(comment, index):
                     break
-                if text.startswith(block_open, index) or text.startswith(block_close, index) or text.startswith(assignment, index):
+                if children_by == "bracket" and (text.startswith(block_open, index) or text.startswith(block_close, index)):
+                    break
+                if text.startswith(assignment, index):
                     break
                 if text[index] in stop_chars:
                     break
                 index += 1
                 column += 1
             tokens.append(Token("WORD", text[start:index], line, start_column))
+
+        if children_by == "indent":
+            while len(indent_stack) > 1:
+                tokens.append(Token("DEDENT", "", line, column))
+                indent_stack.pop()
 
         tokens.append(Token("EOF", "", line, column))
         return tokens
@@ -172,8 +219,10 @@ class _TokenParser:
                 continue
             if self.current.kind == "BLOCK_CLOSE" and end_kind != "BLOCK_CLOSE":
                 raise ValueError(f"Unexpected block close at line {self.current.line}, column {self.current.column}")
+            if self.current.kind == "DEDENT" and end_kind != "DEDENT":
+                raise ValueError(f"Unexpected dedent at line {self.current.line}, column {self.current.column}")
             children.append(self._parse_statement(end_kind))
-        if end_kind == "BLOCK_CLOSE":
+        if end_kind in {"BLOCK_CLOSE", "DEDENT"}:
             self.index += 1
         return children
 
@@ -206,7 +255,8 @@ class _TokenParser:
         left = left_token.value
         self.index += 1
         operator = self._expect("ASSIGN").value
-        if self.current.kind == "BLOCK_OPEN":
+        
+        if self.syntax.children_by == "bracket" and self.current.kind == "BLOCK_OPEN":
             open_token = self.current
             self.index += 1
             right = ChildrenNode(
@@ -216,8 +266,21 @@ class _TokenParser:
                 column=open_token.column,
                 length=max(1, len(open_token.value)),
             )
+        elif self.syntax.children_by == "indent" and self._peek_is_indent():
+            while self.current.kind in {"NEWLINE", "COMMENT"}:
+                self.index += 1
+            indent_token = self.current
+            self.index += 1
+            right = ChildrenNode(
+                kind="children",
+                children=self._parse_children(end_kind="DEDENT"),
+                line=indent_token.line,
+                column=indent_token.column,
+                length=1,
+            )
         else:
             right = self._parse_assignment_value()
+
         return AssignmentNode(
             kind="assignment",
             left=left,
@@ -246,7 +309,7 @@ class _TokenParser:
         parts: list[str] = []
         while self.current.kind not in {"NEWLINE", "COMMENT", "EOF", end_kind}:
             token = self.current
-            if token.kind == "BLOCK_CLOSE":
+            if token.kind in {"BLOCK_CLOSE", "DEDENT"}:
                 break
             parts.append(token.value)
             self.index += 1
@@ -267,6 +330,17 @@ class _TokenParser:
                 return token
             index += 1
         return self.tokens[-1]
+
+    def _peek_is_indent(self) -> bool:
+        index = self.index
+        while index < len(self.tokens):
+            token = self.tokens[index]
+            if token.kind == "INDENT":
+                return True
+            if token.kind not in {"NEWLINE", "COMMENT"}:
+                return False
+            index += 1
+        return False
 
     def _expect(self, kind: str) -> Token:
         token = self.current

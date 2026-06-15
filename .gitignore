@@ -16,6 +16,7 @@ UIモックアップ/
 test_project/
 tests/
 test_mod/
+資料/
 
 #設定保存ファイル
 plugins/**/settings.json

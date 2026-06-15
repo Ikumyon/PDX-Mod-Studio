@@ -85,22 +85,27 @@ def translate_from_files_map(
     with open(file_map_path, "rb") as handle:
         file_map = tomllib.load(handle)
 
-    i18n = file_map.get("i18n")
-    if not isinstance(i18n, dict):
+    translations_config = file_map.get("translations")
+    if not isinstance(translations_config, dict):
         return fallback_text
 
+    folder_name = translations_config.get("folder")
+    if not isinstance(folder_name, str) or not folder_name:
+        return fallback_text
+
+    default_locale = translations_config.get("default")
+
+    translations_dir = Path(plugin_root) / folder_name
     locale_entries: dict[str, str] = {}
-    for locale_key, path_value in i18n.items():
-        if locale_key == "default":
-            continue
-        if isinstance(path_value, str) and path_value:
-            locale_entries[locale_key] = path_value
+    if translations_dir.is_dir():
+        for file_path in translations_dir.glob("*.json"):
+            locale_key = file_path.stem
+            locale_entries[locale_key] = f"{folder_name}/{file_path.name}"
 
     target_locale = None
     if isinstance(language, str) and language in locale_entries:
         target_locale = language
     else:
-        default_locale = i18n.get("default")
         if isinstance(default_locale, str) and default_locale in locale_entries:
             target_locale = default_locale
         elif locale_entries:

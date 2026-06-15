@@ -663,81 +663,12 @@ def main():
 
     def validate_language_diagnostics(widget):
         try:
-            if not widget or not hasattr(widget, "set_diagnostics"):
-                return
-            if not editor_registry.is_text_editor(getattr(widget, "editor_id", TEXT_EDITOR_ID)):
+            if widget:
                 clear_language_diagnostics(widget)
-                return
-
-            file_path = getattr(widget, "file_path", "")
-            element = get_element_for_widget(widget)
-            if not element:
-                clear_language_diagnostics(widget)
-                return
-
-            schema_path = resolve_schema_for_file(element, file_path)
-            if not schema_path:
-                clear_language_diagnostics(widget)
-                return
-
-            text = get_widget_text_content(widget)
-            if text is None:
-                clear_language_diagnostics(widget)
-                return
-
-            # ==========================================
-            # 1. 定義ファイルのロード処理（別枠：定義エラーダイアログの対象）
-            # ==========================================
-            try:
-                # TOML（syntax, values）のロードとパース
-                if not hasattr(window, "_grammar_bundles"):
-                    window._grammar_bundles = {}
-                plugin_id = element.plugin.id
-                if plugin_id not in window._grammar_bundles:
-                    window._grammar_bundles[plugin_id] = GrammarBundle.from_plugin_assets(
-                        element.plugin.path,
-                        element.plugin.raw,
-                        plugin_id,
-                    )
-                bundle = window._grammar_bundles[plugin_id]
-                
-                # スキーマ JSON ファイルのロード
-                schema_data = bundle.load_schema(schema_path)
-                
-                # 参照プロパティ JSON インデックスのロード
-                if bundle._property_index is None:
-                    bundle._property_index = bundle._load_property_index()
-            except (OSError, ValueError, tomllib.TOMLDecodeError, json.JSONDecodeError) as error:
-                # toml, jsonの定義エラー（指定された記述じゃない、正規表現が文字なのにmin maxがある等）はQMessageBoxで警告
-                clear_language_diagnostics(widget)
-                err_str = str(error)
-                if not hasattr(window, "_shown_definition_errors"):
-                    window._shown_definition_errors = set()
-                if err_str not in window._shown_definition_errors:
-                    window._shown_definition_errors.add(err_str)
-                    QMessageBox.critical(
-                        window,
-                        tr("MainWindow", "定義エラー"),
-                        tr("MainWindow", "文法定義ファイルにエラーがあります:\n{error}").format(error=error)
-                    )
-                return
-
-            # ==========================================
-            # 2. テキストファイルのパースと検証（別枠：ダイアログを出さず通常通り処理）
-            # ==========================================
-            ast = bundle.parse(text)
-            result = bundle.validator.validate(ast, schema_data)
-            
-            widget.diagnostic_count = len(result.diagnostics)
-            widget.set_diagnostics(result.diagnostics)
-            update_tab_label(widget)
         except (RuntimeError, ReferenceError):
             return
-        except Exception as error:
-            # テキストファイルのエラー（構文エラーなど）やその他一時的例外はステータスバー表示のみ
-            clear_language_diagnostics(widget)
-            if window.editorTabs and window.editorTabs.currentWidget() is widget:
-                window.statusBar().showMessage(f"文法診断エラー: {error}", 5000)
+        except Exception:
+            pass
 
     def create_editor_widget(editor_id, file_path, content, available_editors, params=None, tab_id=None, file_encoding=None):
         editor_id = editor_registry.normalize_editor_id(editor_id)

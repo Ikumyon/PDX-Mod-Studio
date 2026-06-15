@@ -17,10 +17,8 @@ from .models import (
     Token,
     ValidationResult,
     ValueNode,
-    ValueTypeRule,
 )
 from .parser import GenericTextParser
-from .schema import SchemaValidator
 
 __all__ = [
     "AssignmentNode",
@@ -31,12 +29,10 @@ __all__ = [
     "GenericTextParser",
     "GrammarAssetLoader",
     "GrammarBundle",
-    "SchemaValidator",
     "SyntaxDefinition",
     "Token",
     "ValidationResult",
     "ValueNode",
-    "ValueTypeRule",
     "extract_base_directory",
     "load_plugin_file_map",
     "resolve_file_map_path",
