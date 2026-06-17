@@ -94,6 +94,8 @@ class ProjectIOManager:
         write_json_file(path, metadata)
         self.window.current_project_file = path
         self.window.current_project_type = PROJECT_TYPE_REFERENCE
+        from core.dialog.settings import settings_manager
+        settings_manager.add_recent_project(path, metadata.get("display_name"), game=metadata.get("required_plugins", [""])[0] if metadata.get("required_plugins") else "")
         self.window.statusBar().showMessage(f"Project saved: {path}", 3000)
         return True
 
@@ -126,6 +128,8 @@ class ProjectIOManager:
         os.replace(temp_path, path)
         self.window.current_project_file = path
         self.window.current_project_type = PROJECT_TYPE_EMBEDDED
+        from core.dialog.settings import settings_manager
+        settings_manager.add_recent_project(path, metadata.get("display_name"), game=metadata.get("required_plugins", [""])[0] if metadata.get("required_plugins") else "")
         self.window.statusBar().showMessage(f"Project package saved: {path}", 3000)
         return True
 
@@ -189,6 +193,8 @@ class ProjectIOManager:
         self.import_all_plugin_data(metadata, path, mod_root, metadata.get("plugin_data", {}))
         self.window.current_project_file = path
         self.window.current_project_type = PROJECT_TYPE_REFERENCE
+        from core.dialog.settings import settings_manager
+        settings_manager.add_recent_project(path, metadata.get("display_name"), game=metadata.get("required_plugins", [""])[0] if metadata.get("required_plugins") else "")
         self.window.statusBar().showMessage(f"Project opened: {path}", 3000)
         return True
 
@@ -222,6 +228,8 @@ class ProjectIOManager:
         self.window.current_project_type = PROJECT_TYPE_EMBEDDED
         self.window.embedded_project_workspace = workspace
         self.window.source_mod_root = metadata.get("source_mod_root")
+        from core.dialog.settings import settings_manager
+        settings_manager.add_recent_project(path, metadata.get("display_name"), game=metadata.get("required_plugins", [""])[0] if metadata.get("required_plugins") else "")
         self.window.statusBar().showMessage(f"Project package opened: {path}", 3000)
         return True
 

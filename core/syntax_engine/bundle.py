@@ -11,17 +11,14 @@ from .plugin_files import load_plugin_file_map, resolve_file_map_path, require_p
 class SyntaxBundle:
     def __init__(
         self,
-        syntax: SyntaxDefinition | None = None,
-        asset_root: str | Path | None = None,
+        syntax: SyntaxDefinition,
+        asset_root: str | Path,
         rules_dir: Path | None = None,
     ):
         self.syntax = syntax
-        self.asset_root = Path(asset_root).resolve() if asset_root else None
+        self.asset_root = Path(asset_root).resolve()
         self.rules_dir = rules_dir
-        if syntax:
-            self.parser = GenericTextParser(syntax)
-        else:
-            self.parser = None
+        self.parser = GenericTextParser(syntax)
 
     @classmethod
     def from_plugin_assets(
@@ -54,9 +51,7 @@ class SyntaxBundle:
         )
 
     def parse(self, text: str) -> FileNode:
-        if self.parser:
-            return self.parser.parse(text)
-        return FileNode(kind="file", children=[])
+        return self.parser.parse(text)
 
     def validate(self, text: str, schema: dict[str, Any]) -> ValidationResult:
         ast = self.parse(text)

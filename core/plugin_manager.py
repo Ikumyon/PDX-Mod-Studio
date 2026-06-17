@@ -6,6 +6,7 @@ import tomllib
 import core.api
 from core.syntax_engine import (
     resolve_manifest_display_text,
+    SyntaxAssetLoader,
     translate_from_files_map,
 )
 
@@ -43,6 +44,7 @@ class Plugin:
         self.icon_path = icon_path
         self.raw = raw or {}
         self.description = self.raw.get("description", "")
+        self.syntax_bundle = self.raw.get("syntax_bundle")
         self.elements = [] # ModElementのリスト
         self.module = None # ロードされたPythonモジュール
         self.entry_point = self.raw.get("entry_point")
@@ -213,6 +215,7 @@ class PluginManager:
         registry_settings = self._load_registry_settings()
 
         self.plugins = []
+        syntax_loader = SyntaxAssetLoader()
         
         for p_id, manifest in discovered.items():
             # レジストリ設定を確認（未登録ならデフォルトで有効）
@@ -253,6 +256,7 @@ class PluginManager:
                         language=None,
                     ),
                 )
+                syntax_bundle = syntax_loader.load_syntax_manifest(plugin_root, manifest)
                 plugin = Plugin(
                     id=p_id,
                     name=resolved_name,
@@ -263,6 +267,7 @@ class PluginManager:
                         **manifest,
                         "name": resolved_name,
                         "description": resolved_description,
+                        "syntax_bundle": syntax_bundle,
                     }
                 )
                 

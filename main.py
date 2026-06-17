@@ -9,6 +9,10 @@ from core import save_result as save_result_utils
 from core.dialog import EncodingActionDialog, LanguageSelectDialog
 from core.i18n import I18nManager
 from core.editor_tabs import EditorTabProxy, create_editor_tab_bar
+from core.editor_tab_controller import EditorTabController
+from core.save_controller import SaveController
+from core.diagnostics_controller import DiagnosticsController
+import lib.pdx_dashboard
 from core.encoding_controller import (
     decode_with_encoding,
     read_text_with_detected_encoding,
@@ -43,6 +47,10 @@ def main():
     
     # 翻訳の初期化
     I18nManager().init_translation(app)
+    
+    # レンダラーの翻訳を適用
+    from core.dashboard_tab_host import renderer_registry
+    renderer_registry.install_translations(app)
     
     # Windowsのタスクバーアイコンを正しく表示するための設定
     try:
@@ -104,19 +112,31 @@ def main():
     window.pending_params = {} # {tab_id: params}
     window._tab_id_counter = 0
 
+    def next_tab_id():
+        window._tab_id_counter += 1
+        return f"tab:{window._tab_id_counter}"
+
     # --- ドックの初期化 ---
+    from core.home_sidebar_dock import HomeSidebarDock
     from core.project_tree_dock import ProjectTreeDock
     from core.project_search_dock import ProjectSearchDock
     from core.plugin_manager import PluginManager
     from core.editor_registry import EditorRegistry
     from core.editor import EditorWidget
+    home_sidebar = HomeSidebarDock(window)
+    home_sidebar_dock = home_sidebar.get_widget()
     project_tree = ProjectTreeDock(window)
     project_tree_dock = project_tree.get_widget()
     project_search = ProjectSearchDock(window)
     project_search_dock = project_search.get_widget()
     
+    window.project_tree = project_tree
+    
     view_menu = window.findChild(QMenu, "menuView")
     docks = []
+    if home_sidebar_dock:
+        window.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, home_sidebar_dock)
+        docks.append(home_sidebar_dock)
     if project_tree_dock:
         window.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, project_tree_dock)
         docks.append(project_tree_dock)
@@ -161,28 +181,41 @@ def main():
     }
     window.editorTabs = EditorTabProxy(editor_splitter, initial_pane)
 
+    split_editor_button = window.findChild(QToolButton, "splitEditorButton")
+    if split_editor_button:
+        split_editor_button.setVisible(False)
+        split_editor_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        split_editor_button.setIconSize(QSize(20, 20))
+        split_editor_button.setFixedSize(32, 28)
+        split_editor_button.setToolTip(tr("MainWindow", "エディタを右に分割"))
+        split_icon_path = os.path.join(base_dir, "assets", "icons", "split-editor-right.svg")
+        if os.path.exists(split_icon_path):
+            from core.utils import load_svg_icon
+            icon_color = window.palette().color(window.foregroundRole()).name()
+            split_editor_button.setIcon(load_svg_icon(split_icon_path, icon_color))
+
+    def update_split_editor_button():
+        if not split_editor_button:
+            return
+        split_editor_button.setVisible(bool(window.editorTabs and window.editorTabs.count() > 0))
+
+    # コントローラーの初期化
+    tab_controller = EditorTabController(
+        window,
+        project_tree,
+        next_tab_id,
+        update_split_editor_button
+    )
+    diagnostics_controller = DiagnosticsController(window, tab_controller)
+    tab_controller.diagnostics_controller = diagnostics_controller
+    save_controller = SaveController(window, tab_controller)
+    window.save_controller = save_controller
+    window.tab_controller = tab_controller
+    window.diagnostics_controller = diagnostics_controller
+
     # シグナルの接続
-    def close_editor_tab(index):
-        widget = window.editorTabs.widget(index)
-        tab_id = getattr(widget, "tab_id", None)
-        if tab_id in window.pending_params:
-            del window.pending_params[tab_id]
-        window.editorTabs.removeTab(index)
-        project_tree.update_open_editors(window.editorTabs)
-        update_editor_corner_controls_pane()
-        update_split_editor_button()
-
-    window.editorTabs.tabCloseRequested.connect(close_editor_tab)
-
-    def on_tab_changed(index):
-        project_tree.sync_selection(index)
-        update_editor_corner_controls_pane()
-        update_editor_selector(index)
-        update_split_editor_button()
-        update_encoding_status()
-        schedule_language_diagnostics(window.editorTabs.widget(index) if index >= 0 else None)
-
-    window.editorTabs.currentChanged.connect(on_tab_changed)
+    window.editorTabs.tabCloseRequested.connect(tab_controller.close_editor_tab)
+    window.editorTabs.currentChanged.connect(tab_controller.on_tab_changed)
 
     def on_focus_changed(old_widget, new_widget):
         if window.editorTabs and new_widget:
@@ -211,23 +244,6 @@ def main():
             view_selector.setIcon(load_svg_icon(mode_icon_path, icon_color))
         view_selector.setStyleSheet("QToolButton::menu-indicator { image: none; }") # 三角マークを隠す場合は設定
 
-    split_editor_button = window.findChild(QToolButton, "splitEditorButton")
-    if split_editor_button:
-        split_editor_button.setVisible(False)
-        split_editor_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
-        split_editor_button.setIconSize(QSize(20, 20))
-        split_editor_button.setFixedSize(32, 28)
-        split_editor_button.setToolTip(tr("MainWindow", "エディタを右に分割"))
-        split_icon_path = os.path.join(base_dir, "assets", "icons", "split-editor-right.svg")
-        if os.path.exists(split_icon_path):
-            from core.utils import load_svg_icon
-            icon_color = window.palette().color(window.foregroundRole()).name()
-            split_editor_button.setIcon(load_svg_icon(split_icon_path, icon_color))
-
-    def update_split_editor_button():
-        if not split_editor_button:
-            return
-        split_editor_button.setVisible(bool(window.editorTabs and window.editorTabs.count() > 0))
 
     def move_widget_to_layout(widget, target_layout):
         if not widget or not target_layout:
@@ -306,9 +322,6 @@ def main():
 
     window.get_available_editors_for_file = get_available_editors_for_file
 
-    def next_tab_id():
-        window._tab_id_counter += 1
-        return f"tab:{window._tab_id_counter}"
 
     def find_widget_by_tab_id(tab_id):
         if not tab_id or not window.editorTabs:
@@ -426,136 +439,8 @@ def main():
         file_path = window.editorTabs.tabToolTip(current_tab_idx)
         file_open_controller.open_file(file_path, editor_id)
 
-    def _tab_text_without_dirty_marker(text):
-        return text[1:] if text.startswith("*") else text
-
-    def update_tab_label(widget):
-        if not window.editorTabs or not widget:
-            return
-        index = window.editorTabs.indexOf(widget)
-        if index < 0:
-            return
-        base_text = getattr(widget, "tab_base_text", None)
-        if not base_text:
-            base_text = _tab_text_without_dirty_marker(window.editorTabs.tabText(index))
-            widget.tab_base_text = base_text
-        diagnostic_count = int(getattr(widget, "diagnostic_count", 0) or 0)
-        text = f"{base_text} {diagnostic_count}" if diagnostic_count > 0 else base_text
-        if getattr(widget, "is_dirty", False):
-            text = f"*{text}"
-        window.editorTabs.setTabText(index, text)
-
-    def mark_tab_dirty(widget):
-        if getattr(widget, "is_dirty", False):
-            return
-        widget.is_dirty = True
-        update_tab_label(widget)
-        project_tree.update_open_editors(window.editorTabs)
-
-    def mark_tab_clean(widget):
-        widget.is_dirty = False
-        update_tab_label(widget)
-        project_tree.update_open_editors(window.editorTabs)
-
-    def update_saved_widget_path(widget, path):
-        if not path:
-            return
-        widget.file_path = path
-        index = window.editorTabs.indexOf(widget)
-        if index >= 0:
-            window.editorTabs.setTabToolTip(index, path)
-            clean_text = _tab_text_without_dirty_marker(window.editorTabs.tabText(index))
-            editor_prefix = "[E] " if clean_text.startswith("[E] ") else ""
-            widget.tab_base_text = f"{editor_prefix}{os.path.basename(path)}"
-            update_tab_label(widget)
-            project_tree.update_open_editors(window.editorTabs)
-
-    def show_save_result_message(result, default_timeout=5000):
-        message = save_result_utils.save_result_message(result)
-        if message:
-            window.statusBar().showMessage(message, default_timeout)
-
-    def clear_pending_save_plan(widget):
-        widget.save_plan = None
-
-    def finish_successful_save(widget, result=None):
-        if result is None:
-            result = {}
-        if not isinstance(result, dict):
-            result = save_result_utils.normalize_save_result(result)
-
-        primary_path = result.get("primary_path", "")
-        if not primary_path:
-            primary_path = getattr(widget, "file_path", "")
-
-        if primary_path:
-            update_saved_widget_path(widget, primary_path)
-        mark_tab_clean(widget)
-        clear_pending_save_plan(widget)
-
-    def finish_unsuccessful_save(widget):
-        clear_pending_save_plan(widget)
-
-    def save_active_tab(save_as=False):
-        if not window.editorTabs:
-            return False
-
-        widget = window.editorTabs.currentWidget()
-        if not widget:
-            window.statusBar().showMessage(tr("MainWindow", "保存するタブがありません。"), 3000)
-            return False
-
-        handler_name = "on_save_as_triggered" if save_as else "on_save_triggered"
-        handler = getattr(widget, handler_name, None)
-        if not callable(handler):
-            window.statusBar().showMessage(tr("MainWindow", "このタブはまだ保存に対応していません。"), 4000)
-            return False
-
-        try:
-            plan_result = save_result_utils.normalize_save_result(handler())
-        except Exception as error:
-            window.statusBar().showMessage(
-                tr("MainWindow", "保存処理の呼び出しに失敗しました: {error}").format(error=error),
-                5000,
-            )
-            return False
-
-        if save_result_utils.is_save_cancelled(plan_result):
-            finish_unsuccessful_save(widget)
-            show_save_result_message(plan_result)
-            return False
-
-        if not save_result_utils.is_save_success(plan_result):
-            finish_unsuccessful_save(widget)
-            show_save_result_message(plan_result)
-            return False
-
-        save_plan = getattr(widget, "save_plan", None)
-        if not save_plan:
-            finish_successful_save(widget, plan_result)
-            return True
-
-        writer = getattr(widget, "on_write_save_plan", None)
-        if not callable(writer):
-            window.statusBar().showMessage(tr("MainWindow", "このタブはまだ書き込み処理に対応していません。"), 4000)
-            return False
-
-        try:
-            write_result = save_result_utils.normalize_save_result(writer())
-        except Exception as error:
-            window.statusBar().showMessage(
-                tr("MainWindow", "保存書き込みに失敗しました: {error}").format(error=error),
-                5000,
-            )
-            finish_unsuccessful_save(widget)
-            return False
-
-        if save_result_utils.is_save_success(write_result):
-            finish_successful_save(widget, write_result)
-            return True
-        finish_unsuccessful_save(widget)
-        show_save_result_message(write_result)
-        return False
+    # 後からコールバックをバインドするプレースホルダー
+    pass
 
     def get_widget_text_content(widget):
         if widget is None:
@@ -633,42 +518,8 @@ def main():
                 return schema_path
         return None
 
-    def clear_language_diagnostics(widget):
-        if not widget:
-            return
-        widget.diagnostic_count = 0
-        if hasattr(widget, "clear_diagnostics"):
-            widget.clear_diagnostics()
-        update_tab_label(widget)
-
-    def schedule_language_diagnostics(widget=None):
-        if widget is None:
-            widget = window.editorTabs.currentWidget() if window.editorTabs else None
-        if not widget or not hasattr(widget, "set_diagnostics"):
-            return
-
-        timer = getattr(widget, "_language_diagnostic_timer", None)
-        if timer is None:
-            timer = QTimer(widget)
-            timer.setSingleShot(True)
-            timer.timeout.connect(lambda w=widget: validate_language_diagnostics(w))
-            widget._language_diagnostic_timer = timer
-        timer.start(350)
-
-    def schedule_all_language_diagnostics():
-        if not window.editorTabs:
-            return
-        for index in range(window.editorTabs.count()):
-            schedule_language_diagnostics(window.editorTabs.widget(index))
-
-    def validate_language_diagnostics(widget):
-        try:
-            if widget:
-                clear_language_diagnostics(widget)
-        except (RuntimeError, ReferenceError):
-            return
-        except Exception:
-            pass
+    # 診断処理コントローラーへ委譲
+    pass
 
     def create_editor_widget(editor_id, file_path, content, available_editors, params=None, tab_id=None, file_encoding=None):
         editor_id = editor_registry.normalize_editor_id(editor_id)
@@ -678,8 +529,8 @@ def main():
             widget = EditorWidget()
             widget.tab_id = tab_id
             widget.setPlainText(content)
-            widget.textChanged.connect(lambda w=widget: mark_tab_dirty(w))
-            widget.textChanged.connect(lambda w=widget: schedule_language_diagnostics(w))
+            widget.textChanged.connect(lambda w=widget: tab_controller.mark_tab_dirty(w))
+            widget.textChanged.connect(lambda w=widget: diagnostics_controller.schedule_language_diagnostics(w))
         else:
             widget = editor_registry.create_editor_widget(editor_id, window.editorTabs, file_path, content, tab_id=tab_id)
             if not widget:
@@ -720,7 +571,7 @@ def main():
                     current_content = getattr(w, "content", None)
                     if current_content is not None and current_content != w._last_notified_content:
                         w._last_notified_content = current_content
-                        mark_tab_dirty(w)
+                        tab_controller.mark_tab_dirty(w)
                 except (RuntimeError, ReferenceError):
                     if hasattr(w, "_dirty_timer"):
                         w._dirty_timer.stop()
@@ -729,64 +580,11 @@ def main():
             widget._dirty_timer.timeout.connect(check_content_change)
             widget._dirty_timer.start(100)
         apply_word_wrap_to_widget(widget)
-        schedule_language_diagnostics(widget)
+        diagnostics_controller.schedule_language_diagnostics(widget)
         return widget
 
-    def split_active_editor_right():
-        if not window.editorTabs:
-            return
-
-        source_index = window.editorTabs.currentIndex()
-        source_widget = window.editorTabs.currentWidget()
-        if source_index < 0 or not source_widget:
-            return
-
-        file_path = window.editorTabs.tabToolTip(source_index)
-        editor_id = editor_registry.normalize_editor_id(getattr(source_widget, "editor_id", TEXT_EDITOR_ID))
-        content = get_widget_text_content(source_widget)
-        if content is None:
-            content = getattr(source_widget, "content", "")
-        if content is None:
-            content = ""
-
-        split_tab_id = next_tab_id()
-        split_widget = create_editor_widget(
-            editor_id,
-            file_path,
-            content,
-            getattr(source_widget, "available_editors", []),
-            params=getattr(source_widget, "params", None),
-            tab_id=split_tab_id,
-            file_encoding=get_widget_encoding(source_widget),
-        )
-
-        if getattr(source_widget, "params", None) is not None:
-            window.pending_params[split_tab_id] = getattr(source_widget, "params")
-
-        tab_name = getattr(source_widget, "tab_base_text", None) or _tab_text_without_dirty_marker(window.editorTabs.tabText(source_index))
-        split_widget.tab_base_text = tab_name
-        split_widget.diagnostic_count = int(getattr(source_widget, "diagnostic_count", 0) or 0)
-        icon = window.editorTabs.tabIcon(source_index)
-        target_pane = window.editorTabs.createPaneAfterActive()
-        new_index = window.editorTabs.addTabToPane(
-            split_widget,
-            icon,
-            tab_name,
-            target_pane,
-        )
-        window.editorTabs.setTabToolTip(new_index, file_path)
-        window.editorTabs.setCurrentIndex(new_index)
-        update_tab_label(split_widget)
-
-        if getattr(source_widget, "is_dirty", False):
-            mark_tab_dirty(split_widget)
-
-        project_tree.update_open_editors(window.editorTabs)
-        update_split_editor_button()
-        window.statusBar().showMessage(tr("MainWindow", "エディタを右に分割しました。"), 3000)
-
     if split_editor_button:
-        split_editor_button.clicked.connect(lambda checked=False: split_active_editor_right())
+        split_editor_button.clicked.connect(lambda checked=False: tab_controller.split_active_editor_right())
 
     # 無題タブのID管理
     untitled_id_counter = [0]
@@ -837,6 +635,89 @@ def main():
         next_tab_id=next_tab_id,
         text_editor_id=TEXT_EDITOR_ID,
     )
+    def open_home_tab():
+        if window.editorTabs:
+            for i in range(window.editorTabs.count()):
+                widget = window.editorTabs.widget(i)
+                if getattr(widget, "file_path", "") == "home:":
+                    window.editorTabs.setCurrentIndex(i)
+                    return
+        from core.home_tab import HomeTabWidget
+        widget = HomeTabWidget(window)
+        widget.file_path = "home:"
+        widget.tab_id = next_tab_id()
+        widget.tab_base_text = tr("MainWindow", "ホーム")
+        
+        from PySide6.QtGui import QIcon
+        icon = QIcon()
+        icons_dir = os.path.join(base_dir, "assets", "icons")
+        icon_path = os.path.join(icons_dir, "home-48.svg")
+        if os.path.exists(icon_path):
+            from core.utils import load_svg_icon
+            icon_color = window.palette().color(window.foregroundRole()).name()
+            icon = load_svg_icon(icon_path, icon_color)
+            
+        index = window.editorTabs.addTab(widget, icon, tr("MainWindow", "ホーム"))
+        window.editorTabs.setTabToolTip(index, "home:")
+        window.editorTabs.setCurrentIndex(index)
+        
+        project_tree.update_open_editors(window.editorTabs)
+        update_split_editor_button()
+
+    def open_dashboard_tab():
+        if window.editorTabs:
+            for i in range(window.editorTabs.count()):
+                widget = window.editorTabs.widget(i)
+                if getattr(widget, "file_path", "") == "dashboard:":
+                    window.editorTabs.setCurrentIndex(i)
+                    if hasattr(widget, "refresh"):
+                        widget.refresh()
+                    return
+        from core.dashboard_tab_host import DashboardTabHostWidget
+        widget = DashboardTabHostWidget(window)
+        widget.file_path = "dashboard:"
+        widget.tab_id = next_tab_id()
+        widget.tab_base_text = tr("MainWindow", "ダッシュボード")
+        
+        from PySide6.QtGui import QIcon
+        icon = QIcon()
+        icons_dir = os.path.join(base_dir, "assets", "icons")
+        icon_path = os.path.join(icons_dir, "data-area-20.svg")
+        if os.path.exists(icon_path):
+            from core.utils import load_svg_icon
+            icon_color = window.palette().color(window.foregroundRole()).name()
+            icon = load_svg_icon(icon_path, icon_color)
+
+        active_plugin = getattr(project_tree, "active_plugin", None)
+        if active_plugin:
+            class PluginDashboardProvider:
+                def __init__(self, plugin):
+                    self.plugin = plugin
+                def createDashboard(self, context):
+                    res = self.plugin.call_named_hook("dashboard.create", {"context": context})
+                    if not res:
+                        provider_obj = self.plugin.call_named_hook("dashboard.provider", {"context": context})
+                        if provider_obj and hasattr(provider_obj, "createDashboard"):
+                            res = provider_obj.createDashboard(context)
+                        return res
+
+            widget.setDashboardProvider(PluginDashboardProvider(active_plugin))
+
+        project_path = getattr(project_tree, "current_project_path", None)
+        if project_path:
+            widget.loadDashboard({"project_path": project_path})
+        else:
+            widget.showEmpty()
+
+        index = window.editorTabs.addTab(widget, icon, tr("MainWindow", "ダッシュボード"))
+        window.editorTabs.setTabToolTip(index, "dashboard:")
+        window.editorTabs.setCurrentIndex(index)
+        
+        project_tree.update_open_editors(window.editorTabs)
+        update_split_editor_button()
+
+    window.open_home_tab = open_home_tab
+    window.open_dashboard_tab = open_dashboard_tab
     window.open_file = file_open_controller.open_file
     window.open_untitled_tab = open_untitled_tab
 
@@ -920,7 +801,7 @@ def main():
             update_editor_selector(window.editorTabs.currentIndex())
             if "update_encoding_status" in locals():
                 update_encoding_status()
-            schedule_all_language_diagnostics()
+            diagnostics_controller.schedule_all_language_diagnostics()
 
 
     # メニューバーにコンボボックスを配置
@@ -1053,11 +934,11 @@ def main():
 
     action_save = window.findChild(object, "actionSave")
     if action_save:
-        action_save.triggered.connect(lambda checked=False: save_active_tab(False))
+        action_save.triggered.connect(lambda checked=False: save_controller.save_active_tab(False))
 
     action_save_as = window.findChild(object, "actionSaveAs")
     if action_save_as:
-        action_save_as.triggered.connect(lambda checked=False: save_active_tab(True))
+        action_save_as.triggered.connect(lambda checked=False: save_controller.save_active_tab(True))
 
     action_new_file = window.findChild(object, "actionNewFile")
     if action_new_file:
@@ -1117,7 +998,7 @@ def main():
                 return
         try:
             reopen_text_widget_with_encoding(widget, encoding)
-            mark_tab_clean(widget)
+            tab_controller.mark_tab_clean(widget)
         except Exception as error:
             QMessageBox.warning(
                 window,
@@ -1135,7 +1016,7 @@ def main():
             return
         widget.file_encoding = encoding
         update_encoding_status()
-        save_active_tab(False)
+        save_controller.save_active_tab(False)
 
     def open_encoding_dialog():
         widget = window.editorTabs.currentWidget() if window.editorTabs else None
@@ -1180,7 +1061,7 @@ def main():
                 widget.active_element = selected
 
             update_language_status()
-            schedule_language_diagnostics(widget)
+            diagnostics_controller.schedule_language_diagnostics(widget)
 
     def update_language_status():
         widget = window.editorTabs.currentWidget() if window.editorTabs else None
@@ -1199,7 +1080,7 @@ def main():
         forced = getattr(widget, "forced_element", None)
         if forced == "plain_text":
             language_button.setText("プレーンテキスト")
-            clear_language_diagnostics(widget)
+            diagnostics_controller.clear_language_diagnostics(widget)
         elif forced is not None:
             name = getattr(forced, "name", getattr(forced, "id", "不明なモード"))
             language_button.setText(f"{name} (手動)")
@@ -1263,6 +1144,14 @@ def main():
 
     core.api._progress_handler = on_progress
 
+    # コールバックの紐付け
+    tab_controller.update_editor_corner_controls_pane = update_editor_corner_controls_pane
+    tab_controller.update_editor_selector = update_editor_selector
+    tab_controller.update_encoding_status = update_encoding_status
+    tab_controller.get_widget_text_content = get_widget_text_content
+    tab_controller.get_widget_encoding = get_widget_encoding
+    tab_controller.create_editor_widget = create_editor_widget
+
     core.api._open_tab_handler = file_open_controller.open_file
     core.api._open_untitled_tab_handler = open_untitled_tab
     core.api._active_tab_handler = get_active_tab_info
@@ -1320,6 +1209,9 @@ def main():
 
     # ドラッグ＆ドロップによるファイルオープンの有効化
     window.setAcceptDrops(True)
+
+    # 起動時にHomeタブを開く
+    open_home_tab()
 
     # ウィンドウを表示
     window.show()

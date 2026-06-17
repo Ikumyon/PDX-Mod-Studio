@@ -112,6 +112,23 @@ class SettingsManager:
                 if widget:
                     widget.setFont(font_editor)
 
+    def add_recent_project(self, path, name, game=""):
+        recent = self.get("recent_projects", [])
+        if not isinstance(recent, list):
+            recent = []
+        recent = [p for p in recent if isinstance(p, dict) and p.get("path") != path]
+        from datetime import datetime
+        now_str = datetime.now().strftime("%Y/%m/%d")
+        recent.insert(0, {
+            "name": name,
+            "path": path,
+            "game": game,
+            "date": now_str
+        })
+        recent = recent[:10]
+        self.set("recent_projects", recent)
+        self.save()
+
 settings_manager = SettingsManager()
 
 

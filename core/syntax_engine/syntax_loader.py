@@ -3,19 +3,26 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from .bundle import SyntaxBundle
+
 
 class SyntaxAssetLoader:
     """
     静的な構文アセットのロードを担当するローダー。
-    旧 TOML 形式の読み込み処理は完全に廃止されています。
+    構文資産は必ずプラグイン側の実ファイルから読み込みます。
     """
 
     def __init__(self) -> None:
         pass
 
-    def load_syntax_manifest(self, plugin_path: str | Path, manifest_data: dict[str, Any]) -> dict[str, Any]:
+    def load_syntax_manifest(self, plugin_path: str | Path, manifest_data: dict[str, Any]) -> SyntaxBundle:
         """
-        マニフェストからの構文アセットロード処理。
-        旧方式の廃止に伴い、現在は空のロード結果を返します。
+        マニフェストから構文アセットを読み込む。
+
+        必須ファイルや必須項目が無い場合は、呼び出し元へ例外を返します。
+        コア側で既定値を補完しません。
         """
-        return {}
+        plugin_id = manifest_data.get("id")
+        if not isinstance(plugin_id, str) or not plugin_id:
+            raise ValueError("Plugin manifest is missing the required 'id' string.")
+        return SyntaxBundle.from_plugin_assets(plugin_path, manifest_data, plugin_id)

@@ -79,28 +79,32 @@ def translate_from_files_map(
 
     assets_path = manifest.get("assets")
     if not isinstance(assets_path, str) or not assets_path:
-        return fallback_text
+        raise ValueError("Plugin manifest is missing the required 'assets' entry.")
 
-    file_map_path = Path(plugin_root) / assets_path
+    file_map_path = require_plugin_file(plugin_root, assets_path, "plugin assets map")
     with open(file_map_path, "rb") as handle:
         file_map = tomllib.load(handle)
 
     translations_config = file_map.get("translations")
     if not isinstance(translations_config, dict):
-        return fallback_text
+        raise ValueError("Missing or invalid 'translations' object in plugin assets.toml.")
 
     directory_name = translations_config.get("directory")
     if not isinstance(directory_name, str) or not directory_name:
-        return fallback_text
+        raise ValueError("Missing or invalid 'translations.directory' in plugin assets.toml.")
 
     default_locale = translations_config.get("default")
+    if default_locale is not None and (not isinstance(default_locale, str) or not default_locale):
+        raise ValueError("Invalid 'translations.default' in plugin assets.toml.")
 
-    translations_dir = Path(plugin_root) / directory_name
+    translations_dir = resolve_plugin_asset_path(plugin_root, directory_name)
+    if not translations_dir.is_dir():
+        raise FileNotFoundError(f"Required translations directory not found: {translations_dir}")
+
     locale_entries: dict[str, str] = {}
-    if translations_dir.is_dir():
-        for file_path in translations_dir.glob("*.json"):
-            locale_key = file_path.stem
-            locale_entries[locale_key] = f"{directory_name}/{file_path.name}"
+    for file_path in translations_dir.glob("*.json"):
+        locale_key = file_path.stem
+        locale_entries[locale_key] = f"{directory_name}/{file_path.name}"
 
     target_locale = None
     if isinstance(language, str) and language in locale_entries:
@@ -108,11 +112,12 @@ def translate_from_files_map(
     else:
         if isinstance(default_locale, str) and default_locale in locale_entries:
             target_locale = default_locale
-        elif locale_entries:
-            target_locale = next(iter(locale_entries))
 
     if not target_locale:
-        return fallback_text
+        requested = language if language else default_locale
+        if requested:
+            raise FileNotFoundError(f"Required translation locale file not found: {requested}")
+        raise FileNotFoundError(f"No translation JSON files found in: {translations_dir}")
 
     translations = _load_translation_resource(Path(plugin_root), locale_entries[target_locale])
     value = translations.get(key)

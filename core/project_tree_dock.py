@@ -573,6 +573,10 @@ class ProjectTreeDock:
             self.parent_window.current_project_type = "reference"
             self.parent_window.source_mod_root = None
         core.api.set_project_path(folder_path)
+        
+        from core.dialog.settings import settings_manager
+        settings_manager.add_recent_project(folder_path, os.path.basename(folder_path), game=self.active_plugin.id if self.active_plugin else "")
+
         self.modElementsTree.clear()
         self._populate_tree(folder_path, self.modElementsTree.invisibleRootItem())
         self.folderStack.setCurrentIndex(1)
