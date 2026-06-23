@@ -1,0 +1,7 @@
+{
+  "id": "save_ui",
+  "name": "Save UI",
+  "description": "Provides UI dialogs for saving targets",
+  "version": "1.0.0",
+  "entry_point": "entry.py"
+}

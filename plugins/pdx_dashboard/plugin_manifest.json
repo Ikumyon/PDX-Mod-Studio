@@ -1,0 +1,7 @@
+{
+  "id": "pdx_dashboard",
+  "name": "PDX Dashboard",
+  "description": "PDX Dashboard rendering plugin",
+  "version": "1.0.0",
+  "entry_point": "entry.py"
+}

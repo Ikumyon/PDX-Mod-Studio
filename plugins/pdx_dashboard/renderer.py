@@ -2,7 +2,7 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from core.i18n import tr
-from lib.pdx_dashboard.parser import DashboardTextParser
+from plugins.pdx_dashboard.parser import DashboardTextParser
 
 class DashboardTextRenderer:
     def get_translation_info(self) -> dict:

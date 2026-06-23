@@ -12,7 +12,7 @@ from core.editor_tabs import EditorTabProxy, create_editor_tab_bar
 from core.editor_tab_controller import EditorTabController
 from core.save_controller import SaveController
 from core.diagnostics_controller import DiagnosticsController
-import lib.pdx_dashboard
+
 from core.encoding_controller import (
     decode_with_encoding,
     read_text_with_detected_encoding,
@@ -956,6 +956,21 @@ def main():
     action_settings = window.findChild(object, "actionSettings")
     if action_settings:
         action_settings.triggered.connect(open_settings_dialog)
+
+    def open_plugin_manager_dialog():
+        from core.dialog.plugin_manager_dialog import PluginManagerDialog
+        dialog = PluginManagerDialog(window, plugin_manager)
+        if dialog.exec() == PluginManagerDialog.DialogCode.Accepted:
+            if dialog.has_changes:
+                QMessageBox.information(
+                    window,
+                    tr("再起動の確認", "MainWindow"),
+                    tr("プラグインの設定が変更されました。変更を適用するには、アプリケーションを再起動してください。", "MainWindow")
+                )
+
+    action_plugin_manager = window.findChild(object, "actionPluginManager")
+    if action_plugin_manager:
+        action_plugin_manager.triggered.connect(open_plugin_manager_dialog)
 
     core.api._message_handler = lambda text, timeout: window.statusBar().showMessage(text, timeout)
 

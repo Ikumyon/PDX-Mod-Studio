@@ -46,6 +46,7 @@
     </property>
     <addaction name="actionUndo"/>
     <addaction name="actionRedo"/>
+    <addaction name="actionPluginManager"/>
     <addaction name="actionSettings"/>
    </widget>
    <widget class="QMenu" name="menuView">
@@ -176,6 +177,11 @@
   <action name="actionSettings">
    <property name="text">
     <string>設定</string>
+   </property>
+  </action>
+  <action name="actionPluginManager">
+   <property name="text">
+    <string>プラグインマネージャー...</string>
    </property>
   </action>
  </widget>

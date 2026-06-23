@@ -50,6 +50,15 @@ class Plugin:
         self.entry_point = self.raw.get("entry_point")
         self.entry_kind = self._detect_entry_kind(self.entry_point, self.raw.get("entry_kind"))
         self._assistant_widget_factory = None
+        
+        # 依存関係のロードと正規化
+        deps = self.raw.get("dependencies", [])
+        if isinstance(deps, str):
+            self.dependencies = [d.strip() for d in deps.split(",") if d.strip()]
+        elif isinstance(deps, list):
+            self.dependencies = [str(d).strip() for d in deps if str(d).strip()]
+        else:
+            self.dependencies = []
 
     def clear_elements(self):
         self.elements.clear()
@@ -206,7 +215,7 @@ class PluginManager:
         """
         1. プラグインをディレクトリから自動検出し、最新のマニフェスト情報を取得する。
         2. レジストリから有効/無効設定を読み込む。
-        3. 有効なプラグインをロードする。
+        3. 依存関係を解決して、トポロジカルソート順で有効なプラグインをロードする。
         """
         # プラグインの自動検出
         discovered = self.discover_plugins()
@@ -214,16 +223,15 @@ class PluginManager:
         # レジストリ（ユーザー設定）の読み込み
         registry_settings = self._load_registry_settings()
 
+        # 依存関係を解決し、正しいロード順序（IDリスト）を取得する
+        load_order = self._resolve_dependencies(discovered, registry_settings)
+
         self.plugins = []
         syntax_loader = SyntaxAssetLoader()
         
-        for p_id, manifest in discovered.items():
-            # レジストリ設定を確認（未登録ならデフォルトで有効）
-            is_enabled = registry_settings.get(p_id, {}).get("enabled", True)
-            
-            if not is_enabled:
-                continue
-
+        # 解決した順序（load_order）でプラグインを生成・ロード
+        for p_id in load_order:
+            manifest = discovered[p_id]
             try:
                 # マニフェストの情報に基づき、Plugin オブジェクトを作成
                 # path は discover_plugins で設定済み
@@ -256,7 +264,9 @@ class PluginManager:
                         language=None,
                     ),
                 )
-                syntax_bundle = syntax_loader.load_syntax_manifest(plugin_root, manifest)
+                syntax_bundle = None
+                if "assets" in manifest:
+                    syntax_bundle = syntax_loader.load_syntax_manifest(plugin_root, manifest)
                 plugin = Plugin(
                     id=p_id,
                     name=resolved_name,
@@ -285,6 +295,77 @@ class PluginManager:
         self._save_registry_settings(discovered, registry_settings)
         
         return self.plugins
+
+    def _resolve_dependencies(self, discovered, registry_settings):
+        """
+        有効なプラグインの依存関係を解決し、正しいロード順序（IDリスト）を返します。
+        依存プラグインが不足している（未インストール・無効）場合は、ロード対象から除外します。
+        """
+        # 1. 有効なプラグインのIDセットとマニフェストのマッピングを作成
+        enabled_plugins = {}
+        for p_id, manifest in discovered.items():
+            is_enabled = registry_settings.get(p_id, {}).get("enabled", True)
+            if is_enabled:
+                enabled_plugins[p_id] = manifest
+
+        # 2. 依存関係のグラフを構築
+        graph = {}
+        for p_id, manifest in enabled_plugins.items():
+            # 依存関係をリスト形式で取得
+            deps_raw = manifest.get("dependencies", [])
+            if isinstance(deps_raw, str):
+                deps = [d.strip() for d in deps_raw.split(",") if d.strip()]
+            elif isinstance(deps_raw, list):
+                deps = [str(d).strip() for d in deps_raw if str(d).strip()]
+            else:
+                deps = []
+
+            # 依存先が存在するか、有効になっているか検証
+            valid_deps = []
+            for dep in deps:
+                if dep not in enabled_plugins:
+                    print(f"Warning: Plugin '{p_id}' depends on '{dep}', which is missing or disabled.")
+                    break  # 依存先が足りないのでロード不可
+                valid_deps.append(dep)
+            else:
+                graph[p_id] = valid_deps
+
+        # 3. トポロジカルソート (DFSアルゴリズム)
+        visited = {}  # ID -> 'visiting' or 'visited'
+        order = []
+        has_cycle = False
+
+        def dfs(node):
+            nonlocal has_cycle
+            if visited.get(node) == 'visiting':
+                has_cycle = True
+                print(f"Error: Circular dependency detected involving plugin '{node}'")
+                return False
+            if visited.get(node) == 'visited':
+                return True
+
+            visited[node] = 'visiting'
+            for dep in graph.get(node, []):
+                if dep in graph:
+                    if not dfs(dep):
+                        return False
+                else:
+                    return False  # 依存先ノードがグラフに存在しない（無効・ロード不可）場合もロード不可
+
+            visited[node] = 'visited'
+            order.append(node)
+            return True
+
+        # 手動優先順位（レジストリ内の順序）を優先的に尊重してDFSを開始
+        registry_order = [p["id"] for p in registry_settings.get("plugins", []) if "id" in p]
+        loadable_ids = list(graph.keys())
+        loadable_ids.sort(key=lambda x: registry_order.index(x) if x in registry_order else len(registry_order))
+
+        for p_id in loadable_ids:
+            if p_id not in visited:
+                dfs(p_id)
+
+        return order
 
     def _load_plugin_logic(self, plugin, entry_point):
         """指定されたエントリーポイントをロードして初期化する"""
@@ -358,6 +439,120 @@ class PluginManager:
 
     def get_plugins(self):
         return self.plugins
+
+    def get_all_plugins_metadata(self):
+        """検出されたすべてのプラグインの情報を取得する（有効/無効状態および保存された順序を含む）"""
+        discovered = self.discover_plugins()
+        registry_settings = self._load_registry_settings()
+        
+        # 保存された順序（レジストリファイルの並び順）を取得する
+        registry_order = []
+        if os.path.exists(self.registry_path):
+            try:
+                with open(self.registry_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    registry_order = [p["id"] for p in data.get("plugins", []) if "id" in p]
+            except Exception:
+                pass
+                
+        plugins_info = []
+        for p_id, manifest in discovered.items():
+            plugin_root = os.path.join(os.path.dirname(self.plugins_dir), manifest["path"])
+            is_enabled = registry_settings.get(p_id, {}).get("enabled", True)
+            
+            resolved_name = resolve_manifest_display_text(
+                manifest,
+                "name_key",
+                "name",
+                default=p_id,
+                plugin_id=p_id,
+                translate=lambda key, fallback: translate_from_files_map(
+                    plugin_root=plugin_root,
+                    manifest=manifest,
+                    key=key,
+                    fallback=fallback,
+                    language=None,
+                ),
+            )
+            resolved_description = resolve_manifest_display_text(
+                manifest,
+                "desc_key",
+                "description",
+                default="",
+                plugin_id=p_id,
+                translate=lambda key, fallback: translate_from_files_map(
+                    plugin_root=plugin_root,
+                    manifest=manifest,
+                    key=key,
+                    fallback=fallback,
+                    language=None,
+                ),
+            )
+            
+            # 依存関係のロードと正規化
+            deps_raw = manifest.get("dependencies", [])
+            if isinstance(deps_raw, str):
+                dependencies = [d.strip() for d in deps_raw.split(",") if d.strip()]
+            elif isinstance(deps_raw, list):
+                dependencies = [str(d).strip() for d in deps_raw if str(d).strip()]
+            else:
+                dependencies = []
+
+            plugins_info.append({
+                "id": p_id,
+                "name": resolved_name,
+                "version": manifest.get("version", "1.0.0"),
+                "description": resolved_description,
+                "path": plugin_root,
+                "icon_path": os.path.join(plugin_root, manifest.get("icon", "")) if manifest.get("icon") else None,
+                "enabled": is_enabled,
+                "tags": manifest.get("tags", []),
+                "dependencies": dependencies
+            })
+            
+        # registry_order のインデックスに基づいてソート、未登録プラグインは末尾へ
+        def sort_key(item):
+            p_id = item["id"]
+            if p_id in registry_order:
+                return registry_order.index(p_id)
+            return len(registry_order)
+            
+        plugins_info.sort(key=sort_key)
+        return plugins_info
+
+    def save_plugin_enabled_states(self, ordered_states):
+        """
+        ordered_states: [{"id": str, "enabled": bool}, ...] のリスト。
+        このリストの順序のまま registry_path に書き込みます。
+        """
+        discovered = self.discover_plugins()
+        
+        new_registry_data = []
+        processed_ids = set()
+        for item in ordered_states:
+            p_id = item["id"]
+            if p_id in discovered:
+                new_registry_data.append({
+                    "id": p_id,
+                    "enabled": bool(item["enabled"])
+                })
+                processed_ids.add(p_id)
+                
+        # 自動検出されたが、ordered_states に含まれていないプラグインがあれば、末尾に追加
+        for p_id in discovered:
+            if p_id not in processed_ids:
+                new_registry_data.append({
+                    "id": p_id,
+                    "enabled": True
+                })
+                
+        try:
+            with open(self.registry_path, 'w', encoding='utf-8') as f:
+                json.dump({"plugins": new_registry_data}, f, indent=4, ensure_ascii=False)
+            return True
+        except Exception as e:
+            print(f"Failed to save registry settings: {e}")
+            return False
 
 def load_module_from_path(module_name, path):
     spec = importlib.util.spec_from_file_location(module_name, path)

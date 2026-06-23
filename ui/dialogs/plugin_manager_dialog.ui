@@ -1,0 +1,279 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>PluginManagerDialog</class>
+ <widget class="QDialog" name="PluginManagerDialog">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>600</width>
+    <height>400</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>プラグインマネージャー</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayoutMain">
+   <item>
+    <widget class="QSplitter" name="splitter">
+     <property name="orientation">
+      <enum>Qt::Orientation::Horizontal</enum>
+     </property>
+     <widget class="QWidget" name="widgetLeft" native="true">
+      <layout class="QVBoxLayout" name="verticalLayoutLeft">
+       <property name="leftMargin">
+        <number>0</number>
+       </property>
+       <property name="topMargin">
+        <number>0</number>
+       </property>
+       <property name="rightMargin">
+        <number>0</number>
+       </property>
+       <property name="bottomMargin">
+        <number>0</number>
+       </property>
+       <item>
+        <widget class="QLineEdit" name="lineSearch">
+         <property name="placeholderText">
+          <string>検索...</string>
+         </property>
+         <property name="clearButtonEnabled">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QListWidget" name="listPlugins">
+         <property name="maximumSize">
+          <size>
+           <width>16777215</width>
+           <height>16777215</height>
+          </size>
+         </property>
+         <property name="dragEnabled">
+          <bool>true</bool>
+         </property>
+         <property name="dragDropMode">
+          <enum>QAbstractItemView::DragDropMode::InternalMove</enum>
+         </property>
+         <property name="defaultDropAction">
+          <enum>Qt::DropAction::MoveAction</enum>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="btnCreatePlugin">
+         <property name="text">
+          <string>新規プラグイン作成...</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QGroupBox" name="groupDetails">
+      <property name="title">
+       <string>プラグイン詳細</string>
+      </property>
+      <layout class="QVBoxLayout" name="verticalLayoutDetails">
+       <item>
+        <widget class="QLabel" name="labelName">
+         <property name="font">
+          <font>
+           <pointsize>11</pointsize>
+           <bold>true</bold>
+          </font>
+         </property>
+         <property name="text">
+          <string>プラグイン名</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <layout class="QFormLayout" name="formLayoutMeta">
+         <item row="0" column="0">
+          <widget class="QLabel" name="labelIdTitle">
+           <property name="text">
+            <string>ID:</string>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="1">
+          <widget class="QLabel" name="labelId">
+           <property name="text">
+            <string>-</string>
+           </property>
+           <property name="textInteractionFlags">
+            <set>Qt::TextInteractionFlag::TextSelectableByMouse</set>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="0">
+          <widget class="QLabel" name="labelVersionTitle">
+           <property name="text">
+            <string>バージョン:</string>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="1">
+          <widget class="QLabel" name="labelVersion">
+           <property name="text">
+            <string>-</string>
+           </property>
+           <property name="textInteractionFlags">
+            <set>Qt::TextInteractionFlag::TextSelectableByMouse</set>
+           </property>
+          </widget>
+         </item>
+         <item row="2" column="0">
+          <widget class="QLabel" name="labelPathTitle">
+           <property name="text">
+            <string>パス:</string>
+           </property>
+          </widget>
+         </item>
+         <item row="2" column="1">
+          <widget class="QLabel" name="labelPath">
+           <property name="text">
+            <string>-</string>
+           </property>
+           <property name="wordWrap">
+            <bool>true</bool>
+           </property>
+           <property name="textInteractionFlags">
+            <set>Qt::TextInteractionFlag::TextSelectableByMouse</set>
+           </property>
+          </widget>
+         </item>
+         <item row="3" column="0">
+          <widget class="QLabel" name="labelTagsTitle">
+           <property name="text">
+            <string>タグ:</string>
+           </property>
+          </widget>
+         </item>
+         <item row="3" column="1">
+          <widget class="QLabel" name="labelTags">
+           <property name="text">
+            <string>-</string>
+           </property>
+           <property name="wordWrap">
+            <bool>true</bool>
+           </property>
+           <property name="textInteractionFlags">
+            <set>Qt::TextInteractionFlag::TextSelectableByMouse</set>
+           </property>
+          </widget>
+         </item>
+         <item row="4" column="0">
+          <widget class="QLabel" name="labelDepsTitle">
+           <property name="text">
+            <string>依存関係:</string>
+           </property>
+          </widget>
+         </item>
+         <item row="4" column="1">
+          <widget class="QLabel" name="labelDeps">
+           <property name="text">
+            <string>-</string>
+           </property>
+           <property name="wordWrap">
+            <bool>true</bool>
+           </property>
+           <property name="textInteractionFlags">
+            <set>Qt::TextInteractionFlag::TextSelectableByMouse</set>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <widget class="QLabel" name="labelDescTitle">
+         <property name="text">
+          <string>説明:</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QTextBrowser" name="textDescription">
+         <property name="frameShape">
+          <enum>QFrame::Shape::StyledPanel</enum>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="horizontalLayoutActions">
+         <item>
+          <widget class="QPushButton" name="btnOpenFolder">
+           <property name="text">
+            <string>プラグインフォルダを開く</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="horizontalSpacerDetails">
+           <property name="orientation">
+            <enum>Qt::Orientation::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+        </layout>
+       </item>
+      </layout>
+     </widget>
+    </widget>
+   </item>
+   <item>
+    <widget class="QDialogButtonBox" name="buttonBox">
+     <property name="orientation">
+      <enum>Qt::Orientation::Horizontal</enum>
+     </property>
+     <property name="standardButtons">
+      <set>QDialogButtonBox::StandardButton::Cancel|QDialogButtonBox::StandardButton::Ok</set>
+     </property>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections>
+  <connection>
+   <sender>buttonBox</sender>
+   <signal>accepted()</signal>
+   <receiver>PluginManagerDialog</receiver>
+   <slot>accept()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>248</x>
+     <y>254</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>157</x>
+     <y>274</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>buttonBox</sender>
+   <signal>rejected()</signal>
+   <receiver>PluginManagerDialog</receiver>
+   <slot>reject()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>300</x>
+     <y>254</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>286</x>
+     <y>274</y>
+    </hint>
+   </hints>
+  </connection>
+ </connections>
+</ui>
